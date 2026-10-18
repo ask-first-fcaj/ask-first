@@ -1,0 +1,20 @@
+# Mỗi PR sửa đường dẫn bên dưới phải được team tương ứng duyệt.
+# Dòng có nhiều team: GitHub yêu cầu duyệt từ MỖI team được nêu.
+
+*                                   @ask-first-fcaj/backend @ask-first-fcaj/ai
+
+/backend/                           @ask-first-fcaj/backend
+/ai/                                @ask-first-fcaj/ai
+/infra/                             @ask-first-fcaj/backend
+/kb/                                @ask-first-fcaj/ai
+/prompts/                           @ask-first-fcaj/ai
+/eval/                              @ask-first-fcaj/ai
+
+# Hợp đồng BE <-> AI: cần 1 BE + 1 AI cùng duyệt (docs/huong-dan-backend.md mục 8.3)
+/contracts/                         @ask-first-fcaj/backend @ask-first-fcaj/ai
+/ai/src/askfirst/domain/            @ask-first-fcaj/backend @ask-first-fcaj/ai
+/ai/tests/contract/                 @ask-first-fcaj/backend @ask-first-fcaj/ai
+/backend/src/test/java/**/contract/ @ask-first-fcaj/backend @ask-first-fcaj/ai
+
+# CI/CD và quy trình
+/.github/                           @ask-first-fcaj/backend @ask-first-fcaj/ai

@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Có code backend chưa?
+        id: has
+        shell: bash
+        run: |
+          if [ -f backend/gradlew ]; then echo "found=true" >> "$GITHUB_OUTPUT"; else echo "found=false" >> "$GITHUB_OUTPUT"; echo "::notice::backend/gradlew chưa có, bỏ qua (khung repo)"; fi
+      - uses: actions/setup-java@v4
+        if: steps.has.outputs.found == 'true'
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Gradle check
+        if: steps.has.outputs.found == 'true'
+        working-directory: backend
+        shell: bash
+        run: ./gradlew check
+
+  ai:
+    name: ai (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Có code ai chưa?
+        id: has
+        shell: bash
+        run: |
+          if [ -f ai/pyproject.toml ]; then echo "found=true" >> "$GITHUB_OUTPUT"; else echo "found=false" >> "$GITHUB_OUTPUT"; echo "::notice::ai/pyproject.toml chưa có, bỏ qua (khung repo)"; fi
+      - uses: astral-sh/setup-uv@v5
+        if: steps.has.outputs.found == 'true'
+      - name: Lint + test
+        if: steps.has.outputs.found == 'true'
+        working-directory: ai
+        shell: bash
+        run: |
+          uv python install 3.12
+          uv sync
+          uv run ruff check .
+          uv run pytest
+
+  contract:
+    name: contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Có code ai chưa?
+        id: has
+        shell: bash
+        run: |
+          if [ -f ai/pyproject.toml ]; then echo "found=true" >> "$GITHUB_OUTPUT"; else echo "found=false" >> "$GITHUB_OUTPUT"; echo "::notice::ai/pyproject.toml chưa có, bỏ qua (khung repo)"; fi
+      - uses: astral-sh/setup-uv@v5
+        if: steps.has.outputs.found == 'true'
+      - name: Sinh lại schema và so với contracts/
+        if: steps.has.outputs.found == 'true'
+        working-directory: ai
+        run: |
+          uv python install 3.12
+          uv sync
+          uv run python -m askfirst.domain.export
+      - name: Schema không được lệch
+        if: steps.has.outputs.found == 'true'
+        run: git diff --exit-code contracts/
+      - name: Test contract phía Python
+        if: steps.has.outputs.found == 'true'
+        working-directory: ai
+        run: uv run pytest tests/contract
+
+  # Check bắt buộc duy nhất của branch protection: gom kết quả mọi job ở trên.
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [backend, ai, contract]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mọi job phải thành công
+        run: |
+          echo "backend=${{ needs.backend.result }} ai=${{ needs.ai.result }} contract=${{ needs.contract.result }}"
+          test "${{ needs.backend.result }}" = "success" -a "${{ needs.ai.result }}" = "success" -a "${{ needs.contract.result }}" = "success"

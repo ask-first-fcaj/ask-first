@@ -1,0 +1,22 @@
+# secrets: không bao giờ commit
+.env
+.env.*
+*.pem
+*.key
+*.session
+*.pkl
+credentials*
+# build
+build/
+.gradle/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.aws-sam/
+node_modules/
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
