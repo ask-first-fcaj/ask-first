@@ -32,7 +32,7 @@ Hiện repo mới có khung và tài liệu; code sẽ thêm theo lịch trong P
 
 - Nhánh ngắn (`feat/BE-22-webhook`), PR nhỏ (≤ 400 dòng nếu được), không push thẳng vào `main`.
 - Conventional commits (`feat:`, `fix:`, `test:`, `docs:`...); thay đổi nhìn thấy được thì cập nhật [CHANGELOG.md](CHANGELOG.md).
-- PR phải có ít nhất 1 người duyệt và CI xanh mới merge. `CODEOWNERS` tự gắn người duyệt: sửa `contracts/` hoặc `ai/src/askfirst/domain/` cần **1 BE + 1 AI**.
+- PR phải có ít nhất 1 người duyệt và CI xanh mới merge. `CODEOWNERS` tự gắn người duyệt. Sửa `contracts/` hoặc `ai/src/askfirst/domain/` cần **1 BE + 1 AI** approve: đây là **luật team**, GitHub chỉ ép 1 code owner bất kỳ, nên chưa đủ 1 BE + 1 AI thì **không bấm merge**.
 - Mọi lệnh phải chạy được trên **Windows, macOS, Linux** (CI chạy cả 3).
 - Không build nặng trên máy cá nhân (image `ai`, eval 300 mẫu): chạy trên GitHub Actions.
 - **Không commit secret** (`.env`, bot token, key). Bot token và webhook secret để SSM Parameter Store; AWS deploy bằng OIDC, không lưu access key.

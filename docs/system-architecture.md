@@ -907,7 +907,7 @@ Mẫu truy cập chính: lấy profile (GetItem); liệt kê người thân (Que
 ask-first/
 ├── infra/
 │   └── template.yaml            # AWS SAM: webhook + worker (Java zip, SnapStart), ai (Python image), SQS+DLQ, DynamoDB, S3, alarms + SNS topic (email), budgets
-├── contracts/                   # ranh giới BE ↔ AI (CODEOWNERS: 1 BE + 1 AI duyệt)
+├── contracts/                   # ranh giới BE ↔ AI (luật team: 1 BE + 1 AI duyệt; CODEOWNERS chỉ ép 1)
 │   ├── schema/*.json            # JSON Schema SINH từ ai/src/askfirst/domain/models.py (không sửa tay)
 │   └── fixtures/*.json          # request/response mẫu cho từng op; cả Java test lẫn Python test đều đọc
 ├── backend/                     # Java 21, Gradle (Kotlin DSL)

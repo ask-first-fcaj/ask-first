@@ -1,5 +1,6 @@
-# Mỗi PR sửa đường dẫn bên dưới phải được team tương ứng duyệt.
-# Dòng có nhiều team: GitHub yêu cầu duyệt từ MỖI team được nêu.
+# Mỗi PR sửa đường dẫn bên dưới tự gắn team tương ứng làm reviewer.
+# Dòng có nhiều team: GitHub chỉ cần approval của MỘT owner bất kỳ trong dòng là đủ,
+# KHÔNG bắt mỗi team cùng duyệt (docs.github.com, "About code owners").
 
 *                                   @ask-first-fcaj/backend @ask-first-fcaj/ai
 
@@ -10,7 +11,8 @@
 /prompts/                           @ask-first-fcaj/ai
 /eval/                              @ask-first-fcaj/ai
 
-# Hợp đồng BE <-> AI: cần 1 BE + 1 AI cùng duyệt (docs/huong-dan-backend.md mục 8.3)
+# Hợp đồng BE <-> AI: LUẬT TEAM là 1 BE + 1 AI cùng duyệt; GitHub không ép được,
+# người merge tự kiểm (docs/implementation-plan.md §1 điểm 7).
 /contracts/                         @ask-first-fcaj/backend @ask-first-fcaj/ai
 /ai/src/askfirst/domain/            @ask-first-fcaj/backend @ask-first-fcaj/ai
 /ai/tests/contract/                 @ask-first-fcaj/backend @ask-first-fcaj/ai

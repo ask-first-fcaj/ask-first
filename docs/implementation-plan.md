@@ -39,7 +39,7 @@ Mục tiêu: **AI không phải chờ BE.** (Từ ARCH v3.4, Mini App là MVP+ n
 4. **(MVP+) Nếu làm Mini App:** FE dùng mock API sinh từ `contracts/openapi.yaml` (MSW hoặc json-server), lúc ghép API thật chỉ đổi base URL.
 5. **Tích hợp theo lát cắt dọc (vertical slice).** Mỗi mốc ghép một loại input chạy thật từ đầu đến cuối: văn bản (W3) → ảnh + người thân (W4) → RAG (W5); voice ⏸ hoãn. Không ghép một lần vào cuối.
 6. **Feature flag:** `PIPELINE_IMPL` là biến môi trường (§3.5). Các cờ bật tắt lúc chạy nằm ở DynamoDB `CONFIG#global/FLAGS` (ARCH §5.8): `llm_enabled`, `feature_image`, `feature_voice`, `feature_rag` được truyền cho AI qua `Flags` (§3.3); `feature_guardian` chỉ BE đọc. Tính năng chưa xong vẫn merge được nhưng tắt.
-7. **CODEOWNERS:** theo bảng "Thư mục theo owner" ở §3.1. File trong `ai/src/askfirst/domain/`, `contracts/`, `ai/tests/contract/` và `backend/src/test/**/contract/` thì **phải có 1 người BE và 1 người AI cùng duyệt**.
+7. **CODEOWNERS:** theo bảng "Thư mục theo owner" ở §3.1. File trong `ai/src/askfirst/domain/`, `contracts/`, `ai/tests/contract/` và `backend/src/test/**/contract/` thì **phải có 1 người BE và 1 người AI cùng duyệt**. Lưu ý: GitHub chỉ cần **1** code owner bất kỳ approve, nên "1 BE + 1 AI" là **luật team**: người approve thứ nhất không merge mà chờ đủ 1 BE + 1 AI, người merge tự kiểm (GitHub docs: *"an approval from any of the owners is sufficient"*).
 
 ```
             W1        W2        W3        W4        W5        W6
