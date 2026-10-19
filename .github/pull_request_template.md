@@ -7,7 +7,7 @@ Liên quan: <!-- BE-xx / AI-xx / INT-xx -->
 <!-- Lệnh đã chạy, kết quả; hoặc cách test tay. Chưa kiểm cái gì thì ghi "not verified". -->
 
 ## Definition of Done
-- [ ] Code + test; lệnh của phía mình pass (`./gradlew check` hoặc `uv run ruff check . && uv run pytest`)
+- [ ] Code + test; lệnh của phía mình pass (`./mvnw verify` hoặc `uv run ruff check . && uv run pytest`)
 - [ ] Đạt điều kiện "Xong khi" của việc
 - [ ] Đã deploy lên `dev` (nếu là việc BE hoặc INT)
 - [ ] Cập nhật tài liệu liên quan (README, ADR, `CHANGELOG.md`)

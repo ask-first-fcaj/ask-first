@@ -377,7 +377,7 @@ class Verdict(BaseModel):
 
 * Mỗi khi sửa file `models.py`, bạn chạy lệnh: `uv run python -m askfirst.domain.export`.
 * Lệnh này sẽ tự động xuất ra các file `contracts/schema/*.json`.
-* Backend chỉ việc chạy Gradle để sinh ra code Java tương ứng. Không ai phải gõ tay!
+* Backend chỉ việc chạy Maven để sinh ra code Java tương ứng. Không ai phải gõ tay!
 
 ---
 

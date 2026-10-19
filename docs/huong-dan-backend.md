@@ -364,13 +364,13 @@ AI Team viết file Python Model (Pydantic)
                ▼ (Chạy lệnh tự động sinh file JSON)
      contracts/schema/*.json (JSON Schema chuẩn)
                │
-               ▼ (Plugin jsonschema2pojo trong Gradle đọc file JSON)
-backend/build/generated/.../vn/askfirst/contract/ (Tự sinh các class Java Record)
+               ▼ (jsonschema2pojo-maven-plugin đọc file JSON)
+backend/target/generated-sources/.../vn/askfirst/contract/ (Tự sinh các class Java Record)
 ```
 
 💡 **Ý nghĩa thực tế đối với bạn:**
 * Bạn **không bao giờ phải tự gõ các DTO Java** cho kết quả của AI.
-* Khi chạy `./gradlew build`, Gradle sẽ tự sinh ra các file như `Verdict.java`, `InboundMessage.java`, `OutMessage.java`.
+* Khi chạy `./mvnw generate-sources` (hoặc `./mvnw verify`), Maven sẽ tự sinh ra các file như `Verdict.java`, `InboundMessage.java`, `OutMessage.java`.
 * **Tuyệt đối không sửa tay các file trong thư mục `generated`!** Muốn sửa trường nào, 2 team ngồi lại sửa file gốc `models.py` của AI rồi build lại.
 
 ### 8.1 Chạy thử nghiệm với `FakeAiClient` (Không cần chờ team AI)
@@ -448,10 +448,10 @@ Tuần 1 là tuần quan trọng nhất để xây móng. Hai bạn ngồi cạn
 * **Cực kỳ quan trọng:** Cài đặt **AWS Budgets cảnh báo ở các mốc 10$, 25$, 50$** về email. Tránh trường hợp viết code lặp vô tận làm phát sinh hóa đơn tiền triệu.
 
 ### BE-02. Tạo khung dự án chuẩn (BE2 chính, BE1 phụ)
-* Khởi tạo dự án Gradle với cấu trúc:
+* Khởi tạo dự án Maven (`pom.xml` + Maven Wrapper `mvnw`) với cấu trúc:
   * `backend/`: Chứa mã nguồn Java 21. Cài đặt plugin Spotless (tự format code) và JUnit 5.
   * `contracts/`: Chứa các file JSON Schema chia sẻ với team AI.
-* Đảm bảo câu lệnh `./gradlew check` chạy thành công trên máy của cả hai bạn.
+* Đảm bảo câu lệnh `./mvnw verify` chạy thành công trên máy của cả hai bạn.
 
 ### BE-03. Viết file SAM Template hạ tầng đầu tiên (Cả hai cùng làm)
 * Tạo file `infra/template.yaml` khai báo:
@@ -470,7 +470,7 @@ Tuần 1 là tuần quan trọng nhất để xây móng. Hai bạn ngồi cạn
 
 ### Giai đoạn 1: Khung kết nối cơ bản (W1 – W3)
 * **BE-05 (W1): Bật quyền truy cập Bedrock ở Sydney (`ap-southeast-2`):** Đăng nhập console AWS, gửi yêu cầu kích hoạt các model AI (Qwen, Nova Lite) để team AI có tài nguyên dùng.
-* **BE-05b (W1–W2): Tạo class Java từ Schema (`AiClient`):** Thiết lập plugin `jsonschema2pojo` trong Gradle. Viết class `AiClient` gọi Lambda AI và class `FakeAiClient` trả về dữ liệu mẫu để test.
+* **BE-05b (W1–W2): Tạo class Java từ Schema (`AiClient`):** Thiết lập `jsonschema2pojo-maven-plugin` trong `pom.xml`. Viết class `AiClient` gọi Lambda AI và class `FakeAiClient` trả về dữ liệu mẫu để test.
 * **BE-22 (W2): Xây dựng Lambda Webhook Handler:** 
   * Tiếp nhận request POST từ Telegram Function URL.
   * So sánh Secret Token bằng `MessageDigest.isEqual`.
@@ -497,7 +497,7 @@ Tuần 1 là tuần quan trọng nhất để xây móng. Hai bạn ngồi cạn
 ### Giai đoạn 1: Nền tảng người dùng (W1 – W3)
 * **BE-20 (W1): Tạo Bot & Chế độ Dev Local không cần Deploy:**
   * Dùng `@BotFather` tạo 2 bot: `askfirst_dev_bot` (để dev) và `askfirst_bot` (để chạy thật).
-  * Viết task Gradle `runLocalBot` dùng kỹ thuật Polling (liên tục kéo tin nhắn từ Telegram về máy tính cá nhân để debug mà không cần deploy lên AWS mỗi khi sửa code).
+  * Cấu hình `exec-maven-plugin` (execution `local-bot`, chạy bằng `./mvnw exec:java@local-bot`) dùng kỹ thuật Polling (liên tục kéo tin nhắn từ Telegram về máy tính cá nhân để debug mà không cần deploy lên AWS mỗi khi sửa code).
 * **BE-21 (W1–W2): Bộ chuyển đổi Telegram Adapter:** Viết class phân tích gói tin JSON từ Telegram thành các đối tượng Java sạch sẽ: `InboundMessage` (tin nhắn), `CallbackEvent` (bấm nút), `CommandEvent` (gõ lệnh).
 * **BE-24 (W2): Xây dựng khung tầng lưu trữ DynamoDB:** Viết các class cơ sở kết nối DynamoDB, cấu hình Testcontainers chạy database local cho cả 2 bạn cùng viết test.
 * **BE-04 (W3): Thiết lập CI/CD bằng GitHub Actions:** Cấu hình để mỗi khi tạo Pull Request, GitHub tự động chạy test kiểm tra trên cả 3 hệ điều hành (Ubuntu, Windows, macOS). Tự động deploy lên AWS khi merge code.
@@ -597,11 +597,11 @@ Là sinh viên, bạn không thể cứ mỗi lần sửa 1 dòng code lại dep
        // Test thoải mái không cần tài khoản AWS!
    }
    ```
-3. **Test nhắn tin Telegram:** Chạy task `./gradlew :backend:runLocalBot`. Bot sẽ chạy trực tiếp trên laptop của bạn qua cơ chế Polling. Bạn cầm điện thoại nhắn tin cho Bot là log trên máy tính nhảy ra ngay tức thì.
+3. **Test nhắn tin Telegram:** Chạy lệnh `./mvnw exec:java@local-bot` (trong `backend/`). Bot sẽ chạy trực tiếp trên laptop của bạn qua cơ chế Polling. Bạn cầm điện thoại nhắn tin cho Bot là log trên máy tính nhảy ra ngay tức thì.
 
 ### 16.2 Định nghĩa Hoàn thành một công việc (Definition of Done)
 Một tính năng chỉ được xem là "XONG" khi thỏa mãn 5 tiêu chí:
-1. Chạy lệnh `./gradlew check` trên máy tính cá nhân không báo bất kỳ lỗi nào.
+1. Chạy lệnh `./mvnw verify` trên máy tính cá nhân không báo bất kỳ lỗi nào.
 2. Đã viết unit test kiểm tra cả trường hợp đúng lẫn trường hợp người dùng nhập sai/lỗi mạng.
 3. Đã deploy thành công lên môi trường `dev` và nhắn tin thử bằng điện thoại thật thấy chạy đúng.
 4. Không in bất kỳ thông tin cá nhân (SĐT, nội dung chat) nào ra màn hình log.
@@ -677,7 +677,7 @@ Trong tuần đầu tiên, hai bạn cần thực nghiệm và xác nhận lại
 | Mã số | Tên công việc ngắn gọn | Người làm chính | Tuần | Mức độ phức tạp |
 |---|---|---|---|---|
 | **BE-01** | Tạo tài khoản AWS & Cài đặt ngân sách cảnh báo tiền | BE1 | W1 | Nhẹ (S) |
-| **BE-02** | Tạo khung mã nguồn Gradle Java 21 | BE2 | W1 | Nhẹ (S) |
+| **BE-02** | Tạo khung mã nguồn Maven Java 21 | BE2 | W1 | Nhẹ (S) |
 | **BE-03** | Viết template AWS SAM triển khai hạ tầng | BE1 + BE2 | W1–W2 | Vừa (M) |
 | **BE-14** | Thử nghiệm SnapStart & DynamoDB Local | BE1 + BE2 | W1 | Nhẹ (S) |
 | **BE-05** | Bật quyền gọi Bedrock AI ở Sydney | BE1 | W1 | Nhẹ (S) |

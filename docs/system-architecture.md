@@ -910,8 +910,8 @@ ask-first/
 ├── contracts/                   # ranh giới BE ↔ AI (luật team: 1 BE + 1 AI duyệt; CODEOWNERS chỉ ép 1)
 │   ├── schema/*.json            # JSON Schema SINH từ ai/src/askfirst/domain/models.py (không sửa tay)
 │   └── fixtures/*.json          # request/response mẫu cho từng op; cả Java test lẫn Python test đều đọc
-├── backend/                     # Java 21, Gradle (Kotlin DSL)
-│   ├── build.gradle.kts         # jsonschema2pojo sinh class từ contracts/schema → build/generated
+├── backend/                     # Java 21, Maven
+│   ├── pom.xml                  # jsonschema2pojo-maven-plugin sinh class từ contracts/schema → target/generated-sources
 │   └── src/main/java/vn/askfirst/
 │       ├── handler/   WebhookHandler, WorkerHandler, (ApiHandler — MVP+)
 │       ├── channel/   ChannelAdapter, TelegramAdapter, (ZaloAdapter — phase 2)
@@ -939,18 +939,18 @@ ask-first/
 ├── scripts/       build_index.py, upload_models.py, set_webhook.py, set_commands.py, flags.py   # script vận hành, Python, chạy trên cả 3 OS
 ├── tests/         (Python) unit: rules, mask, fuse, render; contract: fixtures ↔ Pydantic
 │                  (Java, trong backend/src/test) unit: adapter, debounce, notifier; contract: fixtures ↔ class sinh ra
-└── .github/workflows/  ci.yml (Java: gradle check · Python: lint+test+eval · schema drift), deploy.yml (OIDC → sam build && sam deploy)
+└── .github/workflows/  ci.yml (Java: mvn verify · Python: lint+test+eval · schema drift), deploy.yml (OIDC → sam build && sam deploy)
 ```
 
 ### 8.2 Lựa chọn kỹ thuật
 
 - **Java 21 (LTS) cho `webhook`, `worker`, `api`**: runtime `java21` của Lambda, gói zip, **SnapStart** để giảm cold start ⚠️ (kiểm SnapStart cho `java21` ở `ap-southeast-1`; SnapStart cần published version + alias, và code khởi tạo phải an toàn khi snapshot: không giữ kết nối mạng hay giá trị ngẫu nhiên tạo lúc init). Dùng **AWS SDK for Java v2** (DynamoDB Enhanced Client, SQS, Lambda, SSM) với HTTP client `UrlConnectionHttpClient` hoặc `AwsCrtHttpClient` cho gói nhẹ. Telegram gọi trực tiếp bằng `java.net.http.HttpClient` + Jackson (Bot API là HTTP thuần, không cần thư viện bot). Không dùng Spring: cold start và kích thước gói không đáng.
 - **Python 3.12+ cho Lambda `ai`**: hệ sinh thái ML (onnxruntime, sherpa-onnx, numpy) và AWS SDK đều tốt; Pydantic cho schema.
-- **Hợp đồng một nguồn:** Pydantic (`ai/src/askfirst/domain/models.py`) → `model_json_schema()` → `contracts/schema/*.json` → **jsonschema2pojo** (plugin Gradle) sinh class Java. CI chạy `uv run python -m askfirst.domain.export` rồi `git diff --exit-code contracts/` để chặn schema lệch. Bộ sinh schema bỏ `anyOf [X, null]` (trường tuỳ chọn chỉ không nằm trong `required`) và đổi `$defs` thành `definitions` cho dễ codegen (đã chạy thử với pydantic 2.14). ⚠️ Kiểm jsonschema2pojo xử lý ổn `Literal`/enum và union của Pydantic; chỗ nào không ổn thì giữ schema phẳng (enum chuỗi, không union lồng).
+- **Hợp đồng một nguồn:** Pydantic (`ai/src/askfirst/domain/models.py`) → `model_json_schema()` → `contracts/schema/*.json` → **jsonschema2pojo** (plugin Maven) sinh class Java. CI chạy `uv run python -m askfirst.domain.export` rồi `git diff --exit-code contracts/` để chặn schema lệch. Bộ sinh schema bỏ `anyOf [X, null]` (trường tuỳ chọn chỉ không nằm trong `required`) và đổi `$defs` thành `definitions` cho dễ codegen (đã chạy thử với pydantic 2.14). ⚠️ Kiểm jsonschema2pojo xử lý ổn `Literal`/enum và union của Pydantic; chỗ nào không ổn thì giữ schema phẳng (enum chuỗi, không union lồng).
 - **Model local chạy bằng ONNX Runtime** (OCR, embedding, classifier) và **sherpa-onnx** (ASR): không cần PyTorch, image nhẹ hơn và chạy CPU nhanh hơn. 💡 Build image cho **arm64** (Graviton, rẻ hơn) nếu mọi wheel đều có bản arm64, nếu không thì dùng x86_64. Hàm Java build được cho cả hai kiến trúc.
 - **Weights model để trên S3** (`s3://…/models/<name>/<version>/`) và tải vào `/tmp` lúc cold start. Muốn đổi model thì sửa config, không cần build lại image. Cách khác là bake weights vào image để cold start nhanh hơn: tuỳ benchmark.
 - **Powertools for AWS Lambda**: bản **Java** (Logging JSON, Metrics EMF, Idempotency, batch cho SQS partial failure) ở `webhook`/`worker`; bản **Python** (Logger, Metrics, Tracer) ở `ai`. Hai bên dùng chung tên metric namespace và khoá log `trace_id`.
-- **AWS SAM** cho IaC (SAM build Java bằng Gradle, tự build image `ai` và đẩy lên ECR), với 2 stage `dev` và `prod` (2 bot Telegram khác nhau). Deploy bằng GitHub Actions dùng **OIDC**.
+- **AWS SAM** cho IaC (SAM build Java bằng Maven, tự build image `ai` và đẩy lên ECR), với 2 stage `dev` và `prod` (2 bot Telegram khác nhau). Deploy bằng GitHub Actions dùng **OIDC**.
 - **`scripts/set_webhook.py`**: gọi `setWebhook(url=FunctionURL, secret_token=…, allowed_updates=["message","callback_query","my_chat_member"], drop_pending_updates=true, max_connections=10)`. Script vận hành giữ Python (một file, chạy được trên Windows/macOS/Linux), không cần viết lại bằng Java.
 
 ### 8.3 Cấu hình Lambda
@@ -1002,7 +1002,7 @@ SQS `jobs`: visibility timeout **720 giây** (6 × 120, timeout của `worker`) 
 - **Supply chain của model local:** tải weights từ nguồn chính thức, ghi **checksum SHA-256** vào `MODELS.md`, kiểm checksum khi nạp. Chỉ dùng định dạng ONNX hoặc safetensors, **không nạp file pickle** từ nguồn lạ.
 - Rate limit theo user (§6.10); webhook chỉ nhận chat `private`; **bỏ qua update từ tài khoản bot khác** (`from.is_bot=true`, xlsx FRS-074).
 - **Chống mạo danh bot** (xlsx FRS-076): chỉ dùng **một `@username` chính thức**, công bố ở slide, trang chính sách và mô tả bot (BotFather `description`, `about`); mô tả có disclaimer, tên và ảnh đại diện **không giả danh cơ quan nhà nước hay ngân hàng**; bot **không bao giờ gửi link ngoài danh sách đã kiểm** (allowlist); nhắc người dùng cảnh giác bot nhái tên tương tự. Không hướng dẫn dùng VPN/proxy để vào Telegram (xlsx BR-057).
-- **Phụ thuộc phần mềm:** ghim phiên bản thư viện (kể cả thư viện Telegram), chạy quét lỗ hổng dependency trong CI (`pip-audit` cho `ai/`, OWASP Dependency-Check hoặc Dependabot cho Gradle ở `backend/`), bật secret scanning của GitHub; không phát hành khi còn lỗ hổng Critical/High chưa xử lý (xlsx NFRS-021).
+- **Phụ thuộc phần mềm:** ghim phiên bản thư viện (kể cả thư viện Telegram), chạy quét lỗ hổng dependency trong CI (`pip-audit` cho `ai/`, OWASP Dependency-Check hoặc Dependabot cho Maven ở `backend/`), bật secret scanning của GitHub; không phát hành khi còn lỗ hổng Critical/High chưa xử lý (xlsx NFRS-021).
 
 ---
 

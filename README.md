@@ -19,7 +19,7 @@ Hai file `huong-dan-*` là bản dành cho người đọc; ARCH và PLAN là b�
 
 ```
 docs/        tài liệu, ADR ở docs/decisions/
-backend/     Java 21, Gradle (Lambda webhook, worker)          [BE]
+backend/     Java 21, Maven (Lambda webhook, worker)           [BE]
 ai/          Python 3.12, uv (Lambda ai)                       [AI]
 contracts/   JSON Schema + fixtures (ranh giới BE <-> AI)      [BE + AI]
 infra/       AWS SAM template                                  [BE]
@@ -42,7 +42,7 @@ Hiện repo mới có khung và tài liệu; code sẽ thêm theo lịch trong P
 
 ```bash
 # Backend
-cd backend && ./gradlew check          # Windows: gradlew.bat check
+cd backend && ./mvnw verify            # Windows: mvnw.cmd verify
 
 # AI
 cd ai && uv run ruff check . && uv run pytest

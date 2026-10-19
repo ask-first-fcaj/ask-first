@@ -26,18 +26,18 @@ jobs:
         id: has
         shell: bash
         run: |
-          if [ -f backend/gradlew ]; then echo "found=true" >> "$GITHUB_OUTPUT"; else echo "found=false" >> "$GITHUB_OUTPUT"; echo "::notice::backend/gradlew chưa có, bỏ qua (khung repo)"; fi
+          if [ -f backend/mvnw ]; then echo "found=true" >> "$GITHUB_OUTPUT"; else echo "found=false" >> "$GITHUB_OUTPUT"; echo "::notice::backend/mvnw chưa có, bỏ qua (khung repo)"; fi
       - uses: actions/setup-java@v4
         if: steps.has.outputs.found == 'true'
         with:
           distribution: temurin
           java-version: '21'
-          cache: gradle
-      - name: Gradle check
+          cache: maven
+      - name: Maven verify
         if: steps.has.outputs.found == 'true'
         working-directory: backend
         shell: bash
-        run: ./gradlew check
+        run: ./mvnw -B verify
 
   ai:
     name: ai (${{ matrix.os }})
