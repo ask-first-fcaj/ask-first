@@ -12,6 +12,7 @@ Dự án của team FCAJ (bootcamp AWS). Khung **6 tuần** (19/10–29/11/2026)
 | AI (AI1, AI2) | [docs/huong-dan-ai.md](docs/huong-dan-ai.md) |
 | Cần tra cứu sâu | [docs/system-architecture.md](docs/system-architecture.md) (ARCH), [docs/implementation-plan.md](docs/implementation-plan.md) (PLAN) |
 | Cần bối cảnh sản phẩm, pháp lý | [docs/research-concept.md](docs/research-concept.md) |
+| Cần tổng quan tính năng và thứ tự làm | [docs/features.md](docs/features.md) + [board](https://github.com/orgs/ask-first-fcaj/projects/1) (view 🧩 Features, 👤 Việc của tôi) |
 
 Hai file `huong-dan-*` là bản dành cho người đọc; ARCH và PLAN là bản tra cứu đầy đủ. Mâu thuẫn thì ARCH/PLAN đúng, hãy báo để sửa.
 
