@@ -20,3 +20,5 @@ node_modules/
 .DS_Store
 .idea/
 .vscode/
+# local research (không push)
+thien/
