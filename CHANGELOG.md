@@ -7,6 +7,7 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 
 ### Changed
 - Rút kế hoạch từ 12 xuống **6 tuần** (19/10–29/11/2026, v3): `docs/implementation-plan.md`, `docs/huong-dan-backend.md`, `docs/huong-dan-ai.md`, `docs/system-architecture.md`, `docs/research-concept.md`, `README.md`.
+- Chia lại việc AI theo độ khó (plan v3.1): AI1 nhận việc khó (OCR production AI-26, chống SSRF AI-24b), AI2 nhận việc dữ liệu/KB/test (AI-08, AI-09, AI-11); tách AI-24 thành AI-24a/AI-24b; thêm cách AI1 kèm AI2 (`docs/implementation-plan.md`, `docs/huong-dan-ai.md`).
 - Làm rõ quy tắc duyệt `contracts/` và `ai/src/askfirst/domain/`: "1 BE + 1 AI" là luật team, vì CODEOWNERS của GitHub chỉ cần 1 owner bất kỳ approve (`README.md`, `.github/CODEOWNERS`, plan §1, ARCH §8.1).
 - Cắt scope MVP còn text + ảnh (OCR) + người thân + RAG cơ bản; **hoãn** voice/ASR, VLM fallback, multi-turn, Phase 2, Mini App; **bỏ pilot**, thay bằng test nội bộ ở W6.
 

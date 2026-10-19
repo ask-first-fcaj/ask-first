@@ -1,6 +1,6 @@
 # Kế hoạch triển khai "Hỏi Trước" (Ask First)
 
-> **Phiên bản:** v3.0 · **Ngày:** 19/10/2026 (v3.0: **rút từ 12 xuống 6 tuần**, cắt scope MVP, bỏ pilot, gắn ngày thật, xem "Thay đổi v3" bên dưới; v2.1: chia lại việc 2 BE theo lát cắt dọc, §2.1; v2: backend chuyển sang **Java 21**, AI giữ **Python**; thêm Lambda `ai`, hợp đồng qua JSON Schema; xem "Thay đổi v2" bên dưới)
+> **Phiên bản:** v3.1 · **Ngày:** 19/10/2026 (v3.1: **chia lại việc AI1/AI2 theo độ khó**, xem "Thay đổi v3.1"; v3.0: **rút từ 12 xuống 6 tuần**, cắt scope MVP, bỏ pilot, gắn ngày thật, xem "Thay đổi v3" bên dưới; v2.1: chia lại việc 2 BE theo lát cắt dọc, §2.1; v2: backend chuyển sang **Java 21**, AI giữ **Python**; thêm Lambda `ai`, hợp đồng qua JSON Schema; xem "Thay đổi v2" bên dưới)
 > **Dựa trên:** [system-architecture.md](system-architecture.md) v3.5 (gọi tắt là **ARCH**, ví dụ "ARCH §6.4"). Bối cảnh sản phẩm xem [research-concept.md](research-concept.md).
 > **Khung thời gian:** **6 tuần** (bootcamp AWS FCAJ), từ **thứ Hai 19/10/2026** đến **Chủ nhật 29/11/2026**. W1 = 19–25/10 · W2 = 26/10–01/11 · W3 = 02–08/11 · W4 = 09–15/11 · W5 = 16–22/11 · W6 = 23–29/11. (Bản v1–v2.1 là 12 tuần, W1…W12.)
 > **Team:** 4 người: **BE1**, **BE2** (Java), **AI1**, **AI2** (Python). FE làm theo kiểu vibe coding, ai rảnh tuần nào thì nhận.
@@ -11,6 +11,12 @@
 - **Hoãn hẳn** (ngoài 6 tuần): Phase 2 (§12) và Mini App (BE-32, FE-01…FE-07, INT-04).
 - **Mốc dồn lại:** M2 → W4, M3 (chỉ RAG) và M4 FREEZE → W5, M5 test nội bộ và M6 demo → W6 (§4). W4–W5 là hai tuần nặng nhất (nén 2 tuần cũ thành 1); thứ tự cắt tiếp nếu trễ ở §9.
 - Contract không đổi: `feature_voice` vẫn có trong `Flags` nhưng **tắt mặc định** trong MVP, webhook trả lời "chưa hỗ trợ voice". Image `ai` chưa cần ffmpeg/sherpa-onnx.
+
+**Thay đổi v3.1 (chia lại việc AI, 19/10/2026):** AI2 mới bắt đầu học AI nên việc **khó** (LLM, runtime Lambda, SSRF, OCR production, hiệu chỉnh ngưỡng) dồn về **AI1**; **AI2** nhận việc dữ liệu, KB, luật, viết test và các việc S rõ đầu ra, luôn có AI1 kèm.
+- Chuyển AI1 → AI2: **AI-08** (Guardrails), **AI-09** (eval trong CI, cùng BE2), **AI-11** (LLM-as-judge). Chuyển AI2 → AI1: **AI-26** (OCR production; AI2 phụ phần `MODELS.md`, decode QR, regex sửa URL).
+- **AI-24 tách đôi:** **AI-24a** (AI2: tách URL, allowlist, typosquat, punycode, `U_TEXT_LINK_MISMATCH`) và **AI-24b** (AI1: mở rộng shortener chống SSRF, RDAP, cache `URL#`).
+- **AI-20**: AI2 dựng bộ ảnh và chạy đo, **AI1 cùng chốt ADR-003** (gate G2). **SH-08**: BE2 + AI2, AI1 duyệt câu chữ.
+- **Cách kèm AI2:** mỗi việc AI2 bắt đầu bằng design note ≤ ½ trang để AI1 duyệt; pair 30 phút mỗi ngày; PR của AI2 nhỏ (≤ 300 dòng) và AI1 review mọi PR. Việc AI2 nằm trên đường găng của M1 (AI-22, AI-23) hạn **thứ Tư W3 (04/11)**; trễ thì AI1 nhận lại phần còn thiếu và đẩy AI-24b sang sau M4.
 
 **Thay đổi v2 (theo ARCH v3.5):**
 - `webhook`, `worker` (và `api` khi làm Mini App) viết bằng **Java 21** + Gradle, gói zip, SnapStart. AI vẫn là **Python 3.12** nhưng chạy trong **Lambda riêng `ai`** (container image) thay vì là thư viện import trong worker.
@@ -57,8 +63,8 @@ FE                         policy page (trang tĩnh, MVP) · Mini App: ⏸ hoãn
 |---|---|---|---|
 | **BE1**: Lane A, luồng kiểm tra tin (Java) | Code **và** hạ tầng của đường chậm: `webhook` (phần nhận tin, dedup, enqueue), SQS/DLQ → `worker`, gom tin, `AiClient` + codegen từ JSON Schema, Dockerfile/SAM/IAM của Lambda `ai`, kill switch, multi-turn, **gửi cảnh báo người thân** (🔀), metric + dashboard | ARCH §4.5, §5.1, §5.2, §5.5, §5.8, §6.12, §10, §11 | Đóng gói model local vào image (cùng AI2), eval trong CI (cùng AI1); pair của BE2 |
 | **BE2**: Lane B, người dùng, người thân, dữ liệu (Java) | Code **và** hạ tầng của đường nhanh và dữ liệu người dùng: Telegram adapter, nền DynamoDB + repos, onboarding/consent, rate limit, liên kết người thân, `/nguoithan`, `/lichsu`, feedback, xoá dữ liệu (🔀), **CI/CD (OIDC) + stage `prod`**, alarm + runbook cho cả hệ thống (🔀) | ARCH §2, §5.3, §5.4, §5.6, §5.7, §5.9, §7, §8.2, §9.1 | Copy tin nhắn bot (cùng AI1), nghiên cứu người dùng; pair của BE1 |
-| **AI1**: LLM & Eval (Python) | Bộ eval, Bedrock client, prompt Judge, Fuse, Respond, cascade, Guardrails, hiệu chỉnh ngưỡng, **`handler.py` của Lambda `ai`** (dispatcher theo `op`, cache `CACHE#`), xuất JSON Schema | ARCH §4.5, §6.6–§6.12 | Benchmark model, chất lượng tiếng Việt |
-| **AI2**: Perception & Knowledge (Python) | OCR, ASR, mask PII, luật, URL intel, embedding/RAG, dữ liệu KB (taxonomy, allowlist, hotline), **tải media từ Telegram** (`media/`), `ArtifactStore` S3 | ARCH §6.0, §6.3–§6.5, §9.2 | Bộ ảnh và voice test, xác minh hotline |
+| **AI1**: LLM, Eval & phần khó (Python) | Bộ eval, Bedrock client, prompt Judge, Fuse, Respond, cascade, hiệu chỉnh ngưỡng, **`handler.py` của Lambda `ai`** (dispatcher theo `op`, cache `CACHE#`), xuất JSON Schema, **OCR production** (AI-26), **chống SSRF khi mở shortener** (AI-24b); **kèm AI2** (duyệt design note, review mọi PR) | ARCH §4.5, §6.3, §6.4 (SSRF), §6.6–§6.12 | Benchmark model, chất lượng tiếng Việt, cùng chốt G2 |
+| **AI2**: Dữ liệu, KB & Perception cơ bản (Python, đang học, AI1 kèm) | Spike OCR (dựng bộ ảnh, chạy đo), mask PII, chuẩn hoá + luật, URL intel phần cơ bản (AI-24a), embedding/RAG, dữ liệu KB (taxonomy, allowlist, hotline), Guardrails, eval trong CI (cùng BE2), LLM-as-judge, red-team, **tải media từ Telegram** (`media/`), `ArtifactStore` S3 | ARCH §6.0, §6.3–§6.5, §9.2 | Bộ ảnh test, xác minh hotline, copy tin nhắn bot |
 | **FE** | MVP: chỉ trang chính sách tĩnh (FE-00). Mini App là MVP+ (§6.4), ⏸ hoãn ngoài 6 tuần | ARCH §13 | — |
 
 Ai cũng: viết mẫu cho bộ eval, phỏng vấn người dùng, review chéo PR, trực hệ thống trong thời gian test nội bộ (W6).
@@ -885,13 +891,13 @@ Sau M4 **chỉ sửa bug, chỉnh prompt hoặc ngưỡng** (qua eval gate) và 
 
 > Lịch v3 (6 tuần). Ngày: W1 19–25/10 · W2 26/10–01/11 · W3 02–08/11 · W4 09–15/11 · W5 16–22/11 · W6 23–29/11/2026. Hoãn: voice/ASR (AI-21, AI-28), VLM (AI-27), multi-turn (BE-33, AI-12), Phase 2, Mini App.
 
-| Tuần | BE1 (Lane A: luồng kiểm tra) | BE2 (Lane B: người dùng & dữ liệu) | AI1 (LLM & Eval) | AI2 (Perception & KB) |
+| Tuần | BE1 (Lane A: luồng kiểm tra) | BE2 (Lane B: người dùng & dữ liệu) | AI1 (LLM, Eval & phần khó) | AI2 (Dữ liệu, KB & việc dễ; AI1 kèm) |
 |---|---|---|---|---|
-| **W1** (19–25/10) | **Làm chung:** BE-01, BE-02, BE-03, BE-14 · BE-05, BE-05b (spike codegen) | **Làm chung:** BE-01, BE-02, BE-03, BE-14 · BE-20, BE-21 (bắt đầu), SH-06 | AI-01, AI-02 | AI-20 (bắt đầu), SH-02 |
-| **W2** (26/10–01/11) | BE-05b, BE-22, BE-07, BE-24b · trực tuần | BE-21, BE-24 (nền trước), **FE-00** | AI-03 → **G1**, AI-03b, AI-04 (bắt đầu) | AI-20 → **G2 (OCR)**, AI-22, AI-03b (`media/`, `S3ArtifactStore`), AI-23, AI-25 (bắt đầu) |
-| **W3** (02–08/11) | BE-07, BE-27, BE-23, BE-06 (bắt đầu), **INT-01** | BE-04, BE-25, BE-26 · trực tuần | AI-04, AI-05, AI-06 | AI-23, AI-25, AI-24 (bắt đầu) |
-| **W4** (09–15/11) | BE-06, BE-34, BE-29 🔀, BE-08a (bắt đầu), **INT-02** · trực tuần | BE-28, BE-35 | AI-07, AI-08, AI-09 (bắt đầu) | AI-24, AI-26, AI-29 (bắt đầu) |
-| **W5** (16–22/11) | BE-13, BE-08a, BE-09a 🔀, **INT-03** 🔀 | BE-30 🔀, BE-31 🔀, BE-36, BE-09b 🔀 · trực tuần | AI-09, AI-10, AI-11, AI-13 | AI-29, AI-14 (bắt đầu) |
+| **W1** (19–25/10) | **Làm chung:** BE-01, BE-02, BE-03, BE-14 · BE-05, BE-05b (spike codegen) | **Làm chung:** BE-01, BE-02, BE-03, BE-14 · BE-20, BE-21 (bắt đầu), SH-06 | AI-01, AI-02 | AI-20 (bắt đầu: dựng bộ ảnh, cài 3 OCR), SH-02 |
+| **W2** (26/10–01/11) | BE-05b, BE-22, BE-07, BE-24b · trực tuần | BE-21, BE-24 (nền trước), **FE-00** | AI-03 → **G1**, AI-03b (`handler.py`), AI-04 (bắt đầu), cùng chốt **G2** | AI-20 → **G2 (OCR)** cùng AI1, AI-03b (`media/`, `S3ArtifactStore`), AI-22, SH-05, AI-25 (bắt đầu) |
+| **W3** (02–08/11) | BE-07, BE-27, BE-23, BE-06 (bắt đầu), **INT-01** | BE-04, BE-25, BE-26 · trực tuần | AI-04, AI-05, AI-06 | AI-22 (xong), AI-23, AI-25, AI-24a (bắt đầu), SH-08 |
+| **W4** (09–15/11) | BE-06, BE-34, BE-29 🔀, BE-08a (bắt đầu), **INT-02** · trực tuần | BE-28, BE-35 | AI-07, AI-26, AI-24b (bắt đầu) | AI-24a, AI-08, AI-29 (bắt đầu), AI-09 (bắt đầu, cùng BE2), phụ AI-26 |
+| **W5** (16–22/11) | BE-13, BE-08a, BE-09a 🔀, **INT-03** 🔀 | BE-30 🔀, BE-31 🔀, BE-36, BE-09b 🔀 · trực tuần | AI-24b, AI-10, AI-13 | AI-29, AI-09, AI-11, AI-14 (bắt đầu) |
 | **W6** (23–29/11) | BE-10, BE-12 (trực test nội bộ), slide kiến trúc và chi phí | BE-08b 🔀, BE-11, UAT (điều phối), BE-12, video demo | Báo cáo eval cuối, slide AI và eval | AI-14 (xong), slide dữ liệu và taxonomy |
 
 **Cảnh báo tải (v3):** W4–W5 nén hai tuần cũ thành một: BE1 W4 và BE2 W5 mỗi người ≈ 7 ngày công trong tuần 5 ngày. Nếu trễ, cắt theo thứ tự ở §9 (sau những việc đã hoãn): AI-11 → BE-10 → phần "người thân" của BE-36 → rút gọn AI-14.
@@ -901,6 +907,8 @@ Sau M4 **chỉ sửa bug, chỉnh prompt hoặc ngưỡng** (qua eval gate) và 
 **Chia lại việc BE (v2.1):** BE1/BE2 không còn là "Platform" và "Bot & Product" mà là hai lát cắt dọc, mỗi người làm cả code lẫn hạ tầng của lane mình (§2.1). BE-08 tách thành BE-08a/BE-08b, BE-09 thành BE-09a/BE-09b (mỗi người rà lane của người kia), BE-24 tách thêm BE-24b; thêm BE-14 (spike học chung W1); BE-04 dời sang W3, BE-22 và BE-29 chuyển sang BE1, BE-03 làm cặp.
 
 **Thay đổi theo ARCH v3.5 (backend Java):** thêm **BE-05b** (codegen + `AiClient`, BE1 W1–W2) và **AI-03b** (runtime Lambda `ai`, AI1 + AI2 W2). BE-27 giờ phụ thuộc AI-03b vì worker gọi `ai` bản stub thay cho `build_pipeline` in-process.
+
+**Tải AI (v3.1):** AI1 ≈ 5–6 ngày công mỗi tuần W1–W5 (nặng nhất W3–W4); AI2 ≈ 4–5 ngày công, chừa thời gian học. AI1 kèm AI2 ≈ 30 phút mỗi ngày.
 
 Việc chung chạy xuyên suốt: SH-03 (mỗi người 25 mẫu eval ở W1–W2, thêm 50 mẫu ở W3–W4), SH-04 (mỗi người phỏng vấn 2–3 người ở W1–W2).
 
@@ -919,7 +927,7 @@ Việc chung chạy xuyên suốt: SH-03 (mỗi người 25 mẫu eval ở W1–
 | SH-05 | Xác minh hotline và kênh trình báo (113, công an xã, hotline các ngân hàng lớn, kênh tố giác VNeID…) **chỉ từ trang chính thức** | AI2 + BE2 | W2–W3 | S | Mọi mục trong `kb/hotlines.yaml` có `source_url` và `verified_at` |
 | SH-06 | Test truy cập Telegram trên Viettel, VNPT, FPT, MobiFone (4G và cáp quang) | BE2 | W1 | S | Bảng kết quả trong README, có ngày test |
 | SH-07 | Chính sách quyền riêng tư và disclaimer (tiếng Việt, ngắn, dễ đọc) theo ARCH §9.1; nhờ mentor đọc lại | BE2 + AI1 | W2 | S | File `docs/privacy-policy.md` có version và đã gắn vào FE-00 |
-| SH-08 | Copy tin nhắn của bot: lời chào, đồng ý, 4 mức kết quả, checklist "30 phút đầu", cảnh báo người thân, nhắc lại 15 phút | AI1 + BE2 | W3 | S | 2 người lớn tuổi (người nhà) đọc thử và hiểu đúng |
+| SH-08 | Copy tin nhắn của bot: lời chào, đồng ý, 4 mức kết quả, checklist "30 phút đầu", cảnh báo người thân, nhắc lại 15 phút | BE2 + AI2 (AI1 duyệt câu chữ) | W3 | S | 2 người lớn tuổi (người nhà) đọc thử và hiểu đúng |
 
 ### 6.2 BACKEND
 
@@ -981,7 +989,7 @@ Code Java **và** hạ tầng của lane B: nền DynamoDB, CI/CD, stage `prod`,
 
 ### 6.3 AI
 
-#### AI1: LLM & Eval
+#### AI1: LLM, Eval & phần khó (thiendt1608)
 
 | Mã | Việc | Tuần | Cỡ | Cần trước | Xong khi |
 |---|---|---|---|---|---|
@@ -994,28 +1002,31 @@ Code Java **và** hạ tầng của lane B: nền DynamoDB, CI/CD, stage `prod`,
 | AI-06 | **Respond** (ARCH §6.8): `render()` và `render_guardian_alert()` theo §3.3 (3 mức chia sẻ, nút `ack`); template Jinja2 cho 4 mức và cho `outcome` smalltalk/unreadable, N0 dạng OTP thật, giải thích fast path, verdict lấy từ cache (explanation rỗng) thì ghép từ template theo mã dấu hiệu, trích nguồn cảnh báo, disclaimer, dòng trạng thái người thân theo `RenderContext.alerts`; trả `ReplyPlan` (nút dạng trừu tượng); **defang URL** (`hxxps://…[.]…` trong `<code>`, tắt link preview, chỉ URL allowlist mới là nút URL), chia tin > 4.096 ký tự, kết luận ≤ 600 ký tự (ARCH §6.8) | W3 | M | AI-05, SH-08 | Snapshot test cho 4 mức; mọi tin ≤ 4096 ký tự; **test duyệt mọi template (kết quả và cảnh báo người thân): fail nếu có URL nghi ngờ chưa defang hoặc chuỗi input chưa `html.escape`** |
 | INT-01 (AI) | Đóng gói `RealPipeline` cho **văn bản** (normalize → mask → rules → judge → fuse → respond) trong image `ai`, bàn giao cho BE1 bật `PIPELINE_IMPL=real` | W3 | S | AI-04, AI-05, AI-22, AI-23, AI-03b | Xem INT-01 ở §7 |
 | AI-07 | **Cascade và fallback** (ARCH §6.9): **một** model dự phòng (gpt-oss-120b) dùng chung cho leo thang (không chắc, mâu thuẫn với luật, JSON hỏng) và khi lỗi/throttle; lỗi tiếp thì chế độ chỉ chạy luật; tôn trọng cờ `LLM_ENABLED` | W4 | M | AI-04 | Test giả lập throttle thì vẫn trả được `Verdict` với `path=rules_only` |
-| AI-08 | **Guardrails**: tạo guardrail (input: chỉ prompt attack; output: denied topics), gọi `ApplyGuardrail`, phát hiện injection thì **cộng điểm** (ARCH §6.10); test bằng câu tiếng Việt | W4 | S | AI-02 | 10 mẫu injection đều bị gắn cờ; không chặn nhầm tin lừa đảo thường |
-| AI-09 | **Eval trong CI** (cùng BE2, người làm CI ở BE-04): workflow chạy khi đổi `prompts/`, `kb/`, `rules.yaml` hoặc `ai/config/models.yaml`; comment bảng so sánh vào PR; **chặn merge** nếu recall < 90% hoặc báo nhầm > 10% (bật chặn từ M4) | W4–W5 | M | AI-01, BE-04 | Một PR làm hỏng prompt bị CI đánh đỏ |
+| AI-26 | **OCR production** (`local_models/ocr.py`; **AI2 phụ**: `MODELS.md`, decode QR, regex sửa URL): stack đã chốt ở G2, ONNX int8, lazy load, sửa URL bằng regex (giữ cả bản gốc và bản đã sửa), `mean_conf`, **decode QR local**; `MODELS.md` (license, checksum) | W4 | M | G2 | 50 ảnh trong `ocr_images`: chép đúng URL ≥ 90%; p95 ≤ 3 giây trên Lambda 3–4 GB (đo cùng BE1) |
+| AI-24b | **URL intel, phần mạng** (ARCH §6.4): mở rộng shortener **chống SSRF** (chặn IP private, loopback, link-local, metadata; kiểm lại sau mỗi redirect), RDAP tuỳ chọn, cache `URL#` (`DynamoKV`) | W4–W5 | M | AI-24a | Test SSRF: URL trỏ `169.254.169.254` hoặc `127.0.0.1` (kể cả qua redirect) đều bị chặn |
 | AI-10 | **Hiệu chỉnh ngưỡng** 75/50/25 trên bộ v1 (300 mẫu); vẽ đường đánh đổi recall và báo nhầm | W5 | M | SH-03 v1, INT-02 | ADR-005 ghi ngưỡng đã chọn kèm số liệu |
-| AI-12 | ⏸ **Hoãn (ngoài phạm vi 6 tuần).** Xử lý `can_hoi_them` trong prompt và ghép câu trả lời ở lượt sau | Hoãn | S | AI-04 | 5 mẫu mơ hồ đều hỏi lại đúng 1 câu |
-| AI-11 | **LLM-as-judge** chấm phần giải thích (Claude Sonnet 5.5, rubric ở ARCH §6.11) + chấm tay 20 mẫu | W5 | S | AI-06 | Báo cáo chất lượng giải thích trong `eval/report.md` |
 | AI-13 | **Báo cáo eval cho MVP freeze**: số liệu trên dữ liệu thật và dữ liệu tổng hợp **tách riêng**, kèm chi phí mỗi lượt | W5 | S | AI-10 | Gate M4 |
+| AI-12 | ⏸ **Hoãn (ngoài phạm vi 6 tuần).** Xử lý `can_hoi_them` trong prompt và ghép câu trả lời ở lượt sau | Hoãn | S | AI-04 | 5 mẫu mơ hồ đều hỏi lại đúng 1 câu |
 
-#### AI2: Perception & Knowledge
+#### AI2: Dữ liệu, KB & việc dễ, có AI1 kèm (minhvhq)
+
+> AI2 đang học: mỗi việc bắt đầu bằng design note ≤ ½ trang (AI1 duyệt), PR ≤ 300 dòng, AI1 review mọi PR. Kẹt quá nửa ngày thì hỏi AI1 ngay, không ngồi một mình.
 
 | Mã | Việc | Tuần | Cỡ | Cần trước | Xong khi |
 |---|---|---|---|---|---|
-| AI-20 | **Spike OCR** (ARCH §6.3): dựng 50 ảnh chụp màn hình thật (SMS, Zalo, Messenger, web giả; đã che thông tin) **cùng cả team**; so (a) RapidOCR/PP-OCRv5, (b) Paddle det + VietOCR, (c) Tesseract `vie` theo CER, tỷ lệ đúng dấu, **tỷ lệ chép đúng URL**, độ trễ CPU; kiểm license | W1–W2 | M | — | **Gate G2 (OCR)**: ADR-003 |
-| AI-21 | ⏸ **Hoãn (ngoài phạm vi 6 tuần).** **Spike ASR**: 20+ voice (Bắc, Trung, Nam; có giọng người lớn tuổi nếu xin được, có đồng ý); so Zipformer-vi int8, Zipformer-vi 30M, PhoWhisper-small theo WER, RTF; **kiểm license repo gốc của Zipformer-vi** | Hoãn | M | — | **Gate G2 (ASR)**: ADR-004 |
-| AI-22 | **Mask PII** (ARCH §9.2): SĐT, STK gần từ khoá ngân hàng, CCCD, **số viết bằng chữ**; **mã OTP/PIN và email** (v3.2); token `[SĐT_1]`, `[STK_1 • …]`, `[OTP_1]`; không mask URL. Viết như **test bảo mật** | W2 | M | G0 | ≥ 40 case test; không mẫu nào trong bộ eval lọt số hay mã OTP vào prompt; luật `R_OTP_*` chạy đúng trên văn bản đã mask |
-| AI-23 | **Chuẩn hoá văn bản + rules engine v1** (ARCH §6.4): NFC, bỏ zero-width, bản không dấu, gộp chữ bị tách, leetspeak; nạp `rules.yaml`, trọng số, sàn cứng, tổ hợp | W2–W3 | M | AI-22 | Mỗi luật có ≥ 2 test dương, 1 test âm; chạy < 10 ms/tin |
+| AI-20 | **Spike OCR** (ARCH §6.3; **AI2** dựng bộ ảnh, cài và chạy 3 stack, ghi số đo; **AI1** cùng phân tích và chốt ADR-003): dựng 50 ảnh chụp màn hình thật (SMS, Zalo, Messenger, web giả; đã che thông tin) **cùng cả team**; so (a) RapidOCR/PP-OCRv5, (b) Paddle det + VietOCR, (c) Tesseract `vie` theo CER, tỷ lệ đúng dấu, **tỷ lệ chép đúng URL**, độ trễ CPU; kiểm license | W1–W2 | M | — | **Gate G2 (OCR)**: ADR-003 |
+| AI-22 | **Mask PII** (ARCH §9.2): SĐT, STK gần từ khoá ngân hàng, CCCD, **số viết bằng chữ**; **mã OTP/PIN và email** (v3.2); token `[SĐT_1]`, `[STK_1 • …]`, `[OTP_1]`; không mask URL. Viết như **test bảo mật** | W2–W3 (hạn 04/11) | M | G0 (AI1 review như test bảo mật) | ≥ 40 case test; không mẫu nào trong bộ eval lọt số hay mã OTP vào prompt; luật `R_OTP_*` chạy đúng trên văn bản đã mask |
+| AI-23 | **Chuẩn hoá văn bản + rules engine v1** (ARCH §6.4): NFC, bỏ zero-width, bản không dấu, gộp chữ bị tách, leetspeak; nạp `rules.yaml`, trọng số, sàn cứng, tổ hợp | W3 (hạn 04/11) | M | AI-22 (AI1 dựng khung interface trước) | Mỗi luật có ≥ 2 test dương, 1 test âm; chạy < 10 ms/tin |
 | AI-25 | **Dữ liệu KB v1**: `scenarios.yaml` (khoảng 20 card N0–N6 theo research-concept §2.2), `allowlist.yaml`, `brands.yaml`, `hotlines.yaml` (từ SH-05), template checklist | W2–W3 | M | SH-02, SH-05 | Validator schema pass; mỗi mục có nguồn |
-| AI-24 | **URL intel** (ARCH §6.4): tách URL, so eTLD+1 với allowlist, **gộp URL từ text + `entities` (`url`, `text_link`) và tín hiệu `U_TEXT_LINK_MISMATCH`** (ARCH §6.4), typosquat (Levenshtein so với brands), punycode/homoglyph, mở rộng shortener **chống SSRF** (chặn IP private, loopback, link-local, metadata), RDAP tuỳ chọn, cache `URL#` | W3–W4 | M | AI-23 | Test SSRF: URL trỏ `169.254.169.254` hoặc `127.0.0.1` đều bị chặn; 10 domain giả trong cảnh báo chính thức bị gắn cờ |
-| AI-26 | **OCR production** (`local_models/ocr.py`): stack đã chốt ở G2, ONNX int8, lazy load, sửa URL bằng regex (giữ cả bản gốc và bản đã sửa), `mean_conf`, **decode QR local**; `MODELS.md` (license, checksum) | W4 | M | G2 | 50 ảnh trong `ocr_images`: chép đúng URL ≥ 90%; p95 ≤ 3 giây trên Lambda 3–4 GB (đo cùng BE1) |
-| AI-27 | ⏸ **Hoãn (ngoài phạm vi 6 tuần).** **Fallback đọc ảnh bằng VLM** (ARCH §6.3): điều kiện kích hoạt (conf thấp, ít chữ, ảnh giống giấy tờ), **làm mờ vùng có số** trước khi gửi, VLM chỉ **mô tả** (JSON), không phán. Chọn model trên 20 ảnh khó: Gemma 3 12B, Nova Lite hay Qwen3 VL 235B | Hoãn | M | AI-26, AI-02 | ADR-006 chọn VLM; 20 ảnh khó cải thiện recall so với chỉ dùng OCR |
-| AI-29 | **Embedding + Retriever** (ARCH §6.5): e5-small ONNX int8, `build_index.py`, top-4 scenario cards (luôn kèm N0), top-3 cảnh báo; **corpus 100 cảnh báo chính thức** (tóm tắt team tự viết + URL + ngày) | W4–W5 | M | AI-25 | Recall@4 của scenario card ≥ 90% trên `real_scam`; truy vấn < 100 ms |
-| AI-28 | ⏸ **Hoãn (ngoài phạm vi 6 tuần).** **ASR production** (`local_models/asr.py`): ffmpeg sang PCM 16 kHz, VAD, sherpa-onnx, lazy load; transcript chạy qua AI-22 để mask số viết bằng chữ | Hoãn | M | G2, BE-06 | Voice 60 giây xử lý ≤ 10 giây trên Lambda; WER đúng như số đo lúc spike |
+| AI-24a | **URL intel, phần cơ bản** (ARCH §6.4): tách URL, so eTLD+1 với allowlist, **gộp URL từ text + `entities` (`url`, `text_link`) và tín hiệu `U_TEXT_LINK_MISMATCH`**, typosquat (Levenshtein so với brands), punycode/homoglyph. **Không gọi mạng** | W3–W4 | M | AI-23 | 10 domain giả trong cảnh báo chính thức bị gắn cờ; domain trong allowlist không bị gắn cờ |
+| AI-08 | **Guardrails**: tạo guardrail (input: chỉ prompt attack; output: denied topics), gọi `ApplyGuardrail`, phát hiện injection thì **cộng điểm** (ARCH §6.10); test bằng câu tiếng Việt | W4 | S | AI-02 (AI1 duyệt) | 10 mẫu injection đều bị gắn cờ; không chặn nhầm tin lừa đảo thường |
+| AI-29 | **Embedding + Retriever** (ARCH §6.5): e5-small ONNX int8, `build_index.py`, top-4 scenario cards (luôn kèm N0), top-3 cảnh báo; **corpus 100 cảnh báo chính thức** (tóm tắt team tự viết + URL + ngày) | W4–W5 | M | AI-25 (AI1 kèm phần nạp model ONNX) | Recall@4 của scenario card ≥ 90% trên `real_scam`; truy vấn < 100 ms |
+| AI-09 | **Eval trong CI** (cùng BE2, người làm CI ở BE-04): workflow chạy khi đổi `prompts/`, `kb/`, `rules.yaml` hoặc `ai/config/models.yaml`; comment bảng so sánh vào PR; **chặn merge** nếu recall < 90% hoặc báo nhầm > 10% (bật chặn từ M4) | W4–W5 | M | AI-01, BE-04 | Một PR làm hỏng prompt bị CI đánh đỏ |
+| AI-11 | **LLM-as-judge** chấm phần giải thích (Claude Sonnet 5.5, rubric ở ARCH §6.11) + chấm tay 20 mẫu | W5 | S | AI-06, AI-02 (AI1 duyệt rubric) | Báo cáo chất lượng giải thích trong `eval/report.md` |
 | AI-14 | **Red-team**: viết không dấu, emoji, tách link, prompt injection trong ảnh, tin "ngân hàng nhắc cảnh giác" thật; bổ sung vào split `hard` | W5–W6 | S | INT-03 | ≥ 30 mẫu `hard` mới; bug tìm được đã có issue |
+| AI-21 | ⏸ **Hoãn (ngoài phạm vi 6 tuần).** **Spike ASR**: 20+ voice (Bắc, Trung, Nam; có giọng người lớn tuổi nếu xin được, có đồng ý); so Zipformer-vi int8, Zipformer-vi 30M, PhoWhisper-small theo WER, RTF; **kiểm license repo gốc của Zipformer-vi** | Hoãn | M | — | **Gate G2 (ASR)**: ADR-004 |
+| AI-27 | ⏸ **Hoãn (ngoài phạm vi 6 tuần).** **Fallback đọc ảnh bằng VLM** (ARCH §6.3): điều kiện kích hoạt (conf thấp, ít chữ, ảnh giống giấy tờ), **làm mờ vùng có số** trước khi gửi, VLM chỉ **mô tả** (JSON), không phán. Chọn model trên 20 ảnh khó: Gemma 3 12B, Nova Lite hay Qwen3 VL 235B | Hoãn | M | AI-26, AI-02 | ADR-006 chọn VLM; 20 ảnh khó cải thiện recall so với chỉ dùng OCR |
+| AI-28 | ⏸ **Hoãn (ngoài phạm vi 6 tuần).** **ASR production** (`local_models/asr.py`): ffmpeg sang PCM 16 kHz, VAD, sherpa-onnx, lazy load; transcript chạy qua AI-22 để mask số viết bằng chữ | Hoãn | M | G2, BE-06 | Voice 60 giây xử lý ≤ 10 giây trên Lambda; WER đúng như số đo lúc spike |
 
 ### 6.4 FE (vibe coding)
 
@@ -1041,8 +1052,8 @@ Code Java **và** hạ tầng của lane B: nền DynamoDB, CI/CD, stage `prod`,
 | Mã | Tuần | Ghép gì | Owner | Checklist bàn giao |
 |---|---|---|---|---|
 | **INT-01** | W3 | `RealPipeline` cho **văn bản** trong Lambda `ai` (bật `PIPELINE_IMPL=real` cho text); worker Java giữ nguyên | BE1 + AI1 | (1) Pipeline pass eval ≥ 85% trên phần văn bản của bộ v0; (2) IAM của **`ai`** gọi được Bedrock ở `ap-southeast-2` (worker Java không có quyền Bedrock); (3) log cả `worker` lẫn `ai` có cùng `trace_id`, **không có nội dung**; (4) đo p95 trên Lambda, tách `ai_invoke_ms{op}` khỏi phần Java; (5) đổi lại về stub bằng env `PIPELINE_IMPL` của `ai` → **M1** |
-| **INT-02** | W4 | Image `ai` đầy đủ + **OCR local** + cache theo `file_unique_id` (trong `ai`); VLM fallback ⏸ hoãn (AI-27) | BE1 + AI2 | (1) Weights trên S3 có checksum; (2) cold start của `ai` và cold start cộng dồn `worker`+`ai` đã đo; (3) p95 ảnh ≤ 15 giây khi warm; (4) ảnh chỉ nằm trong `/tmp` của `ai`, không đi qua payload Java và không ra khỏi Lambda → **M2** (cùng BE-29) |
-| **INT-03** | W5 | **RAG** trong `ai` (index trên S3, `ai` nạp lúc cold start); ASR local ⏸ hoãn (AI-28) | BE2 + AI2 (BE1 pair) 🔀 | (1) Truy vấn RAG < 100 ms, kết luận trích đúng nguồn cảnh báo (deadline gọi `ai` vẫn < 85 giây); (2) index có version; (3) bật flag `FEATURE_RAG` (worker đọc cờ, gửi qua `AnalyzeContext.flags`; `FEATURE_VOICE` giữ tắt) → **M3** |
+| **INT-02** | W4 | Image `ai` đầy đủ + **OCR local** + cache theo `file_unique_id` (trong `ai`); VLM fallback ⏸ hoãn (AI-27) | BE1 + AI1 (AI2 phụ) | (1) Weights trên S3 có checksum; (2) cold start của `ai` và cold start cộng dồn `worker`+`ai` đã đo; (3) p95 ảnh ≤ 15 giây khi warm; (4) ảnh chỉ nằm trong `/tmp` của `ai`, không đi qua payload Java và không ra khỏi Lambda → **M2** (cùng BE-29) |
+| **INT-03** | W5 | **RAG** trong `ai` (index trên S3, `ai` nạp lúc cold start); ASR local ⏸ hoãn (AI-28) | BE2 + AI2, AI1 kèm (BE1 pair) 🔀 | (1) Truy vấn RAG < 100 ms, kết luận trích đúng nguồn cảnh báo (deadline gọi `ai` vẫn < 85 giây); (2) index có version; (3) bật flag `FEATURE_RAG` (worker đọc cờ, gửi qua `AnalyzeContext.flags`; `FEATURE_VOICE` giữ tắt) → **M3** |
 | **INT-04** *(MVP+)* | Hoãn | Mini App ↔ API thật | BE2 + người làm FE | Contract test + test tay đủ màn hình (không còn là điều kiện của M4) |
 
 **Quy tắc ghép:** ghép vào `dev` trước. Chạy **bộ smoke test 15 tin** (`scripts/smoke.py` gửi tin mẫu vào bot `dev` qua một tài khoản test, rồi kiểm câu trả lời). Đạt thì mới bật flag. Có lỗi thì tắt flag, không revert cả nhánh.
@@ -1058,7 +1069,7 @@ Code Java **và** hạ tầng của lane B: nền DynamoDB, CI/CD, stage `prod`,
 | Bảo mật | Mask không lọt số; log (Java và Python) không chứa nội dung hay URL tải file có token; SSRF; secret webhook sai; URL đã defang và input đã escape; người thân không xem được lịch sử người cao tuổi; chỉ `worker` invoke được `ai` (thêm `initData` giả nếu làm Mini App) | Mỗi PR | AI2 + BE1 + BE2 (BE-09a/BE-09b rà chéo lane của nhau) |
 | Eval | 300 mẫu (ARCH §6.11) | PR đổi prompt, KB, rules hoặc model; hằng tuần trên `main` | AI1 |
 | Smoke E2E | 15 tin qua bot `dev` thật | Sau mỗi lần deploy `dev`; trước khi bật flag | Người trực tuần (§2.1) |
-| Hiệu năng | p50/p95 theo stage, cold start (SnapStart Java, image `ai`, cộng dồn), overhead `InvokeFunction` | W4, W5 | BE1 + AI2 |
+| Hiệu năng | p50/p95 theo stage, cold start (SnapStart Java, image `ai`, cộng dồn), overhead `InvokeFunction` | W4, W5 | BE1 + AI1 |
 | UAT | Kịch bản bấm tay: onboarding, kiểm tin (4 loại input), liên kết người thân, cảnh báo, `/nguoithan`, `/lichsu`, xoá dữ liệu | Trước M2, M4 và trước demo | BE2 (điều phối), cả team |
 
 **Cấp độ bug:** P0 = sai kết luận ở tin lừa đảo rõ ràng, lộ dữ liệu, bot chết · P1 = luồng chính hỏng · P2 = lỗi hiển thị hay copy. Không freeze khi còn P0 hoặc P1.
