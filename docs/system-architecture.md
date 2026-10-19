@@ -1022,7 +1022,7 @@ SQS `jobs`: visibility timeout **720 giây** (6 × 120, timeout của `worker`) 
 | Lỗi 429 từ Telegram | Tôn trọng `retry_after`; mỗi chat chỉ có một luồng gửi (đã đảm bảo nhờ gom tin) |
 | Sự cố LLM hoặc chi phí tăng đột biến | **Kill switch** `scripts/flags.py llm off` (§5.8): tắt Bedrock, chạy chỉ luật, không cần deploy; alarm chi phí ước tính/ngày (§11) |
 | Cảnh báo người thân gửi lỗi nhưng bot lại báo "đã báo" | Chỉ nói "đã báo" khi có `message_id` (§5.5); lỗi thì nói thật và hướng dẫn gọi trực tiếp |
-| Webhook bị Telegram tạm dừng hoặc tồn đọng update | Trong pilot, trực hằng ngày chạy `getWebhookInfo` (xem `pending_update_count`, `last_error`) và đọc dashboard; tự động hoá bằng EventBridge ở Phase 2 nếu cần (xlsx NFRS-032) |
+| Webhook bị Telegram tạm dừng hoặc tồn đọng update | Trong test nội bộ (W6), trực hằng ngày chạy `getWebhookInfo` (xem `pending_update_count`, `last_error`) và đọc dashboard; tự động hoá bằng EventBridge ở Phase 2 nếu cần (xlsx NFRS-032) |
 
 ---
 
@@ -1086,16 +1086,18 @@ So sánh: **v1 (Claude + Transcribe + Cohere) ≈ 5–15 USD**, còn **tự host
 
 ---
 
-## 14. Lộ trình build (khớp với kế hoạch 10 tuần ở research-concept §12)
+## 14. Lộ trình build (khớp với kế hoạch 6 tuần ở implementation-plan.md v3, 19/10–29/11/2026)
+
+> **Cập nhật v3 (19/10/2026):** team chỉ còn 6 tuần, nên MVP cắt còn text + ảnh + người thân + RAG cơ bản. **Hoãn** (⏸) voice/ASR, VLM fallback, multi-turn; **bỏ pilot** (thay bằng test nội bộ W6); Phase 2 và Mini App ngoài phạm vi. Kiến trúc đích bên dưới giữ nguyên; cột "Tuần" là tuần của kế hoạch 6 tuần.
 
 | Giai đoạn | Tuần | Kết quả kỹ thuật | Tiêu chí xong |
 |---|---|---|---|
-| **P0: Spike và giảm rủi ro** | 1 | Bật model access ở `ap-southeast-2`; spike **Java `worker` invoke Python `ai` (stub)** đo overhead invoke và cold start cộng dồn (SnapStart bật/tắt); sinh class Java từ JSON Schema mẫu; **xin tăng quota Bedrock**; benchmark xác nhận Qwen3 32B trên 100 mẫu (kèm cách tắt thinking); **benchmark OCR local** trên 50 ảnh; **benchmark ASR local** (Zipformer-vi, PhoWhisper) trên 20 voice; đo cold start của container image; kiểm license từng model; SAM skeleton với budgets | Có bảng số liệu để chốt OCR, ASR và LLM |
-| **P1: Văn bản và link** | 2–3 | webhook → SQS → worker (Java) → `ai` (Python); dedup; gom tin; mask (gồm OTP, email); luật v1; URL intel (gồm `entities` và `U_TEXT_LINK_MISMATCH`); Judge; template **có defang URL**; consent theo mục đích; cờ `FLAGS` + `scripts/flags.py` (kill switch); đầu vào không hỗ trợ và `.apk` ở webhook | **Demo 1:** chuyển tiếp tin "phạt nguội" có link giả, bot trả kết luận đúng |
-| **P2: Ảnh và người thân** | 3–4 | OCR local + VLM fallback; cache theo hash cả cụm; liên kết người thân double opt-in (3 mức chia sẻ); cảnh báo gửi song song, trạng thái trung thực, nút ACK, chống trùng 30 phút; nhắc lại một lần sau 15 phút | Ảnh chụp màn hình cho kết quả ≤ 15 giây (warm); điện thoại của "con" nhận cảnh báo |
-| **P3: Voice và RAG** | 5 | ASR local; mask số viết bằng chữ; scenario cards; corpus khoảng 100 cảnh báo; index; trích nguồn | Voice 40 giây cho kết quả ≤ 30 giây |
-| **P4: Cứng hoá** | 6 | Eval 300 mẫu trong CI; hiệu chỉnh ngưỡng; fast path; Guardrails; rate limit; alarm; `/nguoithan` đầy đủ và `/lichsu` (§5.9) | **MVP freeze:** recall ≥ 90%, báo nhầm ≤ 10% |
-| **P5: Pilot** | 7–8 | Vòng phản hồi feedback; cập nhật KB hằng tuần; gom dữ liệu train classifier | Có số liệu pilot |
+| **P0: Spike và giảm rủi ro** | 1 (19–25/10) | Bật model access ở `ap-southeast-2`; spike **Java `worker` invoke Python `ai` (stub)** đo overhead invoke và cold start cộng dồn (SnapStart bật/tắt); sinh class Java từ JSON Schema mẫu; **xin tăng quota Bedrock**; benchmark xác nhận Qwen3 32B trên 100 mẫu (kèm cách tắt thinking); **benchmark OCR local** trên 50 ảnh; **benchmark ASR local** (Zipformer-vi, PhoWhisper) trên 20 voice; đo cold start của container image; kiểm license từng model; SAM skeleton với budgets | Có bảng số liệu để chốt OCR, ASR và LLM |
+| **P1: Văn bản và link** | 2–3 (26/10–08/11) | webhook → SQS → worker (Java) → `ai` (Python); dedup; gom tin; mask (gồm OTP, email); luật v1; URL intel (gồm `entities` và `U_TEXT_LINK_MISMATCH`); Judge; template **có defang URL**; consent theo mục đích; cờ `FLAGS` + `scripts/flags.py` (kill switch); đầu vào không hỗ trợ và `.apk` ở webhook | **Demo 1:** chuyển tiếp tin "phạt nguội" có link giả, bot trả kết luận đúng |
+| **P2: Ảnh và người thân** | 3–4 (02–15/11; VLM fallback ⏸ hoãn) | OCR local + VLM fallback; cache theo hash cả cụm; liên kết người thân double opt-in (3 mức chia sẻ); cảnh báo gửi song song, trạng thái trung thực, nút ACK, chống trùng 30 phút; nhắc lại một lần sau 15 phút | Ảnh chụp màn hình cho kết quả ≤ 15 giây (warm); điện thoại của "con" nhận cảnh báo |
+| **P3: Voice và RAG** | 4–5 (09–22/11; chỉ RAG, voice/ASR ⏸ hoãn) | ASR local; mask số viết bằng chữ; scenario cards; corpus khoảng 100 cảnh báo; index; trích nguồn | Voice 40 giây cho kết quả ≤ 30 giây |
+| **P4: Cứng hoá** | 5 (16–22/11) | Eval 300 mẫu trong CI; hiệu chỉnh ngưỡng; fast path; Guardrails; rate limit; alarm; `/nguoithan` đầy đủ và `/lichsu` (§5.9) | **MVP freeze:** recall ≥ 90%, báo nhầm ≤ 10% |
+| **P5: Test nội bộ (thay cho pilot)** | 6 (23–29/11) | Vòng phản hồi feedback; cập nhật KB hằng tuần; gom dữ liệu train classifier | Có phản hồi và lỗi từ test nội bộ (không có số liệu người dùng ngoài team) |
 | **P6 (tuỳ chọn)** | 9+ | Classifier PhoBERT local (shadow mode, sau đó làm signal); `ZaloAdapter` | Classifier đạt eval; lõi chạy được trên Zalo Bot |
 | **Phase 2** | sau khi MVP ổn định | Kho tri thức sống: crawler, pipeline cập nhật KB, trang kịch bản hot (§16) | Xem §16.10 |
 
@@ -1136,7 +1138,7 @@ Phân vai gợi ý (khớp research-concept §12): **A** (Java) làm luồng ki�
 
 **Tóm lại:** ý tưởng hay và khả thi. Nó biến KB từ một file YAML tĩnh thành **kho tri thức sống**, và giải quyết đúng điểm yếu của bản MVP (KB cũ dần theo thời gian). Điều kiện bắt buộc: **có người duyệt (human-in-the-loop)** trước khi bất cứ thứ gì vào KB hoặc lên trang công khai.
 
-> **Đã cân nhắc và loại:** tính năng *người dùng chia sẻ kịch bản* (upload ảnh, voice, text). Lý do: project chỉ kéo dài 3 tháng (bootcamp), mà đây là tính năng rủi ro cao nhất: chứa dữ liệu cá nhân của bên thứ ba, dễ bôi nhọ người vô tội, kẻ gian có thể đầu độc KB, phải kiểm duyệt nội dung và cần đồng ý riêng. KB vẫn tự cập nhật đủ tốt từ nguồn chính thức và báo chí. Nếu project tiếp tục sau bootcamp thì có thể thêm lại theo dạng "báo cáo kín" (chỉ vào hàng chờ duyệt, không đăng nguyên văn).
+> **Đã cân nhắc và loại:** tính năng *người dùng chia sẻ kịch bản* (upload ảnh, voice, text). Lý do: project chỉ kéo dài 6 tuần (bootcamp, v3; trước đó 3 tháng), mà đây là tính năng rủi ro cao nhất: chứa dữ liệu cá nhân của bên thứ ba, dễ bôi nhọ người vô tội, kẻ gian có thể đầu độc KB, phải kiểm duyệt nội dung và cần đồng ý riêng. KB vẫn tự cập nhật đủ tốt từ nguồn chính thức và báo chí. Nếu project tiếp tục sau bootcamp thì có thể thêm lại theo dạng "báo cáo kín" (chỉ vào hàng chờ duyệt, không đăng nguyên văn).
 
 ### 16.2 Có phải thay đổi kiến trúc hiện tại không?
 
@@ -1332,7 +1334,7 @@ Chi phí thật lớn nhất là **thời gian người duyệt**: khoảng 15�
 | 2c | Publisher + index có version + hot reload ở `ai` + eval gate + `U_KNOWN_SCAM_DOMAIN` | Bot nhận ra một chiêu mới chỉ vài giờ sau khi được duyệt, không cần deploy |
 | 2d (**sau bootcamp**) | Trending (STAT từ CHECK + điểm hot) + tab "Chiêu lừa mới" + bản tin tuần | Trang hiện đúng các variant đã duyệt, sắp xếp theo độ hot |
 
-Lý do sắp như vậy: 2a–2c là **backend + AI thuần**, đúng trọng tâm workshop, và là phần làm cho bot thông minh hơn. 2d là phần hiển thị, và với 2 tuần W10–W11 thì **không tính vào bootcamp** (v3.3); `λ trending` và bảng `STAT#` cũng chỉ làm khi tới 2d. Nếu thời gian bootcamp không đủ, **2a–2c vẫn đứng riêng được**: bot cập nhật được chiêu mới mà không cần trang hot.
+Lý do sắp như vậy: 2a–2c là **backend + AI thuần**, đúng trọng tâm workshop, và là phần làm cho bot thông minh hơn. 2d là phần hiển thị, và Phase 2 **không tính vào bootcamp** (v3.3; từ v3 plan chỉ còn 6 tuần nên hoãn hẳn); `λ trending` và bảng `STAT#` cũng chỉ làm khi tới 2d. Nếu thời gian bootcamp không đủ, **2a–2c vẫn đứng riêng được**: bot cập nhật được chiêu mới mà không cần trang hot.
 
 ---
 

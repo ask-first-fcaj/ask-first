@@ -2,7 +2,7 @@
 
 Bot Telegram giúp người cao tuổi kiểm tra tin nhắn, link, ảnh chụp màn hình, voice đáng ngờ **trước khi** làm theo. Người dùng chuyển tiếp nội dung cho bot; trong khoảng 15 giây bot trả lời bằng tiếng Việt dễ hiểu (4 mức: `NGUY_HIEM`, `NGHI_NGO`, `CHUA_CHAC`, `IT_DAU_HIEU`, không có mức "an toàn"). Nguy cơ cao thì bot báo người thân đã đồng ý trước.
 
-Dự án của team FCAJ (bootcamp AWS). Khung 12 tuần, team 4 người: BE1, BE2 (Java 21), AI1, AI2 (Python 3.12). Serverless trên AWS `ap-southeast-1` (Bedrock ở `ap-southeast-2`).
+Dự án của team FCAJ (bootcamp AWS). Khung **6 tuần** (19/10–29/11/2026), team 4 người: BE1, BE2 (Java 21), AI1, AI2 (Python 3.12). Serverless trên AWS `ap-southeast-1` (Bedrock ở `ap-southeast-2`).
 
 ## Bắt đầu từ đâu
 

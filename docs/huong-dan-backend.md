@@ -24,7 +24,7 @@
 11. [Việc làm chung ở Tuần 1 (Pair Programming)](#11-việc-làm-chung-ở-tuần-1-pair-programming)
 12. [Chi tiết công việc BE1 (Lane A: Luồng kiểm tra tin)](#12-chi-tiết-công-việc-be1-lane-a-luồng-kiểm-tra-tin)
 13. [Chi tiết công việc BE2 (Lane B: Người dùng, Người thân & Dữ liệu)](#13-chi-tiết-công-việc-be2-lane-b-người-dùng-người-thân--dữ-liệu)
-14. [Lịch trình 12 tuần](#14-lịch-trình-12-tuần)
+14. [Lịch trình 6 tuần](#14-lịch-trình-6-tuần)
 15. [Điểm ghép nối với AI (INT) và Các mốc Gate](#15-điểm-ghép-nối-với-ai-int-và-các-mốc-gate)
 16. [Cách làm việc, Test local không tốn tiền và Definition of Done](#16-cách-làm-việc-test-local-không-tốn-tiền-và-definition-of-done)
 17. [Bảo mật & Quyền riêng tư: Luật bất di bất dịch](#17-bảo-mật--quyền-riêng-tư-luật-bất-di-bất-dịch)
@@ -482,13 +482,13 @@ Tuần 1 là tuần quan trọng nhất để xây móng. Hai bạn ngồi cạn
 * **BE-23 (W3): Thuật toán Gom tin liên tiếp (Debounce):** Cài đặt logic gom tin trễ 3 giây như đã hướng dẫn ở [Mục 7.1](#71-bài-toán-1-gom-tin-debounce-khi-người-già-gửi-nhiều-tin-liên-tiếp).
 * **INT-01 (W3): Ghép nối đợt 1:** Kết hợp với Team AI để kiểm tra luồng tin nhắn văn bản từ Telegram chạy mượt mà từ đầu đến cuối.
 
-### Giai đoạn 2 & 3: Cảnh báo & Hoàn thiện (W4 – W7)
-* **BE-06 (W3–W4): Hỗ trợ đóng gói Docker cho Lambda AI:** Viết Dockerfile tối ưu dung lượng dưới 2GB để chứa các thư viện OCR/Whisper của AI.
-* **BE-13 (W4): Cài đặt Kill Switch:** Viết script bật/tắt cờ `llm_enabled` trong DynamoDB. Khi tắt cờ, hệ thống chỉ chạy bộ luật cứng, không gọi AI tốn tiền.
-* **BE-34 (W4): Từ chối file quá nặng:** Kiểm tra nếu người dùng gửi voice dài hơn 2 phút hoặc file nặng hơn 20MB thì từ chối lịch sự ngay tại Webhook, không đẩy vào SQS.
-* **BE-29 (W5 - Việc chéo 🔀): Gửi cảnh báo cho con cháu:** Khi AI báo mức `NGUY_HIEM`, lấy danh sách người thân từ database và gửi tin nhắn cảnh báo song song cho tất cả người thân đang kích hoạt. Đặt lịch nhắc lại sau 15 phút nếu người thân chưa bấm nút xác nhận.
-* **BE-08a (W5–W6): Giám sát hệ thống (Observability):** Cài đặt AWS Lambda Powertools để ghi log có mã định danh `trace_id`. Tạo CloudWatch Dashboard theo dõi số lượng tin nhắn, độ trễ và chi phí.
-* **BE-09a (W7 - Rà soát chéo 🔀):** Đọc và kiểm tra bảo mật toàn bộ code của BE2 trước khi phát hành.
+### Giai đoạn 2 & 3: Cảnh báo & Hoàn thiện (W4 – W6)
+* **BE-06 (W3–W4): Hỗ trợ đóng gói Docker cho Lambda AI:** Viết Dockerfile tối ưu dung lượng dưới 2GB để chứa các thư viện OCR của AI. *(Voice/Whisper ⏸ Hoãn (ngoài phạm vi 6 tuần) nên image không cần ffmpeg/sherpa-onnx, nhẹ hơn.)*
+* **BE-13 (W5): Cài đặt Kill Switch:** Viết script bật/tắt cờ `llm_enabled` trong DynamoDB. Khi tắt cờ, hệ thống chỉ chạy bộ luật cứng, không gọi AI tốn tiền.
+* **BE-34 (W4): Từ chối file quá nặng:** Kiểm tra nếu người dùng gửi voice dài hơn 2 phút hoặc file nặng hơn 20MB thì từ chối lịch sự ngay tại Webhook, không đẩy vào SQS. *(Phần voice: `feature_voice` tắt mặc định trong MVP, webhook trả lời "chưa hỗ trợ voice"; xử lý voice ⏸ Hoãn (ngoài phạm vi 6 tuần).)*
+* **BE-29 (W4 - Việc chéo 🔀): Gửi cảnh báo cho con cháu:** Khi AI báo mức `NGUY_HIEM`, lấy danh sách người thân từ database và gửi tin nhắn cảnh báo song song cho tất cả người thân đang kích hoạt. Đặt lịch nhắc lại sau 15 phút nếu người thân chưa bấm nút xác nhận.
+* **BE-08a (W4–W5): Giám sát hệ thống (Observability):** Cài đặt AWS Lambda Powertools để ghi log có mã định danh `trace_id`. Tạo CloudWatch Dashboard theo dõi số lượng tin nhắn, độ trễ và chi phí.
+* **BE-09a (W5 - Rà soát chéo 🔀):** Đọc và kiểm tra bảo mật toàn bộ code của BE2 trước khi phát hành.
 
 ---
 
@@ -504,7 +504,7 @@ Tuần 1 là tuần quan trọng nhất để xây móng. Hai bạn ngồi cạn
 * **BE-25 (W3): Luồng Onboarding & Hỏi ý kiến (Consent):** Khi người già gõ `/start`, bot gửi lời chào rõ ràng: *"Cháu là trợ lý Hỏi Trước. Cháu KHÔNG BAO GIỜ hỏi mật khẩu hay yêu cầu chuyển tiền..."* kèm nút bấm `[Tôi đồng ý với chính sách bảo mật]`. Nếu chưa bấm đồng ý, tuyệt đối không phân tích tin nhắn.
 * **BE-26 (W3): Giới hạn tần suất dùng (Rate Limit):** Dùng lệnh tăng nguyên tử trong DynamoDB để giới hạn mỗi người tối đa 30 lần kiểm tra/giờ và 100 lần/ngày, tránh bị kẻ xấu spam phá hoại hệ thống.
 
-### Giai đoạn 2 & 3: Tính năng Người thân & Pháp lý (W4 – W7)
+### Giai đoạn 2 & 3: Tính năng Người thân & Pháp lý (W4 – W6)
 * **BE-35 (W4): Chặn file lạ và mã độc `.apk`:** Nếu người dùng gửi file cài đặt ứng dụng Android (`.apk`), Webhook từ chối ngay lập tức và đưa ra cảnh báo: *"Tuyệt đối không cài file này vào điện thoại, đây là hình thức chiếm đoạt máy!"*.
 * **BE-28 (W4): Luồng liên kết người thân an toàn 2 chiều (Double Opt-in):**
   1. Người cao tuổi gõ `/nguoithan` → Bot sinh 1 đường link mời ngẫu nhiên có hạn 24 giờ (VD: `t.me/askfirst_bot?start=g_AbCd1234`).
@@ -513,32 +513,58 @@ Tuần 1 là tuần quan trọng nhất để xây móng. Hai bạn ngồi cạn
   4. Người cao tuổi bấm [Đồng ý] → Mới chính thức kích hoạt liên kết.
 * **BE-30 (W5 - Việc chéo 🔀): Tiếp nhận phản hồi:** Xử lý khi người dùng bấm nút `[👎 Bot báo sai]`, lưu phản hồi để cải tiến AI.
 * **BE-31 (W5 - Việc chéo 🔀): Tính năng Xóa dữ liệu & Rút lại đồng ý:** Cài đặt lệnh `/xoadulieu` (xóa sạch toàn bộ thông tin cá nhân và lịch sử kiểm tra) và `/rutdongy` đúng theo quy định của Luật Bảo vệ dữ liệu cá nhân.
-* **BE-36 (W6): Menu quản lý trong chat:** Cài đặt lệnh `/lichsu` (xem lại 10 lần kiểm tra gần nhất) và `/nguoithan` (xem danh sách con cháu đang liên kết).
+* **BE-36 (W5): Menu quản lý trong chat:** Cài đặt lệnh `/lichsu` (xem lại 10 lần kiểm tra gần nhất) và `/nguoithan` (xem danh sách con cháu đang liên kết).
 * **BE-08b (W6 - Việc chéo 🔀): Cài đặt cảnh báo sự cố (CloudWatch Alarm):** Thiết lập gửi email cho cả team khi hệ thống có tin nhắn rơi vào thùng rác DLQ hoặc lỗi quá 5%.
-* **BE-09b (W7 - Rà soát chéo 🔀):** Kiểm tra lại toàn bộ phân quyền IAM và độ an toàn trong code của BE1.
+* **BE-09b (W5 - Rà soát chéo 🔀):** Kiểm tra lại toàn bộ phân quyền IAM và độ an toàn trong code của BE1.
 
 ---
 
-## 14. Lịch trình 12 tuần
+## 14. Lịch trình 6 tuần
+
+W1 bắt đầu **thứ Hai 19/10/2026**; làm việc T2–T6, Thứ Sáu là ngày chốt tuần và demo chéo.
 
 ```
-TUẦN 1 ──> TUẦN 2-3 ──> TUẦN 4-5 ──> TUẦN 6-7 ──> TUẦN 8-9 ──> TUẦN 10-11 ──> TUẦN 12
-  │           │            │            │            │            │            │
-Khởi tạo    Kết nối      Ghép nối     Hoàn thiện    Thử nghiệm    Dự phòng     Báo cáo
- & Học     nền tảng     ảnh & con     & Đóng băng   với 20 hộ     tính năng    & Demo
- cơ bản    với AI stub    cháu         (M4 Freeze)    thật        mở rộng
+TUẦN 1 ──> TUẦN 2-3 ──> TUẦN 4 ──> TUẦN 5 ──> TUẦN 6
+  │           │           │          │          │
+Khởi tạo    Kết nối     Ghép nối   Hoàn thiện  Test nội bộ
+ & Học     nền tảng     ảnh & con  & Đóng băng  & Thuyết
+ cơ bản    với AI       cháu       (M4 Freeze)  trình
 ```
 
-* **W1:** Học kiến thức nền tảng, tạo tài khoản AWS, tạo khung repo, tạo bot Telegram test.
-* **W2:** Viết Webhook, dựng DynamoDB, kết nối với AI bản giả lập (Stub).
-* **W3 (Cột mốc M1):** Hoàn thành xử lý tin nhắn chữ. Ghép nối thật với Team AI đợt 1.
-* **W4:** Xử lý chặn file độc hại `.apk`, làm tính năng kết nối người thân.
-* **W5 (Cột mốc M2):** Hoàn thành luồng cảnh báo khẩn cấp cho con cháu khi gặp tin nhắn nguy hiểm.
-* **W6 (Cột mốc M3):** Hỗ trợ ghép nối xử lý giọng nói (Voice) và dữ liệu tìm kiếm (RAG).
-* **W7 (Cột mốc M4 - FREEZE):** Đóng băng toàn bộ code mới. Chỉ tập trung test lỗi, chạy thử nghiệm UAT bấm tay, rà soát bảo mật.
-* **W8–W9 (Cột mốc M5 - Pilot):** Đưa cho 10–20 gia đình người thân dùng thật trong 2 tuần để thu thập ý kiến thực tế.
-* **W10–W11:** Sửa các lỗi phát sinh trong thời gian dùng thử.
-* **W12 (Cột mốc M6):** Chuẩn bị slide kiến trúc, biểu đồ chi phí thực tế và thuyết trình trước hội đồng.
+| Tuần | Ngày | Thứ Sáu (chốt tuần) |
+|---|---|---|
+| W1 | 19/10 – 25/10/2026 | 23/10 |
+| W2 | 26/10 – 01/11/2026 | 30/10 |
+| W3 | 02/11 – 08/11/2026 | 06/11 |
+| W4 | 09/11 – 15/11/2026 | 13/11 |
+| W5 | 16/11 – 22/11/2026 | 20/11 |
+| W6 | 23/11 – 29/11/2026 | 27/11 |
+
+**Phạm vi MVP trong 6 tuần:** text + ảnh (OCR) + cảnh báo người thân (kèm `/nguoithan`, `/lichsu`, RAG cơ bản).
+
+**⏸ Hoãn (ngoài phạm vi 6 tuần), làm nếu dư thời gian:** voice/ASR, VLM fallback, multi-turn (BE-33), Mini App (BE-32, `contracts/openapi.yaml`) và toàn bộ Phase 2. Các việc này vẫn được giữ trong tài liệu, không xóa.
+
+* **W1 (23/10 – G0 Contracts):** Học kiến thức nền tảng, tạo tài khoản AWS, tạo khung repo, tạo bot Telegram test.
+* **W2 (30/10 – G1 Chốt LLM, G2 Chốt OCR):** Viết Webhook, dựng DynamoDB, kết nối với AI bản giả lập (Stub).
+* **W3 (06/11 – Cột mốc M1: Text E2E):** Hoàn thành xử lý tin nhắn chữ. Ghép nối thật với Team AI đợt 1.
+* **W4 (13/11 – Cột mốc M2: Ảnh + người thân):** Xử lý chặn file độc hại `.apk`, làm tính năng kết nối người thân (Double Opt-in), gửi cảnh báo khẩn cấp cho con cháu (BE-29), ghép nối ảnh/OCR (INT-02, p95 ảnh ≤ 15 giây).
+* **W5 (20/11 – Cột mốc M3: RAG và M4: MVP FREEZE):** Hoàn thành RAG (trích nguồn cảnh báo; không có voice). Đóng băng toàn bộ code mới, chỉ test lỗi, UAT bấm tay, rà soát bảo mật chéo (BE-09a/09b). Chỉ tiêu: recall ≥ 90%, báo nhầm ≤ 10% trên 300 mẫu, không còn bug P0/P1.
+* **W6 (cuối 25/11 – Cột mốc M5: Test nội bộ; 27/11 – Cột mốc M6: Thuyết trình):** Test nội bộ trong team và người nhà (thay cho pilot với hộ gia đình; không có số liệu người dùng thật ngoài team). Hạ tầng/runbook (BE-08b, BE-10, BE-11), slide kiến trúc, biểu đồ chi phí và thuyết trình trước hội đồng (rehearsal 2 lần).
+
+Sau M4 (W5) chỉ sửa bug, chỉnh prompt/ngưỡng (qua eval gate) và việc hạ tầng/runbook.
+
+**Lịch theo tuần cho 2 bạn Backend:**
+
+| Tuần | BE1 | BE2 |
+|---|---|---|
+| W1 | Làm chung BE-01/02/03/14 · BE-05, BE-05b | Làm chung BE-01/02/03/14 · BE-20, BE-21 (bắt đầu) |
+| W2 | BE-05b, BE-22, BE-07, BE-24b, BE-27 · trực tuần | BE-21, BE-24 |
+| W3 | BE-07, BE-27, BE-23, BE-06 (bắt đầu), INT-01 | BE-04, BE-25, BE-26 · trực tuần |
+| W4 | BE-06, BE-34, BE-29 🔀, BE-08a (bắt đầu), INT-02 · trực tuần | BE-28, BE-35 |
+| W5 | BE-13, BE-08a, BE-09a 🔀, INT-03 🔀 | BE-30 🔀, BE-31 🔀, BE-36, BE-09b 🔀 · trực tuần |
+| W6 | BE-10, BE-12 (trực test nội bộ), slide kiến trúc + chi phí | BE-08b 🔀, BE-11, UAT (điều phối), BE-12, video demo |
+
+**Cảnh báo tải:** W4–W5 dồn việc (nén 2 tuần cũ thành 1). Thứ tự cắt tiếp nếu trễ: AI-11 (LLM-as-judge) → BE-10 → phần "người thân" của BE-36 → rút gọn AI-14 (red-team).
 
 ---
 
@@ -549,8 +575,9 @@ Các buổi họp kỹ thuật chéo giữa 2 bạn Backend và 2 bạn AI:
 | Điểm ghép | Tuần | Nội dung tích hợp kỹ thuật | Điều kiện để nghiệm thu (Checklist) |
 |---|---|---|---|
 | **INT-01** | W3 | Ghép nối xử lý **Văn bản (Text)** | 1. Bot trả lời đúng các mẫu tin phạt nguội giả.<br>2. Log của Java và Python đều có chung mã `trace_id`.<br>3. Trong log **không có bất kỳ đoạn chữ nào của người dùng** (bảo mật). |
-| **INT-02** | W5 | Ghép nối xử lý **Hình ảnh (OCR)** | 1. Gửi ảnh chụp màn hình tin nhắn rác → Bot đọc được chữ và trả lời dưới 15 giây.<br>2. Ảnh chỉ lưu trong RAM của AI, không lọt qua payload của Java. |
-| **INT-03** | W6 | Ghép nối xử lý **Giọng nói (Voice)** | 1. Gửi đoạn ghi âm giọng nói 40 giây → Bot phản hồi dưới 30 giây.<br>2. Người già chưa bấm đồng ý xử lý voice thì bot từ chối ngay. |
+| **INT-02** | W4 | Ghép nối xử lý **Hình ảnh (OCR)** | 1. Gửi ảnh chụp màn hình tin nhắn rác → Bot đọc được chữ và trả lời dưới 15 giây.<br>2. Ảnh chỉ lưu trong RAM của AI, không lọt qua payload của Java. |
+| **INT-03** | W5 | Ghép nối **RAG** (trích nguồn cảnh báo) | Bot trích được nguồn cảnh báo từ RAG trong kết quả trả về. Không có voice trong phạm vi 6 tuần. |
+| ~~INT-03 (voice)~~ | ⏸ Hoãn | Ghép nối **Giọng nói (Voice/ASR)** | ⏸ Hoãn (ngoài phạm vi 6 tuần). Giữ checklist cũ: gửi ghi âm 40 giây → phản hồi dưới 30 giây; người già chưa bấm đồng ý xử lý voice thì bot từ chối ngay. |
 
 ---
 
@@ -667,13 +694,13 @@ Trong tuần đầu tiên, hai bạn cần thực nghiệm và xác nhận lại
 | **BE-26** | Bộ đếm giới hạn lượt dùng trong ngày | BE2 | W3 | Nhẹ (S) |
 | **BE-35** | Chặn file độc hại `.apk` | BE2 | W4 | Nhẹ (S) |
 | **BE-28** | Luồng mời và kết nối con cháu an toàn | BE2 | W4 | Lớn (L) |
-| **BE-13** | Công tắc khẩn cấp ngắt kết nối AI (Kill switch) | BE1 | W4 | Nhẹ (S) |
-| **BE-29** | Gửi tin nhắn cảnh báo khẩn cấp cho con cháu | BE1 | W5 | Vừa (M) |
+| **BE-13** | Công tắc khẩn cấp ngắt kết nối AI (Kill switch) | BE1 | W5 | Nhẹ (S) |
+| **BE-29** | Gửi tin nhắn cảnh báo khẩn cấp cho con cháu | BE1 | W4 | Vừa (M) |
 | **BE-30** | Tiếp nhận phản hồi khi bot đánh giá sai | BE2 | W5 | Nhẹ (S) |
 | **BE-31** | Tính năng xóa dữ liệu cá nhân theo luật | BE2 | W5 | Vừa (M) |
-| **BE-08a**| Ghi log và dựng màn hình theo dõi hệ thống | BE1 | W5–W6 | Vừa (M) |
-| **BE-36** | Menu xem lịch sử và quản lý con cháu trong chat | BE2 | W6 | Vừa (M) |
+| **BE-08a**| Ghi log và dựng màn hình theo dõi hệ thống | BE1 | W4–W5 | Vừa (M) |
+| **BE-36** | Menu xem lịch sử và quản lý con cháu trong chat | BE2 | W5 | Vừa (M) |
 | **BE-08b**| Cài đặt chuông báo động sự cố qua Email | BE2 | W6 | Nhẹ (S) |
-| **BE-09a**| Rà soát an toàn bảo mật cho nửa của BE2 | BE1 | W7 | Nhẹ (S) |
-| **BE-09b**| Rà soát an toàn bảo mật cho nửa của BE1 | BE2 | W7 | Nhẹ (S) |
-| **BE-11** | Đóng gói môi trường chạy thật (`prod`) | BE2 | W7 | Vừa (M) |
+| **BE-09a**| Rà soát an toàn bảo mật cho nửa của BE2 | BE1 | W5 | Nhẹ (S) |
+| **BE-09b**| Rà soát an toàn bảo mật cho nửa của BE1 | BE2 | W5 | Nhẹ (S) |
+| **BE-11** | Đóng gói môi trường chạy thật (`prod`) | BE2 | W6 | Vừa (M) |

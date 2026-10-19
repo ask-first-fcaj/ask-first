@@ -26,7 +26,7 @@
 12. [Phân công công việc: AI1 và AI2 làm chung thế nào](#12-phân-công-công-việc-ai1-và-ai2-làm-chung-thế-nào)
 13. [Chi tiết công việc AI1 (LLM, Prompt, Fuse, Respond, Eval)](#13-chi-tiết-công-việc-ai1-llm-prompt-fuse-respond-eval)
 14. [Chi tiết công việc AI2 (OCR, ASR, Luật cứng, URL Intel, KB, RAG)](#14-chi-tiết-công-việc-ai2-ocr-asr-luật-cứng-url-intel-kb-rag)
-15. [Lịch trình 12 tuần](#15-lịch-trình-12-tuần)
+15. [Lịch trình 6 tuần](#15-lịch-trình-6-tuần)
 16. [Điểm ghép nối với Backend (INT) và Các Gate kỹ thuật](#16-điểm-ghép-nối-với-backend-int-và-các-gate-kỹ-thuật)
 17. [Cách làm việc, Test local không tốn tiền và Definition of Done](#17-cách-làm-việc-test-local-không-tốn-tiền-và-definition-of-done)
 18. [Bảo mật dữ liệu, Quyền riêng tư và An toàn AI](#18-bảo-mật-dữ-liệu-quyền-riêng-tư-và-an-toàn-ai)
@@ -46,7 +46,7 @@ Nếu bạn từng học môn Nhập môn Trí tuệ nhân tạo hoặc Xử lý
 | **Gọi LLM ngây thơ** ("Nhờ ChatGPT xem tin này lừa đảo không rồi in ra màn hình") | **Workflow phòng thủ nhiều lớp (Defense-in-depth)**: Che thông tin cá nhân ➡️ Luật cứng ➡️ RAG ➡️ LLM Judge ➡️ Hợp nhất điểm (Fuse). | LLM có thể bị lừa (Prompt Injection), bị ảo giác (bịa thông tin) hoặc trả về chữ lung tung làm sập app Backend. |
 | **Cần Vector Database xịn** (Pinecone, Milvus, ChromaDB) | **Local In-memory Cosine Similarity**: Tính độ tương đồng vector trực tiếp trong RAM bằng NumPy. | Tập dữ liệu kịch bản chỉ có ~50 mẫu. Tính tích vô hướng ma trận bằng NumPy mất đúng 2ms, không cần tốn tiền thuê Vector DB ngoài. |
 | **Thước đo: Accuracy chung chung** | **Thước đo: Recall ≥ 90%** và **Báo nhầm ≤ 10%** trên tập tin nhắn nhạy cảm (`benign_suspicious`). | Thà cảnh báo nhầm còn hơn bỏ sót 1 vụ lừa đảo khiến người già mất tiền cả đời tích cóp! |
-| **Train model từ đầu (Epochs, Loss)** | **Lắp ráp & Tối ưu mô hình nguồn mở (Pre-trained Models)**: Sherpa-onnx, RapidOCR, e5-small, Qwen/Claude. | Mục tiêu là sản phẩm chạy tin cậy, chi phí thấp, triển khai nhanh trong 12 tuần chứ không phải làm luận văn tiến sĩ. |
+| **Train model từ đầu (Epochs, Loss)** | **Lắp ráp & Tối ưu mô hình nguồn mở (Pre-trained Models)**: Sherpa-onnx, RapidOCR, e5-small, Qwen/Claude. | Mục tiêu là sản phẩm chạy tin cậy, chi phí thấp, triển khai nhanh trong 6 tuần chứ không phải làm luận văn tiến sĩ. |
 
 💡 **Lời khuyên:** Đừng code theo kiểu "thử nghiệm trong Jupyter notebook". Toàn bộ code AI phải viết dưới dạng **Python Module có kiểu dữ liệu rõ ràng (Type hints), kiểm thử bằng pytest**, và đóng gói thành 1 hàm Lambda duy nhất.
 
@@ -94,7 +94,7 @@ Nếu bạn từng học môn Nhập môn Trí tuệ nhân tạo hoặc Xử lý
 | **`CHUA_CHAC`** | 25 – 49 điểm | Thông tin quá ngắn hoặc chưa đủ dữ liệu. Bot có thể hỏi thêm 1 câu hỏi làm rõ. |
 | **`IT_DAU_HIEU`** | < 25 điểm | Chưa thấy dấu hiệu lừa đảo. Vẫn kèm khuyến cáo cảnh giác cơ bản. |
 
-⚠️ **Lưu ý:** Ngưỡng 75 / 50 / 25 là mốc khởi điểm. Ở tuần thứ 6 (AI-10), bạn sẽ dùng dữ liệu 300 mẫu test thật để vẽ biểu đồ và tinh chỉnh lại các ngưỡng này bằng số liệu khoa học.
+⚠️ **Lưu ý:** Ngưỡng 75 / 50 / 25 là mốc khởi điểm. Ở tuần thứ 5 (AI-10), bạn sẽ dùng dữ liệu 300 mẫu test thật để vẽ biểu đồ và tinh chỉnh lại các ngưỡng này bằng số liệu khoa học.
 
 ### 2.2 Bảy nhóm kịch bản (N0 – N6)
 Mỗi tin nhắn phân tích sẽ được gán vào 1 nhóm:
@@ -303,7 +303,7 @@ Toàn bộ các mô hình chạy trực tiếp trong Lambda đều sử dụng �
 | Tác vụ | Mô hình đề xuất | Dung lượng | Thời gian chạy CPU | Mục đích sử dụng |
 |---|---|---|---|---|
 | **OCR (Đọc ảnh)** | RapidOCR / PP-OCRv5 (hoặc VietOCR ONNX) | ~40 MB | 1 – 2 giây | Đọc chữ và link web từ ảnh chụp màn hình |
-| **ASR (Nghe voice)** | Sherpa-onnx (Zipformer tiếng Việt int8) | ~80 MB | 2 – 4 giây cho voice 30s | Chuyển file âm thanh Telegram thành chữ |
+| **ASR (Nghe voice)** — ⏸ Hoãn (ngoài phạm vi 6 tuần) | Sherpa-onnx (Zipformer tiếng Việt int8) | ~80 MB | 2 – 4 giây cho voice 30s | Chuyển file âm thanh Telegram thành chữ |
 | **Embedding (Vector)** | `multilingual-e5-small` ONNX | ~90 MB | ~50 ms | Biến văn bản thành vector 384 chiều để RAG |
 
 💡 **Lưu ý bản quyền:** Cả AI1 và AI2 phải kiểm tra giấy phép (License) của các mô hình trên GitHub (ưu tiên MIT, Apache 2.0, BSD-3; tránh các model cấm thương mại CC-BY-NC).
@@ -447,7 +447,7 @@ Nếu một thay đổi trong prompt làm tăng tỷ lệ báo nhầm lên 12%, 
 │           AI1 (Phụ trách: LLM & Eval)         │  │       AI2 (Phụ trách: Perception & KB)        │
 │                                               │  │                                               │
 │ • Thiết lập bộ test đánh giá (Eval harness)   │  │ • Xây dựng bộ đọc chữ trong ảnh (OCR Local)   │
-│ • Kết nối AWS Bedrock Client (Converse API)   │  │ • Xây dựng bộ nghe giọng nói (Whisper ASR)    │
+│ • Kết nối AWS Bedrock Client (Converse API)   │  │ • Xây dựng bộ nghe giọng nói (Whisper ASR) ⏸  │
 │ • Kỹ thuật Prompt Judge & Kiểm tra hậu kỳ     │  │ • Module che thông tin nhạy cảm (Mask PII)    │
 │ • Bộ quy tắc hợp nhất điểm (Fusion Engine)    │  │ • Xây dựng Engine chấm luật cứng Regex        │
 │ • Soạn mẫu câu trả lời (Jinja2 Templates)     │  │ • Module soi link giả mạo (URL Intel, SSRF)   │
@@ -470,44 +470,69 @@ Nếu một thay đổi trong prompt làm tăng tỷ lệ báo nhầm lên 12%, 
 * **AI-06 (W3): Soạn Template câu trả lời (Respond):** Viết các template Jinja2 cho 4 mức kết luận, cài đặt hàm tự động vô hiệu hóa link độc (`defang_url`).
 * **INT-01 (W3): Ghép nối đợt 1:** Kết hợp với Backend kiểm tra luồng phân tích tin nhắn văn bản chạy mượt mà từ Telegram đến khi nhận kết quả.
 * **AI-07 (W4): Dự phòng khi AI quá tải (Cascade & Fallback):** Nếu Bedrock bị lỗi mạng hoặc quá tải, tự động chuyển sang mô hình phụ hoặc kích hoạt chế độ chỉ chạy luật cứng (Rules only).
-* **AI-08 (W5): Tích hợp Bedrock Guardrails:** Ngăn chặn các cuộc tấn công Prompt Injection từ người dùng.
-* **AI-10 (W6): Tinh chỉnh ngưỡng điểm:** Dùng số liệu của 300 mẫu test thật để chốt các ngưỡng 75/50/25 tối ưu nhất.
+* **AI-08 (W4): Tích hợp Bedrock Guardrails:** Ngăn chặn các cuộc tấn công Prompt Injection từ người dùng.
+* **AI-10 (W5): Tinh chỉnh ngưỡng điểm:** Dùng số liệu của 300 mẫu test thật để chốt các ngưỡng 75/50/25 tối ưu nhất.
 
 ---
 
 ## 14. Chi tiết công việc AI2 (OCR, ASR, Luật cứng, URL Intel, KB, RAG)
 
 * **SH-02 (W1): Hướng dẫn gán nhãn:** Viết tài liệu định nghĩa rõ ràng 7 nhóm kịch bản để cả team cùng hiểu và phân loại dữ liệu giống nhau.
-* **AI-20 (W1–W2 - Gate G2 OCR): Thử nghiệm đọc ảnh:** Đo lường PaddleOCR/VietOCR trên 50 ảnh chụp màn hình thật, đảm bảo đọc đúng đường link web ≥ 90%.
-* **AI-21 (W1–W2 - Gate G2 ASR): Thử nghiệm nghe giọng nói:** Đo lường Sherpa-onnx Zipformer tiếng Việt trên 20 đoạn ghi âm giọng nói 3 miền.
+* **AI-20 (W1–W2 - Gate G2, chỉ OCR): Thử nghiệm đọc ảnh:** Đo lường PaddleOCR/VietOCR trên 50 ảnh chụp màn hình thật, đảm bảo đọc đúng đường link web ≥ 90%.
+* **AI-21 — ⏸ Hoãn (ngoài phạm vi 6 tuần): Thử nghiệm nghe giọng nói (ASR):** Đo lường Sherpa-onnx Zipformer tiếng Việt trên 20 đoạn ghi âm giọng nói 3 miền.
 * **AI-22 (W2): Module Che thông tin nhạy cảm (Mask PII):** Viết bộ biểu thức chính quy che số điện thoại, số tài khoản, mã OTP trước khi văn bản được gửi đi.
 * **AI-23 (W2–W3): Xây dựng Engine chấm luật cứng:** Chuẩn hóa tiếng Việt (bỏ dấu, chuyển chữ thường), quét các từ khóa cảnh báo trong `rules.yaml`.
 * **AI-25 (W2–W3): Xây dựng kho tri thức (KB v1):** Thu thập 20 kịch bản lừa đảo phổ biến nhất, danh sách tên miền chính thức của ngân hàng và cơ quan nhà nước.
 * **SH-05 (W2–W3): Xác minh hotline chính thức:** Lấy số điện thoại trực ban công an và hotline tổng đài ngân hàng chỉ từ các cổng thông tin điện tử chính thức (`.gov.vn`).
 * **AI-24 (W3–W4): Module soi link giả mạo (URL Intel):** Phát hiện tên miền mạo danh, chặn tấn công SSRF (chặn đứng nếu kẻ xấu cố tình gửi link trỏ về địa chỉ nội bộ của AWS như `169.254.169.254`).
 * **AI-26 (W4): Hoàn thiện OCR Production:** Tối ưu hóa bộ đọc ảnh để chạy ổn định dưới 3 giây trên môi trường AWS Lambda CPU.
-* **AI-29 (W5–W6): Bộ tìm kiếm tương đồng (Local RAG):** Tạo vector embedding cho các kịch bản bằng model `e5-small` và viết hàm tính Cosine Similarity trực tiếp trong RAM.
-* **AI-28 (W6): Hoàn thiện ASR Production:** Tích hợp bộ giải mã âm thanh voice Telegram hoàn chỉnh.
+* **AI-29 (W4–W5): Bộ tìm kiếm tương đồng (Local RAG):** Tạo vector embedding cho các kịch bản bằng model `e5-small` và viết hàm tính Cosine Similarity trực tiếp trong RAM.
+* **AI-28 — ⏸ Hoãn (ngoài phạm vi 6 tuần): Hoàn thiện ASR Production:** Tích hợp bộ giải mã âm thanh voice Telegram hoàn chỉnh.
 
 ---
 
-## 15. Lịch trình 12 tuần
+## 15. Lịch trình 6 tuần
+
+W1 bắt đầu **thứ Hai 19/10/2026**; W6 kết thúc **27/11/2026**. Phạm vi MVP trong 6 tuần: text + ảnh (OCR) + cảnh báo người thân (+ `/nguoithan`, `/lichsu`, RAG cơ bản).
 
 ```
-TUẦN 1 ──> TUẦN 2 ──> TUẦN 3 ──> TUẦN 4-5 ──> TUẦN 6 ──> TUẦN 7 ──> TUẦN 8-9 ──> TUẦN 12
-  │          │          │           │           │          │          │           │
-Học nền    Chốt model Chốt pipeline Hoàn thiện  Hoàn thiện  Đóng băng Dùng thử    Báo cáo
-tảng & G0  G1 và G2   Text (M1)     Ảnh (M2)    Voice (M3)  code (M4) 20 hộ thật  & Demo
+W1 ──────> W2 ──────> W3 ──────> W4 ──────> W5 ──────> W6
+ │          │          │          │          │          │
+Học nền    Chốt model Chốt pipeline Ảnh +     RAG + FREEZE Test nội bộ
+tảng & G0  G1 và G2   Text (M1)   người thân  (M3 + M4)   & Demo (M5+M6)
+                                  (M2)
 ```
 
-* **W1 (Gate G0):** Thiết lập môi trường `uv`, thống nhất Pydantic schema, viết `StubPipeline`, bắt đầu thu thập bộ dữ liệu thử nghiệm.
-* **W2 (Gate G1 & G2):** Chốt mô hình LLM Judge (Bedrock) và chốt thư viện OCR/ASR chạy được trên CPU.
-* **W3 (Cột mốc M1):** Hoàn thành xử lý văn bản hoàn chỉnh từ đầu đến cuối. Ghép nối với Backend đợt 1.
-* **W4–W5 (Cột mốc M2):** Hoàn thiện module đọc ảnh (OCR), ghép nối luồng cảnh báo con cháu.
-* **W6 (Cột mốc M3):** Hoàn thiện module nghe voice (ASR) và tìm kiếm kịch bản tương đồng (RAG).
-* **W7 (Cột mốc M4 - FREEZE):** Đóng băng toàn bộ code AI. Chạy đánh giá toàn diện trên 300 mẫu test, đảm bảo Recall ≥ 90% và Báo nhầm ≤ 10%.
-* **W8–W9 (Cột mốc M5):** Trực hệ thống cùng Backend khi đưa vào cho 10–20 hộ gia đình dùng thử thật.
-* **W12 (Cột mốc M6):** Chuẩn bị báo cáo đo lường độ chính xác và thuyết trình đồ án.
+| Tuần | Ngày | Thứ Sáu | Mốc chính |
+|---|---|---|---|
+| W1 | 19/10 – 25/10/2026 | 23/10 | G0 Contracts |
+| W2 | 26/10 – 01/11/2026 | 30/10 | G1 (chốt LLM) + G2 (chốt OCR) |
+| W3 | 02/11 – 08/11/2026 | 06/11 | M1 Text E2E |
+| W4 | 09/11 – 15/11/2026 | 13/11 | M2 Ảnh + người thân |
+| W5 | 16/11 – 22/11/2026 | 20/11 | M3 RAG + M4 MVP FREEZE |
+| W6 | 23/11 – 29/11/2026 | 27/11 | M5 Test nội bộ (cuối 25/11) + M6 Thuyết trình (27/11) |
+
+* **W1 – 19/10 → 23/10 (Gate G0):** Thiết lập môi trường `uv`, thống nhất Pydantic schema, viết `StubPipeline`, bắt đầu thu thập bộ dữ liệu thử nghiệm.
+* **W2 – 26/10 → 30/10 (Gate G1 & G2):** Chốt mô hình LLM Judge (Bedrock) và chốt thư viện OCR chạy được trên CPU (G2 chỉ còn OCR).
+* **W3 – 02/11 → 06/11 (Cột mốc M1):** Hoàn thành xử lý văn bản hoàn chỉnh từ đầu đến cuối. Ghép nối với Backend đợt 1.
+* **W4 – 09/11 → 13/11 (Cột mốc M2):** Hoàn thiện module đọc ảnh (OCR), ghép nối luồng cảnh báo con cháu (p95 ảnh ≤ 15 giây, double opt-in chạy đủ).
+* **W5 – 16/11 → 20/11 (Cột mốc M3 + M4 - FREEZE):** Hoàn thiện tìm kiếm kịch bản tương đồng (RAG, trích nguồn cảnh báo; bỏ voice). Đóng băng toàn bộ code AI, chạy đánh giá toàn diện trên 300 mẫu test, đảm bảo Recall ≥ 90% và Báo nhầm ≤ 10%, không còn bug P0/P1. Sau M4 chỉ sửa bug, chỉnh prompt/ngưỡng (qua eval gate) và việc hạ tầng/runbook.
+* **W6 – 23/11 → 27/11 (Cột mốc M5 + M6):** Test nội bộ (team + người nhà) cùng Backend, trực hệ thống, không có số liệu người dùng thật ngoài team. Chuẩn bị báo cáo eval cuối, slide và thuyết trình đồ án (rehearsal 2 lần).
+
+### Lịch theo tuần cho AI1 / AI2
+
+| Tuần | AI1 | AI2 |
+|---|---|---|
+| W1 | AI-01, AI-02 (cùng SH-01) | AI-20 (bắt đầu), SH-02 |
+| W2 | AI-03 → G1, AI-03b, AI-04 (bắt đầu) | AI-20 → G2 (OCR), AI-22, AI-03b (`media/`, `S3ArtifactStore`), AI-23/AI-25 (bắt đầu) |
+| W3 | AI-04, AI-05, AI-06, INT-01 | AI-23, AI-25, AI-24 (bắt đầu) |
+| W4 | AI-07, AI-08, AI-09 (bắt đầu) | AI-24, AI-26, AI-29 (bắt đầu) |
+| W5 | AI-09, AI-10, AI-11, AI-13 | AI-29, AI-14 (bắt đầu) |
+| W6 | Báo cáo eval cuối, slide AI + eval | AI-14 (xong), slide dữ liệu + taxonomy |
+
+⚠️ **Cảnh báo tải:** W4–W5 dồn việc (nén 2 tuần cũ thành 1). Thứ tự cắt tiếp nếu trễ (sau những việc đã hoãn): AI-11 (LLM-as-judge) → rút gọn AI-14 (red-team).
+
+**Việc hoãn (không xoá, ngoài phạm vi 6 tuần — làm nếu dư thời gian):** voice/ASR (AI-21, AI-28), VLM fallback (AI-27), multi-turn (AI-12), Phase 2 (P2-01…P2-08), Mini App. Contract (`feature_voice`, `Flags`, field voice trong schema) giữ nguyên; trong MVP `feature_voice` **tắt mặc định**, webhook trả lời "chưa hỗ trợ voice"; image `ai` không cần ffmpeg/sherpa-onnx khi voice hoãn.
 
 ---
 
@@ -516,8 +541,8 @@ tảng & G0  G1 và G2   Text (M1)     Ảnh (M2)    Voice (M3)  code (M4) 20 h�
 | Điểm ghép | Tuần | Nội dung kỹ thuật cần bàn giao cho Backend |
 |---|---|---|
 | **INT-01** | W3 | Bản phân tích **Văn bản (Text)** hoàn chỉnh trong Lambda AI: Nhận JSON từ Worker ➡️ Phân tích ➡️ Trả về Verdict chuẩn schema. |
-| **INT-02** | W5 | Bản phân tích **Hình ảnh (OCR)**: Tự động tải ảnh từ Telegram bằng `file_id` ➡️ Đọc chữ trong RAM ➡️ Trả về kết quả dưới 15 giây. |
-| **INT-03** | W6 | Bản phân tích **Giọng nói (Voice)**: Tự động tải voice ➡️ Chuyển thành chữ ➡️ Kết hợp RAG trích nguồn cảnh báo chính thức ➡️ Trả về kết quả dưới 30 giây. |
+| **INT-02** | W4 | Bản phân tích **Hình ảnh (OCR)**: Tự động tải ảnh từ Telegram bằng `file_id` ➡️ Đọc chữ trong RAM ➡️ Trả về kết quả dưới 15 giây. |
+| **INT-03** | W5 | Bản phân tích **RAG**: Kết hợp RAG trích nguồn cảnh báo chính thức ➡️ Trả về kết quả. Phần voice (tải voice ➡️ chuyển thành chữ, dưới 30 giây) — ⏸ Hoãn (ngoài phạm vi 6 tuần). |
 
 ---
 
@@ -585,7 +610,7 @@ Hai bạn AI cần làm thực nghiệm trong 2 tuần đầu và ghi lại kế
 | **AI-01** | Xây dựng công cụ đo lường và đánh giá (Eval Harness) | AI1 | W1–W2 | Vừa (M) |
 | **AI-02** | Kết nối thử nghiệm AWS Bedrock LLM tại Sydney | AI1 | W1 | Vừa (M) |
 | **AI-20** | Thử nghiệm các thư viện đọc chữ trong ảnh (OCR Spike) | AI2 | W1–W2 | Vừa (M) |
-| **AI-21** | Thử nghiệm mô hình nhận diện giọng nói (ASR Spike) | AI2 | W1–W2 | Vừa (M) |
+| **AI-21** | Thử nghiệm mô hình nhận diện giọng nói (ASR Spike) | AI2 | ⏸ Hoãn (ngoài phạm vi 6 tuần) | Vừa (M) |
 | **AI-03** | Chốt mô hình LLM chính thức (Gate G1) | AI1 | W2 | Vừa (M) |
 | **AI-03b**| Viết hàm tiếp nhận chính Lambda Handler | AI1 + AI2 | W2 | Vừa (M) |
 | **AI-22** | Xây dựng bộ che thông tin cá nhân (Mask PII) | AI2 | W2 | Vừa (M) |
@@ -597,7 +622,7 @@ Hai bạn AI cần làm thực nghiệm trong 2 tuần đầu và ghi lại kế
 | **AI-24** | Module phân tích và phát hiện link giả mạo (URL Intel) | AI2 | W3–W4 | Vừa (M) |
 | **AI-26** | Đóng gói bộ đọc ảnh hoàn chỉnh chạy trên Lambda CPU | AI2 | W4 | Vừa (M) |
 | **AI-07** | Cơ chế chuyển đổi mô hình dự phòng khi quá tải | AI1 | W4 | Vừa (M) |
-| **AI-29** | Xây dựng bộ tìm kiếm tương đồng kịch bản (Local RAG) | AI2 | W5–W6 | Vừa (M) |
-| **AI-28** | Đóng gói bộ nghe giọng nói hoàn chỉnh chạy trên Lambda CPU | AI2 | W6 | Vừa (M) |
-| **AI-10** | Tinh chỉnh bộ ngưỡng điểm 75/50/25 dựa trên 300 mẫu test | AI1 | W6 | Vừa (M) |
-| **AI-13** | Lập báo cáo chất lượng AI chuẩn bị đóng băng sản phẩm | AI1 | W7 | Nhẹ (S) |
+| **AI-29** | Xây dựng bộ tìm kiếm tương đồng kịch bản (Local RAG) | AI2 | W4–W5 | Vừa (M) |
+| **AI-28** | Đóng gói bộ nghe giọng nói hoàn chỉnh chạy trên Lambda CPU | AI2 | ⏸ Hoãn (ngoài phạm vi 6 tuần) | Vừa (M) |
+| **AI-10** | Tinh chỉnh bộ ngưỡng điểm 75/50/25 dựa trên 300 mẫu test | AI1 | W5 | Vừa (M) |
+| **AI-13** | Lập báo cáo chất lượng AI chuẩn bị đóng băng sản phẩm | AI1 | W5 | Nhẹ (S) |

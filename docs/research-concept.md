@@ -344,7 +344,9 @@ Zalo có 80,2 triệu MAU và 2,1 tỷ tin nhắn/ngày (quý I/2026); theo Q&Me
 
 **Tuyển người ở TP.HCM:** gia đình các thành viên; câu lạc bộ dưỡng sinh ở công viên (Tao Đàn, Gia Định); Hội Người cao tuổi phường; Đoàn thanh niên; nhóm Zalo chung cư. *Chưa liên hệ, chỉ là gợi ý.*
 
-**Pilot 10–20 hộ trong 4 tuần:** có đồng ý tham gia; **không** gửi tin lừa đảo giả mà không báo trước, chỉ dùng "bài tập" đã báo trước. **Chỉ số:** số lượt kiểm tra/hộ/tuần; thời gian từ lúc nhận tin đến lúc hỏi bot; tỷ lệ phân loại đúng; tỷ lệ báo nhầm do người dùng phản hồi; tỷ lệ "đã liên hệ người thân"; điểm tự tin nhận diện (thang 1–5) trước và sau; tỷ lệ phát hiện đúng bài tập. Không hứa "giảm thiệt hại" vì mẫu quá nhỏ.
+> *Cập nhật 19/10/2026: pilot đã bỏ; thay bằng test nội bộ (team và người nhà) ở W6, xem implementation-plan §11.*
+
+**Pilot 10–20 hộ trong 4 tuần (kế hoạch ban đầu, không còn áp dụng):** có đồng ý tham gia; **không** gửi tin lừa đảo giả mà không báo trước, chỉ dùng "bài tập" đã báo trước. **Chỉ số:** số lượt kiểm tra/hộ/tuần; thời gian từ lúc nhận tin đến lúc hỏi bot; tỷ lệ phân loại đúng; tỷ lệ báo nhầm do người dùng phản hồi; tỷ lệ "đã liên hệ người thân"; điểm tự tin nhận diện (thang 1–5) trước và sau; tỷ lệ phát hiện đúng bài tập. Không hứa "giảm thiệt hại" vì mẫu quá nhỏ.
 
 **Đối tác tiềm năng:** NCA, Chống Lừa Đảo, Hội Người cao tuổi, Đoàn thanh niên, chi nhánh ngân hàng hoặc bưu điện gần trường. *Chưa có liên hệ đã xác minh.*
 
@@ -389,6 +391,8 @@ Zalo có 80,2 triệu MAU và 2,1 tỷ tin nhắn/ngày (quý I/2026); theo Q&Me
 ---
 
 ## 12. Lộ trình 10 tuần
+
+> **Cập nhật 19/10/2026:** lịch thực hiện hiện tại là **6 tuần** (19/10–29/11/2026), cắt scope và bỏ pilot; xem `docs/implementation-plan.md` v3. Bảng dưới là lộ trình 10 tuần ban đầu, chỉ để tham khảo.
 
 **Vai:** A – Backend/AWS; B – AI/prompt/đánh giá; C – Dữ liệu/knowledge base/luật; D – Kênh nhắn tin và nghiên cứu người dùng.
 
