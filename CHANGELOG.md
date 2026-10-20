@@ -13,6 +13,7 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - Cắt scope MVP còn text + ảnh (OCR) + người thân + RAG cơ bản; **hoãn** voice/ASR, VLM fallback, multi-turn, Phase 2, Mini App; **bỏ pilot**, thay bằng test nội bộ ở W6.
 
 ### Added
+- `docs/ai-viec-nghien-cuu-phu.md`: hướng dẫn 3 việc nghiên cứu phụ cho AI2 (bộ dữ liệu OTP, bộ test mask PII, script đo độ dễ đọc), kèm quy tắc dữ liệu và tiêu chí xong.
 - `docs/features.md`: tổng quan tính năng (FR1–FR15, FR17) cho cả team: người dùng làm gì, bot phải làm gì, xong khi nào, task nào, thứ tự làm (chuỗi mốc, Blocked by, Ưu tiên P0/P1/P2).
 - Board "Ask First: Sprint Board": issue cha cho từng FR và 3 nhóm việc (label `type: feature`), issue cho toàn bộ task MVP W1–W6 gắn làm sub-issue, quan hệ "Blocked by" theo cột "Cần trước" của PLAN, field **Ưu tiên**, view 🧩 Features, 👤 Việc của tôi, 🗓 Roadmap; Sprint Kanban và Danh Sách Nhiệm Vụ ẩn issue feature.
 - Khung repo: `docs/`, `backend/`, `ai/`, `contracts/`, `infra/`.
