@@ -1,0 +1,60 @@
+{
+  "request": {
+    "ctx": {
+      "alerts": [],
+      "check_id": "01J00000000000000000000000",
+      "has_guardian": true,
+      "maintenance": false,
+      "xung_ho": "bac"
+    },
+    "op": "render",
+    "v": "1.0",
+    "verdict": {
+      "citations": [],
+      "cost_usd_est": 0.0,
+      "explanation": "",
+      "followup_question": null,
+      "kich_ban": "N1.1",
+      "latency_ms": {},
+      "level": "NGUY_HIEM",
+      "masked_text": "Gửi mã OTP cho tôi",
+      "model_ids": [],
+      "nhom": "N1",
+      "outcome": "verdict",
+      "path": "fast",
+      "risky_actions": [
+        "cung_cap_otp"
+      ],
+      "score": 90,
+      "should_alert": true,
+      "signals": [],
+      "versions": {
+        "contract": "1.0",
+        "pipeline": "stub"
+      }
+    }
+  },
+  "response": {
+    "analyze": null,
+    "error": null,
+    "op": "render",
+    "render": {
+      "messages": [
+        {
+          "buttons": [
+            [
+              {
+                "kind": "report_wrong",
+                "label": "Bot báo sai"
+              }
+            ]
+          ],
+          "silent": false,
+          "text_html": "[STUB] NGUY_HIEM N1.1"
+        }
+      ]
+    },
+    "render_guardian_alerts": null,
+    "v": "1.0"
+  }
+}

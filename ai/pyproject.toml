@@ -1,0 +1,28 @@
+[project]
+name = "askfirst"
+version = "0.1.0"
+description = "Ask First: AI pipeline (Lambda `ai`), eval và hợp đồng BE <-> AI"
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2.11"]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/askfirst"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["F", "I", "UP", "B"]

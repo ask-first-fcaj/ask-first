@@ -1,0 +1,16 @@
+# Khung rỗng (G0). AI2 điền version, license và sha256 khi có artifact thật.
+- name: ocr
+  version: ""
+  s3_prefix: ""
+  license: ""
+  files: {}
+- name: embedder
+  version: ""
+  s3_prefix: ""
+  license: ""
+  files: {}
+- name: kb_index
+  version: ""
+  s3_prefix: ""
+  license: internal
+  files: {}

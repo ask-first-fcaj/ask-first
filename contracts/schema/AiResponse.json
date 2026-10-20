@@ -1,0 +1,383 @@
+{
+  "$id": "askfirst/1.0/AiResponse.json",
+  "additionalProperties": false,
+  "definitions": {
+    "AiError": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "retryable",
+            "fatal"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "code"
+      ],
+      "title": "AiError",
+      "type": "object"
+    },
+    "AnalyzeResult": {
+      "additionalProperties": false,
+      "properties": {
+        "cache_hit": {
+          "title": "Cache Hit",
+          "type": "boolean"
+        },
+        "verdict": {
+          "$ref": "#/definitions/Verdict"
+        }
+      },
+      "required": [
+        "verdict",
+        "cache_hit"
+      ],
+      "title": "AnalyzeResult",
+      "type": "object"
+    },
+    "Button": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "checklist",
+            "call_guardian",
+            "alert_guardian",
+            "report_wrong",
+            "donate",
+            "answer_yes",
+            "answer_no",
+            "answer_unknown",
+            "ack"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "label"
+      ],
+      "title": "Button",
+      "type": "object"
+    },
+    "Citation": {
+      "additionalProperties": false,
+      "properties": {
+        "date": {
+          "title": "Date",
+          "type": "string"
+        },
+        "publisher": {
+          "title": "Publisher",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "url",
+        "publisher",
+        "date"
+      ],
+      "title": "Citation",
+      "type": "object"
+    },
+    "OutMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "buttons": {
+          "items": {
+            "items": {
+              "$ref": "#/definitions/Button"
+            },
+            "type": "array"
+          },
+          "title": "Buttons",
+          "type": "array"
+        },
+        "silent": {
+          "default": false,
+          "title": "Silent",
+          "type": "boolean"
+        },
+        "text_html": {
+          "title": "Text Html",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text_html"
+      ],
+      "title": "OutMessage",
+      "type": "object"
+    },
+    "RenderGuardianAlertsResult": {
+      "additionalProperties": false,
+      "properties": {
+        "alerts": {
+          "items": {
+            "$ref": "#/definitions/OutMessage"
+          },
+          "title": "Alerts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "alerts"
+      ],
+      "title": "RenderGuardianAlertsResult",
+      "type": "object"
+    },
+    "ReplyPlan": {
+      "additionalProperties": false,
+      "properties": {
+        "messages": {
+          "items": {
+            "$ref": "#/definitions/OutMessage"
+          },
+          "minItems": 1,
+          "title": "Messages",
+          "type": "array"
+        }
+      },
+      "required": [
+        "messages"
+      ],
+      "title": "ReplyPlan",
+      "type": "object"
+    },
+    "Signal": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "evidence": {
+          "default": null,
+          "title": "Evidence",
+          "type": "string"
+        },
+        "hard": {
+          "default": false,
+          "title": "Hard",
+          "type": "boolean"
+        },
+        "weight": {
+          "title": "Weight",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "code",
+        "weight"
+      ],
+      "title": "Signal",
+      "type": "object"
+    },
+    "Verdict": {
+      "additionalProperties": false,
+      "properties": {
+        "citations": {
+          "items": {
+            "$ref": "#/definitions/Citation"
+          },
+          "title": "Citations",
+          "type": "array"
+        },
+        "cost_usd_est": {
+          "default": 0.0,
+          "title": "Cost Usd Est",
+          "type": "number"
+        },
+        "explanation": {
+          "default": "",
+          "title": "Explanation",
+          "type": "string"
+        },
+        "followup_question": {
+          "default": null,
+          "title": "Followup Question",
+          "type": "string"
+        },
+        "kich_ban": {
+          "title": "Kich Ban",
+          "type": "string"
+        },
+        "latency_ms": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Latency Ms",
+          "type": "object"
+        },
+        "level": {
+          "enum": [
+            "NGUY_HIEM",
+            "NGHI_NGO",
+            "CHUA_CHAC",
+            "IT_DAU_HIEU"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "masked_text": {
+          "default": "",
+          "title": "Masked Text",
+          "type": "string"
+        },
+        "model_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Model Ids",
+          "type": "array"
+        },
+        "nhom": {
+          "enum": [
+            "N0",
+            "N1",
+            "N2",
+            "N3",
+            "N4",
+            "N5",
+            "N6",
+            "KHAC"
+          ],
+          "title": "Nhom",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "verdict",
+            "smalltalk",
+            "unreadable"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "path": {
+          "enum": [
+            "cache",
+            "fast",
+            "llm",
+            "escalated",
+            "rules_only"
+          ],
+          "title": "Path",
+          "type": "string"
+        },
+        "risky_actions": {
+          "items": {
+            "enum": [
+              "chuyen_tien",
+              "cung_cap_otp",
+              "cung_cap_mat_khau",
+              "cai_app",
+              "chia_se_man_hinh",
+              "bam_link",
+              "giu_bi_mat",
+              "cung_cap_cccd"
+            ],
+            "type": "string"
+          },
+          "title": "Risky Actions",
+          "type": "array"
+        },
+        "score": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Score",
+          "type": "integer"
+        },
+        "should_alert": {
+          "title": "Should Alert",
+          "type": "boolean"
+        },
+        "signals": {
+          "items": {
+            "$ref": "#/definitions/Signal"
+          },
+          "title": "Signals",
+          "type": "array"
+        },
+        "versions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Versions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "outcome",
+        "level",
+        "score",
+        "nhom",
+        "kich_ban",
+        "should_alert",
+        "path"
+      ],
+      "title": "Verdict",
+      "type": "object"
+    }
+  },
+  "description": "Mọi op trả về đúng một trong các trường kết quả, hoặc error. Không dùng union để Java codegen dễ.",
+  "properties": {
+    "analyze": {
+      "$ref": "#/definitions/AnalyzeResult",
+      "default": null
+    },
+    "error": {
+      "$ref": "#/definitions/AiError",
+      "default": null
+    },
+    "op": {
+      "enum": [
+        "analyze",
+        "render_guardian_alerts",
+        "render"
+      ],
+      "title": "Op",
+      "type": "string"
+    },
+    "render": {
+      "$ref": "#/definitions/ReplyPlan",
+      "default": null
+    },
+    "render_guardian_alerts": {
+      "$ref": "#/definitions/RenderGuardianAlertsResult",
+      "default": null
+    },
+    "v": {
+      "default": "1.0",
+      "title": "V",
+      "type": "string"
+    }
+  },
+  "required": [
+    "op"
+  ],
+  "title": "AiResponse",
+  "type": "object"
+}

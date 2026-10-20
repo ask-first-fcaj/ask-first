@@ -1,0 +1,299 @@
+{
+  "$id": "askfirst/1.0/RenderRequest.json",
+  "additionalProperties": false,
+  "definitions": {
+    "AlertResult": {
+      "additionalProperties": false,
+      "properties": {
+        "guardian_name": {
+          "title": "Guardian Name",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "sent",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "guardian_name",
+        "status"
+      ],
+      "title": "AlertResult",
+      "type": "object"
+    },
+    "Citation": {
+      "additionalProperties": false,
+      "properties": {
+        "date": {
+          "title": "Date",
+          "type": "string"
+        },
+        "publisher": {
+          "title": "Publisher",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "url",
+        "publisher",
+        "date"
+      ],
+      "title": "Citation",
+      "type": "object"
+    },
+    "RenderContext": {
+      "additionalProperties": false,
+      "properties": {
+        "alerts": {
+          "items": {
+            "$ref": "#/definitions/AlertResult"
+          },
+          "title": "Alerts",
+          "type": "array"
+        },
+        "check_id": {
+          "title": "Check Id",
+          "type": "string"
+        },
+        "has_guardian": {
+          "title": "Has Guardian",
+          "type": "boolean"
+        },
+        "maintenance": {
+          "default": false,
+          "title": "Maintenance",
+          "type": "boolean"
+        },
+        "xung_ho": {
+          "enum": [
+            "bac",
+            "co",
+            "chu"
+          ],
+          "title": "Xung Ho",
+          "type": "string"
+        }
+      },
+      "required": [
+        "check_id",
+        "xung_ho",
+        "has_guardian"
+      ],
+      "title": "RenderContext",
+      "type": "object"
+    },
+    "Signal": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "evidence": {
+          "default": null,
+          "title": "Evidence",
+          "type": "string"
+        },
+        "hard": {
+          "default": false,
+          "title": "Hard",
+          "type": "boolean"
+        },
+        "weight": {
+          "title": "Weight",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "code",
+        "weight"
+      ],
+      "title": "Signal",
+      "type": "object"
+    },
+    "Verdict": {
+      "additionalProperties": false,
+      "properties": {
+        "citations": {
+          "items": {
+            "$ref": "#/definitions/Citation"
+          },
+          "title": "Citations",
+          "type": "array"
+        },
+        "cost_usd_est": {
+          "default": 0.0,
+          "title": "Cost Usd Est",
+          "type": "number"
+        },
+        "explanation": {
+          "default": "",
+          "title": "Explanation",
+          "type": "string"
+        },
+        "followup_question": {
+          "default": null,
+          "title": "Followup Question",
+          "type": "string"
+        },
+        "kich_ban": {
+          "title": "Kich Ban",
+          "type": "string"
+        },
+        "latency_ms": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Latency Ms",
+          "type": "object"
+        },
+        "level": {
+          "enum": [
+            "NGUY_HIEM",
+            "NGHI_NGO",
+            "CHUA_CHAC",
+            "IT_DAU_HIEU"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "masked_text": {
+          "default": "",
+          "title": "Masked Text",
+          "type": "string"
+        },
+        "model_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Model Ids",
+          "type": "array"
+        },
+        "nhom": {
+          "enum": [
+            "N0",
+            "N1",
+            "N2",
+            "N3",
+            "N4",
+            "N5",
+            "N6",
+            "KHAC"
+          ],
+          "title": "Nhom",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "verdict",
+            "smalltalk",
+            "unreadable"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "path": {
+          "enum": [
+            "cache",
+            "fast",
+            "llm",
+            "escalated",
+            "rules_only"
+          ],
+          "title": "Path",
+          "type": "string"
+        },
+        "risky_actions": {
+          "items": {
+            "enum": [
+              "chuyen_tien",
+              "cung_cap_otp",
+              "cung_cap_mat_khau",
+              "cai_app",
+              "chia_se_man_hinh",
+              "bam_link",
+              "giu_bi_mat",
+              "cung_cap_cccd"
+            ],
+            "type": "string"
+          },
+          "title": "Risky Actions",
+          "type": "array"
+        },
+        "score": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Score",
+          "type": "integer"
+        },
+        "should_alert": {
+          "title": "Should Alert",
+          "type": "boolean"
+        },
+        "signals": {
+          "items": {
+            "$ref": "#/definitions/Signal"
+          },
+          "title": "Signals",
+          "type": "array"
+        },
+        "versions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Versions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "outcome",
+        "level",
+        "score",
+        "nhom",
+        "kich_ban",
+        "should_alert",
+        "path"
+      ],
+      "title": "Verdict",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "ctx": {
+      "$ref": "#/definitions/RenderContext"
+    },
+    "op": {
+      "const": "render",
+      "default": "render",
+      "title": "Op",
+      "type": "string"
+    },
+    "v": {
+      "default": "1.0",
+      "title": "V",
+      "type": "string"
+    },
+    "verdict": {
+      "$ref": "#/definitions/Verdict"
+    }
+  },
+  "required": [
+    "verdict",
+    "ctx"
+  ],
+  "title": "RenderRequest",
+  "type": "object"
+}

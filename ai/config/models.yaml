@@ -1,0 +1,7 @@
+# Khung rỗng (G0). Model ID copy từ Bedrock console ở AI-02, không đoán.
+bedrock_region: ap-southeast-2
+judge: {model_id: "", max_tokens: 600, temperature: 0, thinking: false, timeout_s: 8}
+backup: {model_id: "", max_tokens: 800, temperature: 0, timeout_s: 12}
+vlm: {model_id: "", max_tokens: 600, timeout_s: 10}
+guardrail: {id: "", version: "1"}
+pricing_usd_per_1m: {}

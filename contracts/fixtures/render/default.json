@@ -1,0 +1,58 @@
+{
+  "request": {
+    "ctx": {
+      "alerts": [],
+      "check_id": "01J00000000000000000000000",
+      "has_guardian": false,
+      "maintenance": false,
+      "xung_ho": "co"
+    },
+    "op": "render",
+    "v": "1.0",
+    "verdict": {
+      "citations": [],
+      "cost_usd_est": 0.0,
+      "explanation": "",
+      "followup_question": null,
+      "kich_ban": "N0",
+      "latency_ms": {},
+      "level": "IT_DAU_HIEU",
+      "masked_text": "Chào bạn",
+      "model_ids": [],
+      "nhom": "N0",
+      "outcome": "verdict",
+      "path": "fast",
+      "risky_actions": [],
+      "score": 10,
+      "should_alert": false,
+      "signals": [],
+      "versions": {
+        "contract": "1.0",
+        "pipeline": "stub"
+      }
+    }
+  },
+  "response": {
+    "analyze": null,
+    "error": null,
+    "op": "render",
+    "render": {
+      "messages": [
+        {
+          "buttons": [
+            [
+              {
+                "kind": "report_wrong",
+                "label": "Bot báo sai"
+              }
+            ]
+          ],
+          "silent": false,
+          "text_html": "[STUB] IT_DAU_HIEU N0"
+        }
+      ]
+    },
+    "render_guardian_alerts": null,
+    "v": "1.0"
+  }
+}
