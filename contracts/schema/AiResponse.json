@@ -220,8 +220,18 @@
           "title": "Followup Question",
           "type": "string"
         },
-        "kich_ban": {
-          "title": "Kich Ban",
+        "group": {
+          "enum": [
+            "N0",
+            "N1",
+            "N2",
+            "N3",
+            "N4",
+            "N5",
+            "N6",
+            "OTHER"
+          ],
+          "title": "Group",
           "type": "string"
         },
         "latency_ms": {
@@ -233,10 +243,10 @@
         },
         "level": {
           "enum": [
-            "NGUY_HIEM",
-            "NGHI_NGO",
-            "CHUA_CHAC",
-            "IT_DAU_HIEU"
+            "DANGEROUS",
+            "SUSPICIOUS",
+            "UNSURE",
+            "LOW_RISK"
           ],
           "title": "Level",
           "type": "string"
@@ -252,20 +262,6 @@
           },
           "title": "Model Ids",
           "type": "array"
-        },
-        "nhom": {
-          "enum": [
-            "N0",
-            "N1",
-            "N2",
-            "N3",
-            "N4",
-            "N5",
-            "N6",
-            "KHAC"
-          ],
-          "title": "Nhom",
-          "type": "string"
         },
         "outcome": {
           "enum": [
@@ -290,19 +286,23 @@
         "risky_actions": {
           "items": {
             "enum": [
-              "chuyen_tien",
-              "cung_cap_otp",
-              "cung_cap_mat_khau",
-              "cai_app",
-              "chia_se_man_hinh",
-              "bam_link",
-              "giu_bi_mat",
-              "cung_cap_cccd"
+              "transfer_money",
+              "share_otp",
+              "share_password",
+              "install_app",
+              "share_screen",
+              "click_link",
+              "keep_secret",
+              "share_id_card"
             ],
             "type": "string"
           },
           "title": "Risky Actions",
           "type": "array"
+        },
+        "scenario": {
+          "title": "Scenario",
+          "type": "string"
         },
         "score": {
           "maximum": 100,
@@ -333,8 +333,8 @@
         "outcome",
         "level",
         "score",
-        "nhom",
-        "kich_ban",
+        "group",
+        "scenario",
         "should_alert",
         "path"
       ],
@@ -342,7 +342,7 @@
       "type": "object"
     }
   },
-  "description": "Mọi op trả về đúng một trong các trường kết quả, hoặc error. Không dùng union để Java codegen dễ.",
+  "description": "Every op returns exactly one of the result fields, or error. No union, to keep the Java codegen simple.",
   "properties": {
     "analyze": {
       "$ref": "#/definitions/AnalyzeResult",

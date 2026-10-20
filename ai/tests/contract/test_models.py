@@ -12,14 +12,14 @@ ULID = "01J" + "0" * 23
 
 
 def _verdict(**kw) -> m.Verdict:
-    base = {"outcome": "verdict", "level": "NGUY_HIEM", "score": 90, "nhom": "N1", "kich_ban": "N1.4",
+    base = {"outcome": "verdict", "level": "DANGEROUS", "score": 90, "group": "N1", "scenario": "N1.4",
             "signals": [m.Signal(code="U_TEXT_LINK_MISMATCH", weight=40, hard=True, evidence="Bấm vào đây")],
-            "risky_actions": ["bam_link"], "should_alert": True, "explanation": "x", "masked_text": "Bấm vào đây",
+            "risky_actions": ["click_link"], "should_alert": True, "explanation": "x", "masked_text": "Bấm vào đây",
             "path": "fast", "versions": {"contract": m.CONTRACT_VERSION}}
     return m.Verdict(**(base | kw))
 
 
-def test_inbound_message_json_round_trip() -> None:   # BUFFER# lưu dạng JSON
+def test_inbound_message_json_round_trip() -> None:   # BUFFER# stores it as JSON
     msg = m.InboundMessage(
         channel="telegram", update_id="1", chat_id="42", user_id="tg:42", message_id="7", kind="text",
         text="Bấm vào đây", entities=[m.EntityRef(kind="text_link", offset=0, length=3, url="https://dichvucong-vn.com")],
@@ -37,16 +37,16 @@ def test_for_cache_strips_user_text() -> None:
     c = v.for_cache()
     assert c.masked_text == "" and c.explanation == "" and c.followup_question is None
     assert all(s.evidence is None for s in c.signals)
-    assert v.signals[0].evidence == "Bấm vào đây"          # bản gốc không bị đổi
+    assert v.signals[0].evidence == "Bấm vào đây"          # the original is untouched
     assert m.Verdict.model_validate_json(c.model_dump_json()) == c
 
 
 @pytest.mark.parametrize("bad", [
-    lambda: _verdict(level="AN_TOAN"),                       # không có mức "an toàn"
+    lambda: _verdict(level="SAFE"),                       # there is no "safe" level
     lambda: _verdict(score=101),
-    lambda: _verdict(risky_actions=["chuyen_khoan"]),        # sai enum
-    lambda: m.ReplyPlan(messages=[]),                        # phải có ít nhất 1 tin
-    lambda: m.Flags(llm_enabled=True, typo=1),               # không cho trường lạ
+    lambda: _verdict(risky_actions=["chuyen_khoan"]),        # invalid enum value
+    lambda: m.ReplyPlan(messages=[]),                        # needs at least 1 message
+    lambda: m.Flags(llm_enabled=True, typo=1),               # unknown fields are rejected
     lambda: m.SessionContext(prev_check_id=ULID, masked_text="x", question="?", answer="yes", turn=3),
 ])
 def test_invalid_values_are_rejected(bad) -> None:
@@ -60,7 +60,7 @@ def test_contexts_and_reply_plan_build() -> None:
     ctx = m.AnalyzeContext(check_id=ULID, user_id="tg:42", flags=m.Flags(), deadline_s=85)
     plan = m.ReplyPlan(messages=[m.OutMessage(
         text_html="<b>x</b>", buttons=[[m.Button(kind="report_wrong", label="Bot báo sai")]])])
-    rctx = m.RenderContext(check_id=ULID, xung_ho="bac", has_guardian=True,
+    rctx = m.RenderContext(check_id=ULID, address_form="elder", has_guardian=True,
                            alerts=[m.AlertResult(guardian_name="Nam", status="sent")])
     gctx = m.GuardianAlertContext(alert_id=ULID, elder_name="Lan", share_level=1, at=NOW)
     assert bundle.images[0].data and ctx.flags.llm_enabled and plan.messages and rctx.alerts and gctx.share_level == 1
@@ -77,13 +77,13 @@ def _msg() -> m.InboundMessage:
         media=m.MediaRef(file_id="AgAC", file_unique_id="AQAD", mime="image/jpeg", size=120_000), received_at=NOW)
 
 
-def test_wire_round_trip_all_ops() -> None:   # đúng những gì Java gửi/nhận
+def test_wire_round_trip_all_ops() -> None:   # exactly what Java sends/receives
     ctx = m.AnalyzeContext(check_id=ULID, user_id="tg:42", flags=m.Flags(llm_enabled=False), deadline_s=85)
     reqs = [
         m.AnalyzeRequest(items=[_msg()], ctx=ctx),
         m.RenderGuardianAlertsRequest(verdict=_verdict(), guardians=[
             m.GuardianAlertContext(alert_id=ULID, elder_name="Lan", share_level=2, at=NOW)]),
-        m.RenderRequest(verdict=_verdict(), ctx=m.RenderContext(check_id=ULID, xung_ho="co", has_guardian=False)),
+        m.RenderRequest(verdict=_verdict(), ctx=m.RenderContext(check_id=ULID, address_form="aunt", has_guardian=False)),
     ]
     for req in reqs:
         assert type(req).model_validate_json(req.model_dump_json()) == req
@@ -99,19 +99,19 @@ def test_wire_round_trip_all_ops() -> None:   # đúng những gì Java gửi/nh
         assert m.AiResponse.model_validate_json(r.model_dump_json()) == r
 
 
-def test_wire_request_has_no_media_bytes() -> None:   # media chỉ nằm trong RAM của `ai` (ARCH §4.5)
+def test_wire_request_has_no_media_bytes() -> None:   # media only lives in the RAM of `ai` (ARCH §4.5)
     raw = m.AnalyzeRequest(items=[_msg()], ctx=m.AnalyzeContext(
         check_id=ULID, user_id="tg:42", flags=m.Flags(), deadline_s=85)).model_dump_json()
     assert "data" not in json.loads(raw)["items"][0]
 
 
 @pytest.mark.parametrize("bad", [
-    lambda: m.AiResponse(op="render"),                                                   # không có kết quả
-    lambda: m.AiResponse(op="render", analyze=m.AnalyzeResult(verdict=_verdict(), cache_hit=True)),   # sai op
+    lambda: m.AiResponse(op="render"),                                                   # no result
+    lambda: m.AiResponse(op="render", analyze=m.AnalyzeResult(verdict=_verdict(), cache_hit=True)),   # wrong op
     lambda: m.AiResponse(op="render", render=m.ReplyPlan(messages=[m.OutMessage(text_html="x")]),
-                         error=m.AiError(kind="fatal", code="bad_request")),            # vừa kết quả vừa lỗi
+                         error=m.AiError(kind="fatal", code="bad_request")),            # both a result and an error
     lambda: m.RenderGuardianAlertsRequest(verdict=_verdict(), guardians=[]),
-    lambda: m.AnalyzeRequest.model_validate({"op": "analyse", "ctx": {}}),             # op sai chính tả
+    lambda: m.AnalyzeRequest.model_validate({"op": "analyse", "ctx": {}}),             # misspelled op
 ])
 def test_invalid_wire_rejected(bad) -> None:
     with pytest.raises(ValidationError):

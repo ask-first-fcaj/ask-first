@@ -1,4 +1,4 @@
-# Khung rỗng (G0). AI2 điền version, license và sha256 khi có artifact thật.
+# Empty skeleton (G0). AI2 fills in version, license and sha256 once real artifacts exist.
 - name: ocr
   version: ""
   s3_prefix: ""

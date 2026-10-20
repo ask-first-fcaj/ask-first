@@ -1,4 +1,4 @@
-"""Sinh contracts/fixtures/<op>/<case>.json (request + response) từ StubPipeline. Chạy trong ai/: `uv run python -m askfirst.pipeline.fixtures [out_dir]`."""
+"""Generates contracts/fixtures/<op>/<case>.json (request + response) from StubPipeline. Run inside ai/: `uv run python -m askfirst.pipeline.fixtures [out_dir]`."""
 import json
 import pathlib
 import sys
@@ -53,8 +53,8 @@ def cases() -> dict[str, dict[str, tuple[m.BaseModel, m.BaseModel]]]:
     verdicts = {name: res.analyze.verdict for name, (_, res) in analyze.items()}
 
     render = {}
-    for name, xung_ho, guardian in (("otp", "bac", True), ("default", "co", False)):
-        req = m.RenderRequest(verdict=verdicts[name], ctx=m.RenderContext(check_id=ULID, xung_ho=xung_ho, has_guardian=guardian))
+    for name, address_form, guardian in (("otp", "elder", True), ("default", "aunt", False)):
+        req = m.RenderRequest(verdict=verdicts[name], ctx=m.RenderContext(check_id=ULID, address_form=address_form, has_guardian=guardian))
         render[name] = (req, m.AiResponse(op="render", render=stub.render(req.verdict, req.ctx)))
 
     gctx = [m.GuardianAlertContext(alert_id=ULID, elder_name="Lan", share_level=2, at=NOW)]
@@ -66,7 +66,7 @@ def cases() -> dict[str, dict[str, tuple[m.BaseModel, m.BaseModel]]]:
 
 
 def render_files() -> dict[str, str]:
-    """{<op>/<case>.json: nội dung}"""
+    """{<op>/<case>.json: content}"""
     files = {}
     for op, by_case in cases().items():
         for name, (req, res) in by_case.items():

@@ -126,7 +126,7 @@ Hãy hình dung tình huống cụ thể: **Bà Lan (70 tuổi)** nhận SMS: *"
 
 * **Bước 1 (Nhận tin):** Telegram gọi Lambda `webhook`. Webhook kiểm tra secret token, kiểm tra trùng lặp (`DEDUP#`), ghi tin vào vùng đệm (`BUFFER#`), gửi tin nhắn tạm `⏳ Bác chờ chút...` cho bà Lan, rồi ném 1 message vào SQS với độ trễ 3 giây (`DelaySeconds=3`). Trả `200 OK` cho Telegram trong chưa đầy 500ms.
 * **Bước 2 (Gom tin):** Tại sao cần trễ 3 giây? Vì người già hay nhắn 2–3 tin liền nhau (VD: gửi ảnh xong gửi thêm dòng chữ "Xem hộ tôi"). Trễ 3 giây để gom các tin này lại phân tích 1 thể, không bị gọi AI 3 lần.
-* **Bước 3 (Phân tích):** SQS kích hoạt Lambda `worker`. Worker lấy các tin trong đệm, gọi Lambda `ai`. AI phân tích link `dichvucong-vn.com` là giả mạo cổng dịch vụ công thật, trả kết quả: Mức độ `NGUY_HIEM`.
+* **Bước 3 (Phân tích):** SQS kích hoạt Lambda `worker`. Worker lấy các tin trong đệm, gọi Lambda `ai`. AI phân tích link `dichvucong-vn.com` là giả mạo cổng dịch vụ công thật, trả kết quả: Mức độ `DANGEROUS`.
 * **Bước 4 (Cảnh báo người thân trước):** Thấy nguy hiểm, Worker kiểm tra bà Lan có người thân là anh Nam. Worker gửi tin nhắn cho anh Nam: *"Phát hiện bà Lan vừa nhận tin nhắn phạt nguội giả mạo, hãy liên lạc với bà ngay"*. Khi Telegram xác nhận đã gửi cho Nam thành công, Worker mới ghi nhận.
 * **Bước 5 (Trả lời bà Lan):** Worker sửa trực tiếp tin nhắn `⏳` thành: *"Bác tuyệt đối không bấm vào link lạ. Đây là tin nhắn lừa đảo mạo danh công an. Cháu đã báo cho con trai Nam của bác rồi nhé!"*. Kèm nút bấm lớn `📞 Gọi cho con trai`.
 
@@ -244,7 +244,7 @@ Nhưng ở hệ thống chịu tải cao, phép `JOIN` trong database rất ch�
 | **Kết quả kiểm tra tin** | `USER#{uid}` | `CHECK#{timestamp}#{id}` | Mức độ nguy hiểm, tên kịch bản, điểm số, thời gian chạy. **CẤM LƯU CHỮ GỐC** | 30 ngày |
 | **Chống xử lý trùng lặp** | `DEDUP#telegram#{update_id}`| `META` | Để trống (Chỉ cần sự tồn tại của khóa để chặn trùng) | 24 giờ |
 | **Hộp đệm gom tin** | `BUFFER#{chat_id}` | `META` | Danh sách các tin nhắn vừa gửi trong 3s, số thứ tự `seq` | 10 phút |
-| **Khóa chống spam báo động**| `ALERTLOCK#{uid}#{kich_ban}`| `META` | Đánh dấu vừa báo kịch bản này rồi, không báo lại nữa | 30 phút |
+| **Khóa chống spam báo động**| `ALERTLOCK#{uid}#{scenario}`| `META` | Đánh dấu vừa báo kịch bản này rồi, không báo lại nữa | 30 phút |
 | **Mã mời người thân** | `INVITE#{code}` | `META` | ID người mời, thời gian hết hạn | 24 giờ |
 | **Giới hạn lượt dùng** | `RATE#{uid}#{ngày_giờ}` | `COUNTER` | Số lượt đã kiểm tra trong giờ/ngày (Cộng dồn nguyên tử) | 2 giờ / 2 ngày |
 
@@ -376,7 +376,7 @@ backend/target/generated-sources/.../vn/askfirst/contract/ (Tự sinh các class
 ### 8.1 Chạy thử nghiệm với `FakeAiClient` (Không cần chờ team AI)
 Nếu tuần đầu team AI chưa làm xong model, bạn vẫn kiểm thử được toàn bộ hệ thống bằng `FakeAiClient`:
 * Khi test, `FakeAiClient` sẽ đọc sẵn các file JSON mẫu trong thư mục `contracts/fixtures/analyze/`.
-* Chứa chữ "otp", "chuyển khoản" → Trả về kết quả mẫu `NGUY_HIEM`.
+* Chứa chữ "otp", "chuyển khoản" → Trả về kết quả mẫu `DANGEROUS`.
 * Chứa chữ "alo", "chào bot" → Trả lời xã giao `smalltalk`.
 * Nhờ cơ chế này, **Backend hoàn toàn tự lập và kiểm thử trơn tru ngay từ tuần thứ 2!**
 
@@ -486,7 +486,7 @@ Tuần 1 là tuần quan trọng nhất để xây móng. Hai bạn ngồi cạn
 * **BE-06 (W3–W4): Hỗ trợ đóng gói Docker cho Lambda AI:** Viết Dockerfile tối ưu dung lượng dưới 2GB để chứa các thư viện OCR của AI. *(Voice/Whisper ⏸ Hoãn (ngoài phạm vi 6 tuần) nên image không cần ffmpeg/sherpa-onnx, nhẹ hơn.)*
 * **BE-13 (W5): Cài đặt Kill Switch:** Viết script bật/tắt cờ `llm_enabled` trong DynamoDB. Khi tắt cờ, hệ thống chỉ chạy bộ luật cứng, không gọi AI tốn tiền.
 * **BE-34 (W4): Từ chối file quá nặng:** Kiểm tra nếu người dùng gửi voice dài hơn 2 phút hoặc file nặng hơn 20MB thì từ chối lịch sự ngay tại Webhook, không đẩy vào SQS. *(Phần voice: `feature_voice` tắt mặc định trong MVP, webhook trả lời "chưa hỗ trợ voice"; xử lý voice ⏸ Hoãn (ngoài phạm vi 6 tuần).)*
-* **BE-29 (W4 - Việc chéo 🔀): Gửi cảnh báo cho con cháu:** Khi AI báo mức `NGUY_HIEM`, lấy danh sách người thân từ database và gửi tin nhắn cảnh báo song song cho tất cả người thân đang kích hoạt. Đặt lịch nhắc lại sau 15 phút nếu người thân chưa bấm nút xác nhận.
+* **BE-29 (W4 - Việc chéo 🔀): Gửi cảnh báo cho con cháu:** Khi AI báo mức `DANGEROUS`, lấy danh sách người thân từ database và gửi tin nhắn cảnh báo song song cho tất cả người thân đang kích hoạt. Đặt lịch nhắc lại sau 15 phút nếu người thân chưa bấm nút xác nhận.
 * **BE-08a (W4–W5): Giám sát hệ thống (Observability):** Cài đặt AWS Lambda Powertools để ghi log có mã định danh `trace_id`. Tạo CloudWatch Dashboard theo dõi số lượng tin nhắn, độ trễ và chi phí.
 * **BE-09a (W5 - Rà soát chéo 🔀):** Đọc và kiểm tra bảo mật toàn bộ code của BE2 trước khi phát hành.
 

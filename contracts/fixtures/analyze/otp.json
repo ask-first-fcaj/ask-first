@@ -39,17 +39,17 @@
         "cost_usd_est": 0.0,
         "explanation": "",
         "followup_question": null,
-        "kich_ban": "N1.1",
+        "group": "N1",
         "latency_ms": {},
-        "level": "NGUY_HIEM",
+        "level": "DANGEROUS",
         "masked_text": "Gửi mã OTP cho tôi",
         "model_ids": [],
-        "nhom": "N1",
         "outcome": "verdict",
         "path": "fast",
         "risky_actions": [
-          "cung_cap_otp"
+          "share_otp"
         ],
+        "scenario": "N1.1",
         "score": 90,
         "should_alert": true,
         "signals": [],

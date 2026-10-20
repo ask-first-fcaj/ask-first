@@ -65,7 +65,7 @@
     },
     "Flags": {
       "additionalProperties": false,
-      "description": "BE đọc từ DynamoDB CONFIG#global/FLAGS (ARCH §5.8), cache 30 giây, gửi trong AnalyzeContext.",
+      "description": "BE reads these from DynamoDB CONFIG#global/FLAGS (ARCH §5.8), caches them for 30 seconds, and sends them in AnalyzeContext.",
       "properties": {
         "feature_image": {
           "default": true,
@@ -93,7 +93,7 @@
     },
     "InboundMessage": {
       "additionalProperties": false,
-      "description": "Adapter tạo từ một update. Lưu tạm trong BUFFER# (≤ 10 phút, xoá ngay sau xử lý).",
+      "description": "Built by the adapter from one update. Kept temporarily in BUFFER# (≤ 10 minutes, deleted right after processing).",
       "properties": {
         "channel": {
           "enum": [
@@ -221,7 +221,7 @@
     },
     "SessionContext": {
       "additionalProperties": false,
-      "description": "Lượt hỏi thêm (ARCH §6.12). BE lấy từ SESSION# rồi gửi trong AnalyzeRequest, AI ghép vào Judge. Có qua wire.",
+      "description": "Follow-up turn (ARCH §6.12). BE reads it from SESSION# and sends it in AnalyzeRequest; AI merges it into the Judge input. Goes over the wire.",
       "properties": {
         "answer": {
           "enum": [

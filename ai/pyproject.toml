@@ -1,7 +1,7 @@
 [project]
 name = "askfirst"
 version = "0.1.0"
-description = "Ask First: AI pipeline (Lambda `ai`), eval và hợp đồng BE <-> AI"
+description = "Ask First: AI pipeline (Lambda `ai`), eval and the BE <-> AI contract"
 requires-python = ">=3.12"
 dependencies = ["pydantic>=2.11"]
 

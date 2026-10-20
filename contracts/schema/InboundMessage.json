@@ -75,7 +75,7 @@
       "type": "object"
     }
   },
-  "description": "Adapter tạo từ một update. Lưu tạm trong BUFFER# (≤ 10 phút, xoá ngay sau xử lý).",
+  "description": "Built by the adapter from one update. Kept temporarily in BUFFER# (≤ 10 minutes, deleted right after processing).",
   "properties": {
     "channel": {
       "enum": [

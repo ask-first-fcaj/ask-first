@@ -1,7 +1,7 @@
-"""askfirst.domain.models: hợp đồng BE (Java) <-> AI (Python), plan §3.2.
+"""askfirst.domain.models: BE (Java) <-> AI (Python) contract, plan §3.2.
 
-Nguồn sự thật duy nhất: `uv run python -m askfirst.domain.export` xuất các model WIRE_MODELS ra contracts/schema/*.json, Java sinh class từ đó.
-Sửa file này phải có 1 BE + 1 AI duyệt.
+Single source of truth: `uv run python -m askfirst.domain.export` writes the WIRE_MODELS to contracts/schema/*.json, and Java generates its classes from them.
+Changing this file needs 1 BE + 1 AI review.
 """
 from __future__ import annotations
 
@@ -15,17 +15,17 @@ from pydantic.json_schema import GenerateJsonSchema
 
 CONTRACT_VERSION = "1.0"
 
-Level = Literal["NGUY_HIEM", "NGHI_NGO", "CHUA_CHAC", "IT_DAU_HIEU"]
-LEVEL_ORDER: dict[str, int] = {"IT_DAU_HIEU": 0, "CHUA_CHAC": 1, "NGHI_NGO": 2, "NGUY_HIEM": 3}
-Nhom = Literal["N0", "N1", "N2", "N3", "N4", "N5", "N6", "KHAC"]
+Level = Literal["DANGEROUS", "SUSPICIOUS", "UNSURE", "LOW_RISK"]
+LEVEL_ORDER: dict[str, int] = {"LOW_RISK": 0, "UNSURE": 1, "SUSPICIOUS": 2, "DANGEROUS": 3}
+Group = Literal["N0", "N1", "N2", "N3", "N4", "N5", "N6", "OTHER"]
 RiskyAction = Literal[
-    "chuyen_tien", "cung_cap_otp", "cung_cap_mat_khau", "cai_app",
-    "chia_se_man_hinh", "bam_link", "giu_bi_mat", "cung_cap_cccd",
+    "transfer_money", "share_otp", "share_password", "install_app",
+    "share_screen", "click_link", "keep_secret", "share_id_card",
 ]
 Path = Literal["cache", "fast", "llm", "escalated", "rules_only"]
 Outcome = Literal["verdict", "smalltalk", "unreadable"]
 ForwardOrigin = Literal["user", "hidden_user", "chat", "channel"]
-XungHo = Literal["bac", "co", "chu"]
+AddressForm = Literal["elder", "aunt", "uncle"]
 Answer = Literal["yes", "no", "unknown"]
 
 
@@ -33,18 +33,18 @@ class _M(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-# ---------- Đầu vào: BE (Java) tạo, gửi qua wire ----------
+# ---------- Input: created by BE (Java), sent over the wire ----------
 
 class EntityRef(_M):
     kind: Literal["url", "text_link"]
-    offset: int                      # tính theo UTF-16 code unit, giữ nguyên như Telegram
+    offset: int                      # in UTF-16 code units, same as Telegram
     length: int
-    url: str | None = None           # bắt buộc khi kind == "text_link" (URL thật, khác chữ hiển thị)
+    url: str | None = None           # required when kind == "text_link" (the real URL, not the displayed text)
 
     @model_validator(mode="after")
     def _text_link_has_url(self) -> EntityRef:
         if self.kind == "text_link" and not self.url:
-            raise ValueError("text_link phải có url")
+            raise ValueError("text_link requires url")
         return self
 
 
@@ -52,20 +52,20 @@ class MediaRef(_M):
     file_id: str
     file_unique_id: str
     mime: str | None = None
-    size: int | None = None          # byte
-    duration: int | None = None      # giây, chỉ voice/audio
-    file_name: str | None = None     # chỉ document
+    size: int | None = None          # bytes
+    duration: int | None = None      # seconds, voice/audio only
+    file_name: str | None = None     # document only
 
 
 class InboundMessage(_M):
-    """Adapter tạo từ một update. Lưu tạm trong BUFFER# (≤ 10 phút, xoá ngay sau xử lý)."""
+    """Built by the adapter from one update. Kept temporarily in BUFFER# (≤ 10 minutes, deleted right after processing)."""
     channel: Literal["telegram", "zalo"]
     update_id: str
     chat_id: str
     user_id: str                     # "tg:<telegram_user_id>"
     message_id: str
     kind: Literal["text", "photo", "voice", "audio", "document"]
-    text: str | None = None          # text hoặc caption, đã cắt ở 4.000 ký tự
+    text: str | None = None          # text or caption, truncated at 4,000 characters
     entities: list[EntityRef] = Field(default_factory=list)
     media: MediaRef | None = None
     forward_origin: ForwardOrigin | None = None
@@ -73,11 +73,11 @@ class InboundMessage(_M):
     received_at: datetime            # UTC
 
 
-# ---------- Nội bộ AI: KHÔNG qua wire (Lambda `ai` tự dựng từ InboundMessage, plan §3.6) ----------
+# ---------- AI-internal: NOT sent over the wire (Lambda `ai` builds these from InboundMessage, plan §3.6) ----------
 
 class TextPart(_M):
     text: str
-    entities: list[EntityRef] = Field(default_factory=list)   # offset tính trong chính text này
+    entities: list[EntityRef] = Field(default_factory=list)   # offset within this text
 
 
 class ImageInput(_M):
@@ -89,30 +89,30 @@ class ImageInput(_M):
 class AudioInput(_M):
     data: bytes
     file_unique_id: str
-    mime: str                        # "audio/ogg" (voice Telegram), "audio/mpeg"…
+    mime: str                        # "audio/ogg" (Telegram voice), "audio/mpeg"…
     duration_s: int
 
 
 class SessionContext(_M):
-    """Lượt hỏi thêm (ARCH §6.12). BE lấy từ SESSION# rồi gửi trong AnalyzeRequest, AI ghép vào Judge. Có qua wire."""
+    """Follow-up turn (ARCH §6.12). BE reads it from SESSION# and sends it in AnalyzeRequest; AI merges it into the Judge input. Goes over the wire."""
     prev_check_id: str
-    masked_text: str                 # = Verdict.masked_text của lượt trước
-    question: str                    # = Verdict.followup_question của lượt trước
+    masked_text: str                 # = Verdict.masked_text of the previous turn
+    question: str                    # = Verdict.followup_question of the previous turn
     answer: Answer
     turn: int = Field(ge=1, le=2)
 
 
 class Bundle(_M):
-    """Input của pipeline: cả cụm tin đã gom (ARCH §5.2), media đã tải vào RAM của Lambda `ai`."""
+    """Pipeline input: the whole batch of messages (ARCH §5.2), with media already downloaded into the RAM of Lambda `ai`."""
     texts: list[TextPart] = Field(default_factory=list)
     images: list[ImageInput] = Field(default_factory=list)
     audios: list[AudioInput] = Field(default_factory=list)
-    forward_origin: ForwardOrigin | None = None   # của tin đầu tiên có forward
+    forward_origin: ForwardOrigin | None = None   # from the first message that has a forward
     session: SessionContext | None = None
 
 
 class Flags(_M):
-    """BE đọc từ DynamoDB CONFIG#global/FLAGS (ARCH §5.8), cache 30 giây, gửi trong AnalyzeContext."""
+    """BE reads these from DynamoDB CONFIG#global/FLAGS (ARCH §5.8), caches them for 30 seconds, and sends them in AnalyzeContext."""
     llm_enabled: bool = True
     feature_image: bool = True
     feature_voice: bool = True
@@ -120,19 +120,19 @@ class Flags(_M):
 
 
 class AnalyzeContext(_M):
-    check_id: str                    # ULID do BE sinh (= job_id); cũng là trace_id trong log
+    check_id: str                    # ULID generated by BE (= job_id); also the trace_id in logs
     user_id: str
     flags: Flags
-    deadline_s: float                # số giây BE còn chờ được (≤ timeout của `ai`); pipeline phải trả trước deadline_s - 5
+    deadline_s: float                # seconds BE can still wait (≤ the `ai` timeout); the pipeline must return before deadline_s - 5
 
 
-# ---------- Đầu ra của analyze: AI tạo, BE nhận qua wire ----------
+# ---------- Output of analyze: created by AI, received by BE over the wire ----------
 
 class Signal(_M):
-    code: str                        # mã trong kb/rules.yaml, ví dụ "R_OTP_REQUEST", "U_TYPOSQUAT"
+    code: str                        # code from kb/rules.yaml, e.g. "R_OTP_REQUEST", "U_TYPOSQUAT"
     weight: int
     hard: bool = False
-    evidence: str | None = None      # đoạn đã mask, ≤ 120 ký tự; CẤM ghi log
+    evidence: str | None = None      # masked excerpt, ≤ 120 characters; MUST NOT be logged
 
 
 class Citation(_M):
@@ -143,87 +143,87 @@ class Citation(_M):
 
 
 class Verdict(_M):
-    outcome: Outcome                 # smalltalk → level IT_DAU_HIEU; unreadable → level CHUA_CHAC
+    outcome: Outcome                 # smalltalk → level LOW_RISK; unreadable → level UNSURE
     level: Level
     score: int = Field(ge=0, le=100)
-    nhom: Nhom
-    kich_ban: str                    # mã taxonomy, ví dụ "N1.4"; không khớp thì "KHAC"
+    group: Group
+    scenario: str                    # taxonomy code, e.g. "N1.4"; "OTHER" if nothing matches
     signals: list[Signal] = Field(default_factory=list)
     risky_actions: list[RiskyAction] = Field(default_factory=list)
-    should_alert: bool               # level == NGUY_HIEM và có risky_actions; BE vẫn phải kiểm người thân, consent, ALERTLOCK
-    explanation: str = ""            # đã hậu kiểm, CHƯA escape HTML (render lo việc escape)
+    should_alert: bool               # level == DANGEROUS and risky_actions is non-empty; BE must still check guardians, consent, ALERTLOCK
+    explanation: str = ""            # post-checked, NOT HTML-escaped (render does the escaping)
     citations: list[Citation] = Field(default_factory=list)
     followup_question: str | None = None
-    masked_text: str = ""            # input đã mask; CHỈ dùng cho SESSION# (30 phút) và donated/ khi user đồng ý; CẤM log
+    masked_text: str = ""            # masked input; ONLY for SESSION# (30 minutes) and donated/ with user consent; MUST NOT be logged
     path: Path
     model_ids: list[str] = Field(default_factory=list)
-    versions: dict[str, str] = Field(default_factory=dict)   # khoá: prompt, rules, kb, local_models, contract
-    latency_ms: dict[str, int] = Field(default_factory=dict) # theo stage, ví dụ {"ocr": 1800, "judge": 2400}
+    versions: dict[str, str] = Field(default_factory=dict)   # keys: prompt, rules, kb, local_models, contract
+    latency_ms: dict[str, int] = Field(default_factory=dict) # per stage, e.g. {"ocr": 1800, "judge": 2400}
     cost_usd_est: float = 0.0
 
     def for_cache(self) -> Verdict:
-        """Bản để lưu CACHE# (24 giờ): bỏ mọi phần có chữ lấy từ input."""
+        """Copy to store in CACHE# (24 hours): drops everything that contains text taken from the input."""
         return self.model_copy(update={
             "masked_text": "", "explanation": "", "followup_question": None,
             "signals": [s.model_copy(update={"evidence": None}) for s in self.signals],
         })
 
 
-# ---------- Đầu ra của render: AI tạo, BE gửi ----------
+# ---------- Output of render: created by AI, sent by BE ----------
 
 ButtonKind = Literal[
-    "checklist",        # BE: callback "cl"           → gửi checklist /bilua
-    "call_guardian",    # BE: callback "cg:<check_id>" → sendContact người thân
-    "alert_guardian",   # BE: callback "ag:<check_id>" → người cao tuổi tự báo người thân (mức NGHI_NGO)
+    "checklist",        # BE: callback "cl"           → sends the /bilua checklist
+    "call_guardian",    # BE: callback "cg:<check_id>" → sendContact for the guardian
+    "alert_guardian",   # BE: callback "ag:<check_id>" → the elder alerts the guardian themself (level SUSPICIOUS)
     "report_wrong",     # BE: callback "fb:wrong:<check_id>"
-    "donate",           # BE: callback "dn:<check_id>" → hỏi đồng ý rồi lưu masked_text vào donated/
+    "donate",           # BE: callback "dn:<check_id>" → asks for consent, then stores masked_text in donated/
     "answer_yes", "answer_no", "answer_unknown",   # BE: callback "fu:<check_id>:y|n|u"
-    "ack",              # BE: callback "ack:<alert_id>" (tin cảnh báo người thân)
+    "ack",              # BE: callback "ack:<alert_id>" (guardian alert message)
 ]
 
 
 class Button(_M):
     kind: ButtonKind
-    label: str                       # chữ hiển thị, AI viết
+    label: str                       # display text, written by AI
 
 
 class OutMessage(_M):
-    text_html: str                   # ĐÃ escape HTML và defang URL; BE gửi parse_mode=HTML, luôn tắt link preview
-    buttons: list[list[Button]] = Field(default_factory=list)   # danh sách hàng nút
+    text_html: str                   # HTML-escaped and URL-defanged; BE sends with parse_mode=HTML and always disables link preview
+    buttons: list[list[Button]] = Field(default_factory=list)   # list of button rows
     silent: bool = False             # True → disable_notification
 
 
 class ReplyPlan(_M):
-    messages: list[OutMessage] = Field(min_length=1)   # [0] = kết luận, sửa vào tin "⏳"; phần còn lại gửi tin mới
+    messages: list[OutMessage] = Field(min_length=1)   # [0] = the conclusion, edited into the "⏳" message; the rest are sent as new messages
 
 
 class AlertResult(_M):
     guardian_name: str
-    status: Literal["sent", "failed"]   # "sent" chỉ khi Telegram trả message_id
+    status: Literal["sent", "failed"]   # "sent" only when Telegram returned a message_id
 
 
 class RenderContext(_M):
     check_id: str
-    xung_ho: XungHo
-    has_guardian: bool               # có ít nhất 1 người thân active
-    alerts: list[AlertResult] = Field(default_factory=list)   # rỗng nếu không gửi cảnh báo
+    address_form: AddressForm
+    has_guardian: bool               # at least one active guardian
+    alerts: list[AlertResult] = Field(default_factory=list)   # empty if no alert was sent
     maintenance: bool = False        # = not flags.llm_enabled
 
 
 class GuardianAlertContext(_M):
     alert_id: str                    # ULID
-    elder_name: str                  # tên hiển thị trên Telegram, chưa escape
+    elder_name: str                  # display name on Telegram, not escaped
     share_level: Literal[1, 2, 3]
-    at: datetime                     # UTC; render hiển thị giờ Việt Nam
+    at: datetime                     # UTC; render shows Vietnam time
 
 
-# ---------- Wire: Lambda `ai` (Java worker gọi bằng InvokeFunction, ARCH §4.5) ----------
+# ---------- Wire: Lambda `ai` (the Java worker calls it with InvokeFunction, ARCH §4.5) ----------
 
 class AnalyzeRequest(_M):
     v: str = CONTRACT_VERSION
     op: Literal["analyze"] = "analyze"
-    items: list[InboundMessage] = Field(default_factory=list)   # chỉ metadata + file_id; `ai` tự tải media
-    session: SessionContext | None = None                       # job "answer": items rỗng, có session
+    items: list[InboundMessage] = Field(default_factory=list)   # metadata + file_id only; `ai` downloads the media itself
+    session: SessionContext | None = None                       # "answer" job: items empty, session present
     ctx: AnalyzeContext
 
 
@@ -240,7 +240,7 @@ class RenderGuardianAlertsRequest(_M):
 
 
 class RenderGuardianAlertsResult(_M):
-    alerts: list[OutMessage]                                    # cùng thứ tự với request.guardians
+    alerts: list[OutMessage]                                    # same order as request.guardians
 
 
 class RenderRequest(_M):
@@ -251,12 +251,12 @@ class RenderRequest(_M):
 
 
 class AiError(_M):
-    kind: Literal["retryable", "fatal"]   # retryable: BE để SQS retry; fatal: input sai/bug, BE trả câu suy giảm, không retry
-    code: str                             # ví dụ "bad_request", "unsupported_version", "telegram_download", "deadline"
+    kind: Literal["retryable", "fatal"]   # retryable: BE lets SQS retry; fatal: bad input/bug, BE sends the degraded reply, no retry
+    code: str                             # e.g. "bad_request", "unsupported_version", "telegram_download", "deadline"
 
 
 class AiResponse(_M):
-    """Mọi op trả về đúng một trong các trường kết quả, hoặc error. Không dùng union để Java codegen dễ."""
+    """Every op returns exactly one of the result fields, or error. No union, to keep the Java codegen simple."""
     v: str = CONTRACT_VERSION
     op: Literal["analyze", "render_guardian_alerts", "render"]
     analyze: AnalyzeResult | None = None
@@ -268,25 +268,25 @@ class AiResponse(_M):
     def _exactly_one(self) -> AiResponse:
         filled = [k for k in ("analyze", "render_guardian_alerts", "render", "error") if getattr(self, k) is not None]
         if len(filled) != 1 or (filled[0] != "error" and filled[0] != self.op):
-            raise ValueError(f"op={self.op} phải có đúng một kết quả cùng tên hoặc error, đang có {filled}")
+            raise ValueError(f"op={self.op} must have exactly one result with the same name, or error; got {filled}")
         return self
 
 
 WIRE_MODELS: tuple[type[BaseModel], ...] = (
     AnalyzeRequest, RenderGuardianAlertsRequest, RenderRequest, AiResponse,
-    InboundMessage,                                             # BE còn lưu dạng JSON trong BUFFER#
+    InboundMessage,                                             # BE also stores it as JSON in BUFFER#
 )
 
 
 class _JavaFriendlySchema(GenerateJsonSchema):
-    """`X | None` → chỉ X (trường không nằm trong `required`), để codegen Java ra field nullable thay vì anyOf."""
+    """`X | None` → just X (the field is not in `required`), so the Java codegen emits a nullable field instead of anyOf."""
 
     def nullable_schema(self, schema: Any) -> dict[str, Any]:
         return self.generate_inner(schema["schema"])
 
 
 def export_json_schemas(out_dir: pathlib.Path) -> list[pathlib.Path]:
-    """Gọi từ askfirst.domain.export: ghi contracts/schema/<Model>.json. CI chạy lại rồi `git diff --exit-code contracts/`."""
+    """Called from askfirst.domain.export: writes contracts/schema/<Model>.json. CI reruns it, then `git diff --exit-code contracts/`."""
     out_dir.mkdir(parents=True, exist_ok=True)
     written = []
     for model in WIRE_MODELS:
@@ -300,36 +300,36 @@ def export_json_schemas(out_dir: pathlib.Path) -> list[pathlib.Path]:
     return written
 
 
-# ---------- Interface nội bộ Python (không qua wire) ----------
+# ---------- Python-internal interfaces (not sent over the wire) ----------
 
 class KVCache(Protocol):
-    """Lambda `ai` cài bằng DynamoDB (URL#…, CACHE#…); CLI và eval dùng bản trong RAM."""
+    """Lambda `ai` implements it with DynamoDB (URL#…, CACHE#…); the CLI and eval use an in-RAM version."""
     def get(self, key: str) -> dict | None: ...
     def put(self, key: str, value: dict, ttl_s: int) -> None: ...
 
 
 class ArtifactStore(Protocol):
-    """Trả thư mục local chứa artifact (weights model, index RAG) theo config/artifacts.yaml.
-    Lambda `ai` cài bản S3: lần đầu gọi thì tải s3://…/<prefix>/ về /tmp/artifacts/<name>/<version>/ và kiểm sha256.
-    CLI và eval dùng bản đọc thẳng thư mục local."""
+    """Returns the local directory holding an artifact (model weights, RAG index) per config/artifacts.yaml.
+    Lambda `ai` implements it with S3: on first call it downloads s3://…/<prefix>/ to /tmp/artifacts/<name>/<version>/ and checks the sha256.
+    The CLI and eval read the local directory directly."""
     def path(self, name: str) -> pathlib.Path: ...
 
 
 class Pipeline(Protocol):
-    """Lambda `ai` (handler.py) gọi các hàm này theo `op`; CLI và eval gọi thẳng. Java không thấy interface này."""
+    """Lambda `ai` (handler.py) calls these methods by `op`; the CLI and eval call them directly. Java never sees this interface."""
 
     def fingerprint(self, bundle: Bundle) -> str:
-        """Khoá cache (ARCH §6.2): sha256 của text đã chuẩn hoá + mọi file_unique_id + URL từ entities."""
+        """Cache key (ARCH §6.2): sha256 of the normalised text + every file_unique_id + URLs from entities."""
         ...
 
     def analyze(self, bundle: Bundle, ctx: AnalyzeContext) -> Verdict:
-        """Không raise vì lỗi model/mạng (tự suy giảm về rules_only). Có exception nghĩa là bug → SQS retry."""
+        """Never raises on model/network errors (degrades to rules_only on its own). An exception means a bug → SQS retry."""
         ...
 
     def render(self, verdict: Verdict, ctx: RenderContext) -> ReplyPlan:
-        """Hàm thuần, không gọi mạng. Verdict lấy từ cache (explanation rỗng) thì dùng template theo mã dấu hiệu."""
+        """Pure function, no network calls. A Verdict taken from cache (empty explanation) uses a template keyed by signal code."""
         ...
 
     def render_guardian_alert(self, verdict: Verdict, ctx: GuardianAlertContext) -> OutMessage:
-        """Nội dung theo share_level (ARCH §5.5); luôn có nút "ack"."""
+        """Content depends on share_level (ARCH §5.5); always has an "ack" button."""
         ...

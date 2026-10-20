@@ -1,4 +1,4 @@
-"""Sinh contracts/schema/*.json. Chạy trong thư mục ai/: `uv run python -m askfirst.domain.export [out_dir]`."""
+"""Generates contracts/schema/*.json. Run inside ai/: `uv run python -m askfirst.domain.export [out_dir]`."""
 import pathlib
 import sys
 

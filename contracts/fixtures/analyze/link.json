@@ -39,17 +39,17 @@
         "cost_usd_est": 0.0,
         "explanation": "",
         "followup_question": null,
-        "kich_ban": "N1.4",
+        "group": "N1",
         "latency_ms": {},
-        "level": "NGHI_NGO",
+        "level": "SUSPICIOUS",
         "masked_text": "Bấm link này nhé",
         "model_ids": [],
-        "nhom": "N1",
         "outcome": "verdict",
         "path": "fast",
         "risky_actions": [
-          "bam_link"
+          "click_link"
         ],
+        "scenario": "N1.4",
         "score": 60,
         "should_alert": false,
         "signals": [],
