@@ -95,8 +95,31 @@ Việc A dùng định dạng eval ở `docs/implementation-plan.md` §3.8 (`eva
 
 ---
 
+## Mốc và ghi kết quả
+
+Mỗi việc có **hai mốc**: (1) làm xong dữ liệu/script, (2) đo và ghi kết quả. Mốc (2) phụ thuộc việc khác nên không thể sớm hơn mốc phụ thuộc. Hạn dưới là theo lịch trong plan, chưa phải cam kết của người làm.
+
+| Việc | Mốc 1: xong dữ liệu / script | Mốc 2: đo và ghi kết quả | Mốc 2 chờ | File kết quả |
+|---|---|---|---|---|
+| A (#90) | 30/10/2026 (cuối W2) | sau khi rules engine AI-23 (#52) merge (W3, 02–08/11) | #52 | `docs/results/otp-rules.md` |
+| B (#91) | 06/11/2026 (cuối W3) | sau khi `mask.py` của AI-22 (#41) merge (W2–W3) | #41 | `docs/results/mask-pii.md` |
+| C (#92) | 06/11/2026 (cuối W3) | sau khi template lời giải thích AI-06 (#55) merge (W3) | #55 | `docs/results/readability.md` |
+
+**Hệ quả:** trước cuối W1 (23/10) chưa có số đo nào của 3 việc này, vì chưa có rules engine, mask hay template để đo. Quyết định nào cần số đo của chúng phải đợi mốc 2. Mốc 1 chỉ cho biết đã đủ dữ liệu (số lượng, phân bố loại), không cho biết hệ thống đúng hay sai.
+
+**Mỗi file kết quả (`docs/results/*.md`) phải có:**
+1. **Kết luận 1–3 dòng** và **đề xuất lựa chọn** (giữ luật như cũ / sửa luật thế nào / đổi ngưỡng…), kèm việc nào chờ quyết định.
+2. **Cách chạy lại:** lệnh, commit hash của code và của bộ dữ liệu, ngày chạy, Python version, hệ điều hành.
+3. **Bảng số đo:** mỗi chỉ số ghi dạng `x/n` (ví dụ `3/100`) kèm khoảng tin cậy Wilson 95%. Không chỉ ghi phần trăm, vì tập nhỏ nên phần trăm đơn lẻ dễ gây hiểu nhầm.
+4. **Ví dụ lỗi:** các mẫu bị sai (đã anonymize, không có PII thật), tối đa 10 mẫu mỗi loại lỗi.
+5. **Chưa kiểm / hạn chế:** ghi "not verified" cho mọi thứ chưa đo. Không viết "đã kiểm" nếu không có lệnh chạy chứng minh.
+
+File kết quả đi cùng PR đo (hoặc PR riêng ngay sau). Chưa có kết quả thì không tạo file rỗng.
+
+---
+
 ## Cách làm việc
 
 - AI1 kèm khoảng 30 phút mỗi ngày (theo plan §5): cứ hỏi trong issue hoặc nhắn trực tiếp.
-- Mỗi việc một PR nhỏ, commit theo conventional commits (`feat(eval): …`), cập nhật `CHANGELOG.md`.
+- Mỗi việc một PR nhỏ cho mốc 1 và một PR cho mốc 2 (kết quả), commit theo conventional commits (`feat(eval): …`), cập nhật `CHANGELOG.md`.
 - Việc nào có chỗ plan chưa rõ thì ghi vào issue, không tự đoán.
