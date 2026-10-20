@@ -33,8 +33,8 @@ Việc A dùng định dạng eval ở `docs/implementation-plan.md` §3.8 (`eva
 2. Kẻ gian chèn đúng câu "không cung cấp mã cho bất kỳ ai" vào tin lừa để kích `R_OTP_GENUINE` và hạ điểm.
 
 **Việc cần làm**
-1. Viết **≥ 100 tin lành tính**: SMS OTP và thông báo biến động số dư, theo mẫu công khai của các ngân hàng lớn (xem trang hỗ trợ/cảnh báo của chính ngân hàng). Đa dạng ngân hàng, đa dạng cách diễn đạt. Nhãn: `split="benign_suspicious"`, `is_scam=false`, `max_level="CHUA_CHAC"`.
-2. Viết **≥ 100 tin lừa xin OTP**, viết lại từ cảnh báo chính thức, có `source_url`. Nhãn: `split="real_scam"`, `is_scam=true`, `nhom="N1"`, `kich_ban="N1.1"`, `min_level="NGHI_NGO"`, `risky_actions=["cung_cap_otp"]`.
+1. Viết **≥ 100 tin lành tính**: SMS OTP và thông báo biến động số dư, theo mẫu công khai của các ngân hàng lớn (xem trang hỗ trợ/cảnh báo của chính ngân hàng). Đa dạng ngân hàng, đa dạng cách diễn đạt. Nhãn: `split="benign_suspicious"`, `is_scam=false`, `max_level="UNSURE"`.
+2. Viết **≥ 100 tin lừa xin OTP**, viết lại từ cảnh báo chính thức, có `source_url`. Nhãn: `split="real_scam"`, `is_scam=true`, `group="N1"`, `scenario="N1.1"`, `min_level="SUSPICIOUS"`, `risky_actions=["share_otp"]`.
 3. Trong 100 tin lừa, **≥ 20 tin có câu phủ định giả**, gồm 2 kiểu: chèn câu "không cung cấp mã cho bất kỳ ai" (đánh lừa `R_OTP_GENUINE`) và kiểu trấn an "đừng lo, không sao đâu, bác cứ đọc mã OTP". Gắn `"notes":"neg-trap"` để lọc sau.
 4. Chữ trong tin dùng mã OTP bịa dạng số thường (`482913`). Không tự viết `[OTP_1]`: bước mask của pipeline sẽ đổi giúp (ARCH §9.2 nói `mask` chạy trước `signals`, nên luật so khớp trên token).
 5. File: `eval/datasets/otp_pairs.jsonl`. `id` theo dạng `otp-b-001` (benign), `otp-s-001` (scam).
