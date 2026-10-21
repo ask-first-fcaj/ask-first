@@ -180,7 +180,7 @@ Dùng khi tin nhắn **lừa đảo hoặc đáng ngờ rõ ràng** nhưng khôn
 
 ## 10. Gán thử 10 mẫu (điều kiện xong)
 
-1. AI2 chọn 10 mẫu **mới** (không dùng mẫu minh họa ở trên): 1–2 mẫu N0, ít nhất 5 mẫu N1–N6 khác nhau, **ít nhất 3 mẫu biên** (dễ nhầm). Lưu ở `eval/labeling_trial/samples.md`.
+1. AI2 chọn 10 mẫu **mới** (không dùng mẫu minh họa ở trên): 1–2 mẫu N0, ít nhất 5 mẫu N1–N6 khác nhau, **ít nhất 3 mẫu biên** (dễ nhầm). Đề bài lưu ở `eval/labeling_trial/samples.md`, đáp án và phân tích lưu riêng ở `eval/labeling_trial/answer_key.md`.
 2. 4 người gán **độc lập**, không bàn trước, ghi vào sheet: `mẫu | nhãn | ghi chú`.
 3. Một mẫu tính là **đồng ý** khi cả 4 người ra cùng nhãn. Cần **≥ 8/10** mẫu đồng ý.
 4. Mẫu lệch: sửa guide ở đúng chỗ gây lệch, rồi gán lại bằng **10 mẫu mới**. Không sửa nhãn cho khớp.
@@ -195,7 +195,7 @@ Dùng khi tin nhắn **lừa đảo hoặc đáng ngờ rõ ràng** nhưng khôn
 - [x] Chốt định nghĩa N6 (tống tiền ảnh nhạy cảm + deepfake mượn tiền).
 - [x] Chốt quy tắc phân biệt N5 và N1 theo ngữ cảnh bạn bè/tình cảm.
 - [x] Chốt xử lý tài khoản Zalo bị chiếm quyền mượn tiền (gán vào `OTHER`).
-- [x] Kiểm chứng 100% nguồn cảnh báo chính thức từ Bộ Công an và Học viện An ninh.
-- [x] AI2 chọn 10 mẫu gán thử ném vào `eval/labeling_trial/samples.md`.
+- [x] Trích dẫn nguồn cảnh báo chính thức từ Bộ Công an và Học viện An ninh cho các mẫu lừa đảo.
+- [x] AI2 chuẩn bị 10 mẫu gán thử trong `eval/labeling_trial/samples.md` (tách đáp án sang `answer_key.md`).
 - [ ] 4 người gán thử đạt kết quả đồng ý ≥ 8/10, điền bảng mục 10.
 - [ ] Tạo PR và nhờ AI1 duyệt merge.
