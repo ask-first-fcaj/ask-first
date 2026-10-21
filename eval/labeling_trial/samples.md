@@ -5,7 +5,7 @@ Tài liệu dùng cho 4 người trong team (AI1, AI2, BE1, BE2) gán thử đ�
 
 > **Hướng dẫn cho người gán:**
 > 1. Đọc kỹ file `eval/LABELING.md` trước khi bắt đầu.
-> 2. Đọc từng mẫu tin nhắn ở **Phần 1** và ghi nhãn (`N0` đến `N6`, hoặc `KHAC`) vào sheet riêng của mình.
+> 2. Đọc từng mẫu tin nhắn ở **Phần 1** và ghi nhãn (`N0` đến `N6`, hoặc `OTHER`) vào sheet riêng của mình.
 > 3. Các mẫu đã được xáo trộn ngẫu nhiên. Mỗi mẫu lừa đảo đều đính kèm link bài báo cảnh báo chính thức từ Bộ Công an / Báo chí để kiểm chứng thực tế.
 > 4. Không bàn bạc trước với nhau.
 > 5. Sau khi 4 người gán xong, mở **Phần 2 (Đáp án chuẩn & Phân tích)** để đối chiếu kết quả.
@@ -106,7 +106,7 @@ Chao ban, ben minh dang can tuyen 5 ban nu xem video TikTok tai nha, luong 300k 
 | **02** | **N5** | **Mẫu biên 1** (Tình cảm vs Hải quan) | Dù có tình tiết đóng phí Hải quan sân bay, nhưng tin nhắn có bối cảnh tình cảm yêu đương ("em yêu", "David", chuẩn bị cưới, bạn gửi quà). Áp dụng Mục 6 và **Quy tắc 4** -> **N5**. | Công an Lào Cai triệt phá: https://www.bocongan.gov.vn/bai-viet/cong-an-xa-bat-xat-kip-thoi-ngan-chan-vu-lua-dao-qua-tang-quoc-te-giup-nguoi-dan-tranh-mat-140-trieu-dong-1783613735 |
 | **03** | **N0** | Lành tính thường | Tin nhắn shipper thật: không yêu cầu bấm link, không đòi OTP/mật khẩu, không yêu cầu chuyển tiền. Khớp Mục 1. | Cổng thông tin giao nhận SPX Express: https://spx.vn |
 | **04** | **N4** | Trúng thưởng / Tri ân | Thông báo trúng điện thoại iPhone giá trị lớn từ chương trình tri ân, nhưng bắt đóng 850k phí bảo hiểm vận chuyển trước. Khớp Mục 5. | Công an Thanh Hóa triệt phá: https://bocongan.gov.vn/bai-viet/thanh-hoa-triet-xoa-o-nhom-lua-dao-chiem-doat-tai-san-bang-hinh-thuc-mua-hang-boc-tham-trung-thuong-d22-t45630 |
-| **05** | **KHAC** | **Mẫu biên 2** (Hack nick vs N6) | Nick bạn thân bị hack/chiếm quyền nhắn tin vay tiền bằng chữ thông thường. Không có video Deepfake (khác N6), không mạo danh tổ chức (khác N1, N2). Khớp Mục 8 và **Quy tắc 6** -> **KHAC**. | Công an cảnh báo: https://cafef.vn/cong-an-canh-bao-chieu-chiem-quyen-tai-khoan-zalo-ma-nguoi-dan-can-canh-giac-188260521103656632.chn |
+| **05** | **OTHER** | **Mẫu biên 2** (Hack nick vs N6) | Nick bạn thân bị hack/chiếm quyền nhắn tin vay tiền bằng chữ thông thường. Không có video Deepfake (khác N6), không mạo danh tổ chức (khác N1, N2). Khớp Mục 8 và **Quy tắc 6** -> **OTHER**. | Công an cảnh báo: https://cafef.vn/cong-an-canh-bao-chieu-chiem-quyen-tai-khoan-zalo-ma-nguoi-dan-can-canh-giac-188260521103656632.chn |
 | **06** | **N1** | Mạo danh nhà nước | Giả danh công an phường, lấy cớ sáp nhập đơn vị hành chính để dụ tải app VNeID chứa mã độc qua link lạ `dichvucong-vneid[.]cc`. Khớp Mục 2. | Bộ Công an cảnh báo: https://bocongan.gov.vn/bai-viet/canh-bao-thu-doan-lua-dao-cai-ung-dung-vneid-gia-mao-d22-t45880 |
 | **07** | **N6** | Tống tiền / Deepfake | Có cuộc gọi video ngắn Deepfake nhại mặt con trai, kết hợp tin nhắn khẩn cấp mượn tiền nộp phạt/chuộc người. Khớp Mục 7 và **Quy tắc 3** -> **N6**. | Học viện Kỹ thuật & Công nghệ An ninh - Bộ Công an: https://hvktcnan.bocongan.gov.vn/TrangChu/tin-tuc/1931-phong-chong-hoat-dong-loi-dung-cong-nghe-deepfake-lua-dao-tren-khong-gian-mang.html |
 | **08** | **N0** | Lành tính dễ nhầm | SMS trừ tiền dịch vụ ngân hàng thật: có nhắc ngân hàng và số tiền trừ, nhưng số hotline chính thống (`1900545413`), không có link lạ, không bảo giữ bí mật. Áp dụng Mục 1 và **Quy tắc 5** -> **N0**. | Cổng thông tin & biểu phí Vietcombank: https://www.vietcombank.com.vn |
@@ -125,7 +125,7 @@ Chao ban, ben minh dang can tuyen 5 ban nu xem video TikTok tai nha, luong 300k 
 | 02 | **N5** | *Biên: Tình cảm vs Hải quan* | | | | | | |
 | 03 | **N0** | Shipper bưu chính thật | | | | | | |
 | 04 | **N4** | Trúng thưởng đóng phí ship | | | | | | |
-| 05 | **KHAC** | *Biên: Hack nick vay tiền bằng chữ* | | | | | | |
+| 05 | **OTHER** | *Biên: Hack nick vay tiền bằng chữ* | | | | | | |
 | 06 | **N1** | Giả công an / VNeID | | | | | | |
 | 07 | **N6** | Deepfake video mượn tiền | | | | | | |
 | 08 | **N0** | *Biên: SMS ngân hàng thật* | | | | | | |

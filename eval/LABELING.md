@@ -1,9 +1,9 @@
 # Hướng dẫn gán nhãn (SH-02)
 
 Mục đích: 4 người gán cùng 1 tin nhắn thì ra **cùng 1 nhãn**. Dùng cho bộ eval (SH-03) và KB (AI-25).
-Nhãn lấy theo taxonomy `Nhom = N0..N6 | KHAC` (`docs/implementation-plan.md` §3).
+Nhãn lấy theo taxonomy `Group = N0..N6 | OTHER` (`docs/implementation-plan.md` §3).
 
-> **Trạng thái:** bản hoàn thiện tiêu chí (đã chốt N6 và nhóm KHAC). Sẵn sàng cho 4 người gán thử 10 mẫu (SH-02).
+> **Trạng thái:** bản hoàn thiện tiêu chí (đã chốt N6 và nhóm OTHER). Sẵn sàng cho 4 người gán thử 10 mẫu (SH-02).
 > **Về nguồn:** toàn bộ mẫu lừa đảo ở dưới được **viết lại bằng lời team** từ các bài báo cảnh báo chính thức của Bộ Công an và Học viện An ninh, kèm URL truy cập trực tiếp. Không dùng LLM sinh mẫu. Số điện thoại, số tài khoản, tên cá nhân đều đã bịa/ẩn danh; tên miền giả viết dạng `abc[.]xyz` để defang không bấm được.
 > Mẫu N0 là mẫu tự dựng theo định dạng tin nhắn SMS thật, không cần URL nguồn.
 
@@ -11,7 +11,7 @@ Nhãn lấy theo taxonomy `Nhom = N0..N6 | KHAC` (`docs/implementation-plan.md` 
 
 ## 0. Nguyên tắc chung
 
-1. **1 mẫu = đúng 1 nhãn** chính: N0–N6, hoặc `KHAC` (mục 8).
+1. **1 mẫu = đúng 1 nhãn** chính: N0–N6, hoặc `OTHER` (mục 8).
 2. Gán theo **ý đồ của tin nhắn**, không theo việc có link hay không.
 3. Câu hỏi thứ tự khi đọc 1 tin:
    1. Có đòi tiền, mã OTP, mật khẩu, cài app, bấm link, hay giữ bí mật không? **Không** và tin đúng là thông báo thật → nghĩ tới **N0**.
@@ -156,12 +156,12 @@ Nguồn:
 > `Day la Cong an. Ban co lenh bat vi lien quan duong day rua tien. De chung minh trong sach, chuyen tien vao tai khoan an toan va khong noi voi ai.`
 
 Lý do: có yếu tố đe dọa dồn dập và bắt nộp tiền nhưng kẻ gian **mạo danh công an/viện kiểm sát**, không dùng hình ảnh nhạy cảm hay công nghệ deepfake giả người quen → Nhãn đúng là **N1**.
-## 8. KHAC: không thuộc N0–N6
+## 8. OTHER: không thuộc N0–N6
 
-Dùng khi tin nhắn **lừa đảo hoặc đáng ngờ rõ ràng** nhưng không khớp với định nghĩa của 7 nhóm trên. Tuyệt đối không dùng `KHAC` để "né" các trường hợp phân vân giữa 2 nhóm (trường hợp đó phải dùng quy tắc ở mục 9).
+Dùng khi tin nhắn **lừa đảo hoặc đáng ngờ rõ ràng** nhưng không khớp với định nghĩa của 7 nhóm trên. Tuyệt đối không dùng `OTHER` để "né" các trường hợp phân vân giữa 2 nhóm (trường hợp đó phải dùng quy tắc ở mục 9).
 
-**Trường hợp điển hình thuộc nhãn KHAC (Đã chốt):**
-- **Chiếm quyền tài khoản MXH (hack Zalo/Facebook) nhắn tin vay tiền bằng văn bản thông thường:** Kẻ gian chiếm quyền nick Zalo/Facebook của người quen rồi gửi tin nhắn văn bản xin mượn tiền ("Bạn còn tiền không cho mình vay 5 triệu mai trả"). Ca này **không sử dụng Deepfake gọi video** (khác N6) và **không mạo danh tổ chức/ngân hàng** → **Gán nhãn KHAC**.
+**Trường hợp điển hình thuộc nhãn OTHER (Đã chốt):**
+- **Chiếm quyền tài khoản MXH (hack Zalo/Facebook) nhắn tin vay tiền bằng văn bản thông thường:** Kẻ gian chiếm quyền nick Zalo/Facebook của người quen rồi gửi tin nhắn văn bản xin mượn tiền ("Bạn còn tiền không cho mình vay 5 triệu mai trả"). Ca này **không sử dụng Deepfake gọi video** (khác N6) và **không mạo danh tổ chức/ngân hàng** → **Gán nhãn OTHER**.
 - Nguồn cảnh báo: https://cafef.vn/cong-an-canh-bao-chieu-chiem-quyen-tai-khoan-zalo-ma-nguoi-dan-can-canh-giac-188260521103656632.chn (Công an cảnh báo chiêu chiếm quyền tài khoản Zalo nhắn tin vay tiền).
 
 ---
@@ -173,7 +173,7 @@ Dùng khi tin nhắn **lừa đảo hoặc đáng ngờ rõ ràng** nhưng khôn
 3. **Tin có ảnh/video nhạy cảm kèm đe dọa hoặc dùng công nghệ Deepfake giọng/mặt → N6**, kể cả khi kẻ đe dọa tự xưng là ai.
 4. **Mẫu có ngữ cảnh tình cảm, tâm sự làm quen hoặc quà từ bạn mạng xã hội gửi về → N5**, kể cả khi bước hiện tại có nhắc đến cơ quan hải quan/bưu điện.
 5. **Tin thật, không đòi hỏi hành động nguy hiểm, không link lạ, không bảo giữ bí mật → N0**, kể cả khi có xuất hiện từ khóa "OTP", "ngân hàng", "tuyển dụng".
-6. **Hack tài khoản chat hỏi vay tiền bằng chữ (không video call deepfake) → KHAC.**
+6. **Hack tài khoản chat hỏi vay tiền bằng chữ (không video call deepfake) → OTHER.**
 7. Vẫn phân vân sau các bước trên: chọn nhóm **nguy hiểm hơn** theo thứ tự N6 > N1 > N2 > N3 > N4 > N5, ghi vào cột "ghi chú" của sheet gán thử, và báo AI2 để cập nhật guide.
 
 ---
@@ -194,7 +194,7 @@ Dùng khi tin nhắn **lừa đảo hoặc đáng ngờ rõ ràng** nhưng khôn
 
 - [x] Chốt định nghĩa N6 (tống tiền ảnh nhạy cảm + deepfake mượn tiền).
 - [x] Chốt quy tắc phân biệt N5 và N1 theo ngữ cảnh bạn bè/tình cảm.
-- [x] Chốt xử lý tài khoản Zalo bị chiếm quyền mượn tiền (gán vào `KHAC`).
+- [x] Chốt xử lý tài khoản Zalo bị chiếm quyền mượn tiền (gán vào `OTHER`).
 - [x] Kiểm chứng 100% nguồn cảnh báo chính thức từ Bộ Công an và Học viện An ninh.
 - [x] AI2 chọn 10 mẫu gán thử ném vào `eval/labeling_trial/samples.md`.
 - [ ] 4 người gán thử đạt kết quả đồng ý ≥ 8/10, điền bảng mục 10.
