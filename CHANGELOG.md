@@ -14,6 +14,7 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 
 ### Added
 - Bộ ảnh OCR `ocr_images` phần 026–050 (AI-20, issue #17): `eval/assets/ocr/026.png`–`050.png` và nhãn gõ tay `eval/datasets/ocr_images.jsonl` (`ocr_text`, `urls`, `phones`; vùng bị làm mờ ghi `[mờ]`).
+- Bộ ảnh OCR `ocr_images` phần 001–025 (AI-20, issue #17): `eval/assets/ocr/001.png`–`025.png` và nhãn gõ tay trong `eval/datasets/ocr_images.jsonl`, cùng quy ước với phần 026–050 (vùng làm mờ ghi `[mờ]`, ghép dòng theo từng đoạn tin, SĐT ghi số liền).
 - `docs/features.md`: tổng quan tính năng (FR1–FR15, FR17) cho cả team: người dùng làm gì, bot phải làm gì, xong khi nào, task nào, thứ tự làm (chuỗi mốc, Blocked by, Ưu tiên P0/P1/P2).
 - Board "Ask First: Sprint Board": issue cha cho từng FR và 3 nhóm việc (label `type: feature`), issue cho toàn bộ task MVP W1–W6 gắn làm sub-issue, quan hệ "Blocked by" theo cột "Cần trước" của PLAN, field **Ưu tiên**, view 🧩 Features, 👤 Việc của tôi, 🗓 Roadmap; Sprint Kanban và Danh Sách Nhiệm Vụ ẩn issue feature.
 - Khung repo: `docs/`, `backend/`, `ai/`, `contracts/`, `infra/`.
