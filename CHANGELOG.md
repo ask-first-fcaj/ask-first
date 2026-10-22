@@ -13,6 +13,7 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - Cắt scope MVP còn text + ảnh (OCR) + người thân + RAG cơ bản; **hoãn** voice/ASR, VLM fallback, multi-turn, Phase 2, Mini App; **bỏ pilot**, thay bằng test nội bộ ở W6.
 
 ### Added
+- `docs/decisions/ADR-003-ocr-rapidocr.md`: chọn RapidOCR + sắp dòng theo cột + sửa đầu URL cho OCR local, **có điều kiện** (kiểm độc lập ≥ 90% chép đúng URL, đo Lambda ở AI-26); chưa qua Gate G2 (AI-20, issue #17).
 - `eval/ocr_benchmark.py` và `docs/results/ocr-spike.md`: script so 3 stack OCR local (RapidOCR, Tesseract, PaddleOCR; 10 cấu hình) trên 50 ảnh `ocr_images` theo CER, đúng dấu, chép đúng URL, độ trễ (AI-20); RapidOCR + sắp dòng theo cột là ứng viên cho ADR-003, chưa kiểm tra độc lập.
 - `eval/assets/ocr/` và `eval/datasets/ocr_images.jsonl`: bộ 50 ảnh OCR (oi-001–050) và nhãn.
 - `eval/test_ocr_postprocess.py`: test cho `repair_urls` (nối URL xuống dòng, dấu `.` thừa, `ttps:`) và `repair_phones` (`O`→`0` trong SĐT), gồm ca âm; các luật viết sau khi thấy lỗi, chưa kiểm tra độc lập.
