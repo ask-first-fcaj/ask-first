@@ -26,8 +26,8 @@ Pipeline giữ cả URL gốc lẫn URL đã sửa (ARCH yêu cầu).
 |---|---|---|---|---|---|
 | RapidOCR + cột | 27/32 (84%) | 31/32 (97%) | 12.9% | 3.05 s | ~105 MB |
 | PaddleOCR + cột | 28/32 (88%) | 31/32 (97%) | 12.7% | 60.09 s | ~520 MB |
-| Tesseract `vie` | 10/32 | không đo | | 0.70 s | |
-| Paddle det + VietOCR | 9/32 | 18/32 | | 26.04 s | |
+| Tesseract `vie` | 10/32 (31%) | 10/32 | 39.2% | 0.70 s | |
+| Paddle det + VietOCR | 9/32 (28%) | 9/32 | 34.8% | 26.04 s | |
 
 - RapidOCR và Paddle hòa về độ chính xác (khoảng tin cậy 84–99% cho cả hai), nhưng RapidOCR nhẹ hơn khoảng 5 lần và nhanh hơn nhiều, hợp giới hạn image ≤ 2 GB.
 - Tesseract và Paddle + VietOCR chép URL quá thấp.
