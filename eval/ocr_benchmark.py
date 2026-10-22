@@ -312,9 +312,21 @@ def url_host_ok(url: str, hyp: str) -> bool:
 
 
 def repair_urls(text: str) -> str:
-    """Sửa 2 lỗi đầu URL thấy ở RapidOCR/Paddle: mất chữ `h` (`ttps://`) và thừa dấu chấm sau `://`."""
+    """Sửa 3 lỗi ở URL thấy ở RapidOCR/Paddle: mất chữ `h` (`ttps://`), thừa dấu chấm sau `://`, và URL bị xuống dòng ngay sau `://`."""
     text = re.sub(r"(?<![A-Za-z])ttp(s?):", r"http\1:", text)
-    return re.sub(r"(https?:\s*/\s*/)\s*\.+", r"\1", text)
+    text = re.sub(r"(https?:\s*/\s*/)\s*\.+", r"\1", text)
+    return re.sub(r"(https?://)\s+(?=[A-Za-z0-9])", r"\1", text)
+
+
+_PHONE_LIKE = re.compile(r"(?<![\w.])(\+?84|0|O)[\dOIl .\-]{8,13}(?!\w)")
+
+
+def repair_phones(text: str) -> str:
+    """Sửa nhầm `O`→`0`, `I`/`l`→`1` chỉ bên trong chuỗi giống SĐT (bắt đầu bằng 0/O/+84, có ≥ 8 chữ số thật); chữ thường không bị đụng."""
+    def fix(m: re.Match) -> str:
+        s = m.group(0)
+        return s.translate(str.maketrans("OIl", "011")) if sum(c.isdigit() for c in s) >= 8 else s
+    return _PHONE_LIKE.sub(fix, text)
 
 
 def near_miss(url: str, hyp: str) -> str:
@@ -330,7 +342,7 @@ def score(rows: list[dict], raw: dict[str, dict]) -> dict:
     """raw[id] = {"text": ..., "sec": ...}. Trả về số liệu tổng hợp + chi tiết từng ảnh."""
     per, edits, ref_len, edits_nd, ref_len_nd = [], 0, 0, 0, 0
     dia_k = dia_n = 0
-    url_k = url_n = url_host_k = url_fix_k = ph_k = ph_n = 0
+    url_k = url_n = url_host_k = url_fix_k = ph_k = ph_fix_k = ph_n = 0
     url_fail, sec = [], []
     for row in rows:
         rid = row["id"]
@@ -354,6 +366,7 @@ def score(rows: list[dict], raw: dict[str, dict]) -> dict:
         for p in row["label"]["phones"]:
             ph_n += 1
             ph_k += phone_ok(p, hyp)
+            ph_fix_k += phone_ok(p, repair_phones(hyp))
         sec.append(raw[rid]["sec"])
         per.append({"id": rid, "cer": e / max(len(ref), 1), "blur": BLUR in row["label"]["ocr_text"],
                     "edits": e, "ref_len": len(ref)})
@@ -371,7 +384,7 @@ def score(rows: list[dict], raw: dict[str, dict]) -> dict:
         "cer_nodia": edits_nd / ref_len_nd,
         "cer_clean": sum(x["edits"] for x in clean) / max(sum(x["ref_len"] for x in clean), 1),
         "n_clean": len(clean), "cer_median": statistics.median(x["cer"] for x in per),
-        "dia": (dia_k, dia_n), "url": (url_k, url_n), "url_host": (url_host_k, url_n), "url_fix": (url_fix_k, url_n), "phone": (ph_k, ph_n),
+        "dia": (dia_k, dia_n), "url": (url_k, url_n), "url_host": (url_host_k, url_n), "url_fix": (url_fix_k, url_n), "phone": (ph_k, ph_n), "phone_fix": (ph_fix_k, ph_n),
         "p50": statistics.median(sec), "p95": p95, "mean": statistics.mean(sec),
         "per": per, "url_fail": url_fail,
     }
@@ -469,13 +482,14 @@ def adr_candidate(S: dict[str, dict]) -> list[str]:
         "- **Lý do chọn RapidOCR thay vì Paddle:** độ chính xác ngang nhau, nhưng RapidOCR nhẹ hơn khoảng 5 lần (khoảng 105 MB so với 520 MB trong `.venv`) và nhanh hơn trên máy dev. Image `ai` bị giới hạn ≤ 2 GB (BE-06).",
         "- **Không chọn:** Tesseract và Paddle + VietOCR (chép đúng URL thấp, xem bảng); phóng ×2 và bộ đọc Latinh (không cải thiện, thậm chí tệ hơn).", "",
         "**Rủi ro đã biết:**", "",
-        "- Quy tắc sắp cột và regex đều viết sau khi xem lỗi trên chính bộ 50 ảnh này, nên số đo có thể lạc quan.",
+        "- Quy tắc sắp cột, sửa URL (`repair_urls`) và sửa SĐT (`repair_phones`) đều **viết sau khi thấy lỗi, chưa kiểm tra độc lập**; số đo có thể lạc quan. Riêng `repair_phones` viết sau khi thấy lỗi `0`↔`O` ở ảnh ngoài bộ 50 (`eval/support/053.png`), nên không đổi số nào trong bảng này.",
         "- Mức đạt phụ thuộc regex: nếu không sửa đầu URL thì RapidOCR + cột chỉ đạt " + pct(*c["url"]) + ", chưa qua 90%.",
         "- Mẫu nhỏ (" + str(c["url"][1]) + " URL), khoảng tin cậy rộng.", "",
         "**Điều kiện trước khi chốt thật (chưa làm mục nào):**", "",
         "1. **Kiểm tra độc lập:** thêm 10–20 ảnh mới, không dùng để chỉnh regex hay quy tắc cột, chạy đúng một lần với ngưỡng chép đúng URL ≥ 90%.",
         "2. **AI1 xác nhận quy ước URL bị mờ** (`oi-015`). Nếu không đồng ý thì số URL đổi (xem mục 6).",
-        "3. **Đo trên Lambda thật** (BE-06, AI-26): cold start, RAM đỉnh, p95 so với mục tiêu 3 giây ở 3–4 GB. Số trong báo cáo đo trên máy dev 18 luồng, không so trực tiếp được.",
+        "3. **Đo trên Lambda thật** (BE-06, AI-26): cold start, RAM đỉnh, p95 so với mục tiêu 3 giây ở 3–4 GB. Số trong báo cáo đo trên máy dev 18 luồng, không so trực tiếp được. "
+        "Đã thử chạy trong Docker giả lập Lambda (3008 MB RAM, khoảng 1,7 vCPU, 2 lõi) với RapidOCR + sắp dòng theo cột: chạy được, khoảng 2 giây mỗi ảnh khi đặt số luồng onnxruntime bằng số lõi, nhưng khoảng 10 giây nếu để onnxruntime tự chọn luồng. Chỉ thử 4 ảnh, chưa tính p95, chưa phải Lambda thật.",
         "4. **Đưa quy tắc cột và regex vào code pipeline** kèm test (AI-26), giữ cả URL gốc và URL đã sửa như ARCH yêu cầu.", "",
         "**Nếu kiểm tra độc lập dưới 90%:** không coi kết quả hiện tại là đủ, phải xem lại (tiền xử lý ảnh, hoặc VLM fallback AI-27 đang hoãn).", "",
     ]
@@ -502,10 +516,10 @@ def write_report(path: Path, S: dict[str, dict], meta: dict, rows: list[dict], r
           f"| Phiên bản | {meta['libs']} |", "",
           "## 3. Bảng số đo", "",
           "Mọi tỷ lệ ghi dạng `x/n` kèm khoảng tin cậy Wilson 95%. CER là tổng số ký tự sai chia tổng số ký tự đáp án (gộp mọi ảnh), khoảng tin cậy lấy bằng bootstrap 2000 lần theo ảnh.", "",
-          "| Engine | Chép đúng URL, **nghiêm ngặt** (mục tiêu ≥ 90%) | Sau sửa đầu URL bằng regex | Phụ: đúng tên miền + đường dẫn (bỏ `https://`) | Từ có dấu đọc đúng | SĐT đúng | CER | CER bỏ dấu |", "|---|---|---|---|---|---|---|---|"]
+          "| Engine | Chép đúng URL, **nghiêm ngặt** (mục tiêu ≥ 90%) | Sau sửa đầu URL bằng regex | Phụ: đúng tên miền + đường dẫn (bỏ `https://`) | Từ có dấu đọc đúng | SĐT đúng | SĐT sau sửa `0`/`O` | CER | CER bỏ dấu |", "|---|---|---|---|---|---|---|---|---|"]
     for e in engines:
         s = S[e]
-        L.append(f"| {ENGINE_LABEL[e]} | {pct(*s['url'])} | {pct(*s['url_fix'])} | {pct(*s['url_host'])} | {pct(*s['dia'])} | {pct(*s['phone'])} | "
+        L.append(f"| {ENGINE_LABEL[e]} | {pct(*s['url'])} | {pct(*s['url_fix'])} | {pct(*s['url_host'])} | {pct(*s['dia'])} | {pct(*s['phone'])} | {pct(*s['phone_fix'])} | "
                  f"{100*s['cer']:.1f}% (CI {100*s['cer_ci'][0]:.1f}–{100*s['cer_ci'][1]:.1f}%) | {100*s['cer_nodia']:.1f}% |")
     L += ["", "CER trên riêng các ảnh **không có vùng `[mờ]`**, và CER trung vị từng ảnh:", "",
           f"| Engine | CER {S[engines[0]]['n_clean']} ảnh không `[mờ]` | CER trung vị theo ảnh |", "|---|---|---|"]

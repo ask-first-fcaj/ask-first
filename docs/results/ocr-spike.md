@@ -1,6 +1,6 @@
 # Kết quả Spike OCR (AI-20, Gate G2)
 
-> Sinh tự động bởi `eval/ocr_benchmark.py`. Ngày chạy: 2026-10-21. Người chạy: AI2. **Bản nháp, AI1 chưa duyệt.**
+> Sinh tự động bởi `eval/ocr_benchmark.py`. Ngày chạy: 2026-10-22. Người chạy: AI2. **Bản nháp, AI1 chưa duyệt.**
 
 ## 1. Kết luận và đề xuất
 
@@ -23,7 +23,7 @@ Việc chờ quyết định: AI1 cùng AI2 chốt ADR-003. Đọc kỹ mục 6 
 
 **Rủi ro đã biết:**
 
-- Quy tắc sắp cột và regex đều viết sau khi xem lỗi trên chính bộ 50 ảnh này, nên số đo có thể lạc quan.
+- Quy tắc sắp cột, sửa URL (`repair_urls`) và sửa SĐT (`repair_phones`) đều **viết sau khi thấy lỗi, chưa kiểm tra độc lập**; số đo có thể lạc quan. Riêng `repair_phones` viết sau khi thấy lỗi `0`↔`O` ở ảnh ngoài bộ 50 (`eval/support/053.png`), nên không đổi số nào trong bảng này.
 - Mức đạt phụ thuộc regex: nếu không sửa đầu URL thì RapidOCR + cột chỉ đạt 27/32 (84%, CI 68–93%), chưa qua 90%.
 - Mẫu nhỏ (32 URL), khoảng tin cậy rộng.
 
@@ -31,7 +31,7 @@ Việc chờ quyết định: AI1 cùng AI2 chốt ADR-003. Đọc kỹ mục 6 
 
 1. **Kiểm tra độc lập:** thêm 10–20 ảnh mới, không dùng để chỉnh regex hay quy tắc cột, chạy đúng một lần với ngưỡng chép đúng URL ≥ 90%.
 2. **AI1 xác nhận quy ước URL bị mờ** (`oi-015`). Nếu không đồng ý thì số URL đổi (xem mục 6).
-3. **Đo trên Lambda thật** (BE-06, AI-26): cold start, RAM đỉnh, p95 so với mục tiêu 3 giây ở 3–4 GB. Số trong báo cáo đo trên máy dev 18 luồng, không so trực tiếp được.
+3. **Đo trên Lambda thật** (BE-06, AI-26): cold start, RAM đỉnh, p95 so với mục tiêu 3 giây ở 3–4 GB. Số trong báo cáo đo trên máy dev 18 luồng, không so trực tiếp được. Đã thử chạy trong Docker giả lập Lambda (3008 MB RAM, khoảng 1,7 vCPU, 2 lõi) với RapidOCR + sắp dòng theo cột: chạy được, khoảng 2 giây mỗi ảnh khi đặt số luồng onnxruntime bằng số lõi, nhưng khoảng 10 giây nếu để onnxruntime tự chọn luồng. Chỉ thử 4 ảnh, chưa tính p95, chưa phải Lambda thật.
 4. **Đưa quy tắc cột và regex vào code pipeline** kèm test (AI-26), giữ cả URL gốc và URL đã sửa như ARCH yêu cầu.
 
 **Nếu kiểm tra độc lập dưới 90%:** không coi kết quả hiện tại là đủ, phải xem lại (tiền xử lý ảnh, hoặc VLM fallback AI-27 đang hoãn).
@@ -58,18 +58,18 @@ uv pip install --python .venv/Scripts/python.exe rapidocr onnxruntime paddlepadd
 
 Mọi tỷ lệ ghi dạng `x/n` kèm khoảng tin cậy Wilson 95%. CER là tổng số ký tự sai chia tổng số ký tự đáp án (gộp mọi ảnh), khoảng tin cậy lấy bằng bootstrap 2000 lần theo ảnh.
 
-| Engine | Chép đúng URL, **nghiêm ngặt** (mục tiêu ≥ 90%) | Sau sửa đầu URL bằng regex | Phụ: đúng tên miền + đường dẫn (bỏ `https://`) | Từ có dấu đọc đúng | SĐT đúng | CER | CER bỏ dấu |
-|---|---|---|---|---|---|---|---|
-| RapidOCR (PP-OCRv6 small, ONNX) | 25/32 (78%, CI 61–89%) | 29/32 (91%, CI 76–97%) | 29/32 (91%, CI 76–97%) | 862/2327 (37%, CI 35–39%) | 16/16 (100%, CI 81–100%) | 26.8% (CI 17.9–35.8%) | 24.8% |
-| RapidOCR + sắp dòng theo cột (ảnh ghép 2 khung) | 27/32 (84%, CI 68–93%) | 31/32 (97%, CI 84–99%) | 31/32 (97%, CI 84–99%) | 862/2327 (37%, CI 35–39%) | 16/16 (100%, CI 81–100%) | 12.9% (CI 10.5–15.5%) | 10.9% |
-| RapidOCR + phóng ×2 ảnh rộng < 800 px | 24/32 (75%, CI 58–87%) | 28/32 (88%, CI 72–95%) | 28/32 (88%, CI 72–95%) | 865/2327 (37%, CI 35–39%) | 16/16 (100%, CI 81–100%) | 26.9% (CI 17.9–35.8%) | 24.9% |
-| RapidOCR rec Latinh (PP-OCRv5 mobile) | 19/32 (59%, CI 42–74%) | 21/32 (66%, CI 48–80%) | 25/32 (78%, CI 61–89%) | 697/2327 (30%, CI 28–32%) | 16/16 (100%, CI 81–100%) | 28.8% (CI 19.9–37.7%) | 22.5% |
-| RapidOCR rec Latinh + phóng ×2 | 18/32 (56%, CI 39–72%) | 20/32 (62%, CI 45–77%) | 24/32 (75%, CI 58–87%) | 698/2327 (30%, CI 28–32%) | 16/16 (100%, CI 81–100%) | 28.8% (CI 19.7–37.8%) | 22.5% |
-| Tesseract 5.4 `vie` (tessdata_fast) | 10/32 (31%, CI 18–49%) | 10/32 (31%, CI 18–49%) | 14/32 (44%, CI 28–61%) | 1667/2327 (72%, CI 70–73%) | 12/16 (75%, CI 51–90%) | 39.2% (CI 30.8–49.0%) | 38.4% |
-| Tesseract 5.4 `vie+eng` (tessdata_fast) | 15/32 (47%, CI 31–64%) | 15/32 (47%, CI 31–64%) | 16/32 (50%, CI 34–66%) | 1572/2327 (68%, CI 66–69%) | 12/16 (75%, CI 51–90%) | 39.0% (CI 30.5–48.7%) | 37.8% |
-| PaddleOCR (det + rec mặc định, PP-OCRv6 medium) | 26/32 (81%, CI 65–91%) | 29/32 (91%, CI 76–97%) | 29/32 (91%, CI 76–97%) | 866/2327 (37%, CI 35–39%) | 16/16 (100%, CI 81–100%) | 27.4% (CI 18.3–36.5%) | 25.0% |
-| PaddleOCR + sắp dòng theo cột (ảnh ghép 2 khung) | 28/32 (88%, CI 72–95%) | 31/32 (97%, CI 84–99%) | 31/32 (97%, CI 84–99%) | 866/2327 (37%, CI 35–39%) | 16/16 (100%, CI 81–100%) | 12.7% (CI 10.4–15.5%) | 10.1% |
-| Paddle det + VietOCR (vgg_transformer) | 9/32 (28%, CI 16–45%) | 9/32 (28%, CI 16–45%) | 18/32 (56%, CI 39–72%) | 1979/2327 (85%, CI 84–86%) | 12/16 (75%, CI 51–90%) | 34.8% (CI 24.2–45.3%) | 33.5% |
+| Engine | Chép đúng URL, **nghiêm ngặt** (mục tiêu ≥ 90%) | Sau sửa đầu URL bằng regex | Phụ: đúng tên miền + đường dẫn (bỏ `https://`) | Từ có dấu đọc đúng | SĐT đúng | SĐT sau sửa `0`/`O` | CER | CER bỏ dấu |
+|---|---|---|---|---|---|---|---|---|
+| RapidOCR (PP-OCRv6 small, ONNX) | 25/32 (78%, CI 61–89%) | 29/32 (91%, CI 76–97%) | 29/32 (91%, CI 76–97%) | 862/2327 (37%, CI 35–39%) | 16/16 (100%, CI 81–100%) | 16/16 (100%, CI 81–100%) | 26.8% (CI 17.9–35.8%) | 24.8% |
+| RapidOCR + sắp dòng theo cột (ảnh ghép 2 khung) | 27/32 (84%, CI 68–93%) | 31/32 (97%, CI 84–99%) | 31/32 (97%, CI 84–99%) | 862/2327 (37%, CI 35–39%) | 16/16 (100%, CI 81–100%) | 16/16 (100%, CI 81–100%) | 12.9% (CI 10.5–15.5%) | 10.9% |
+| RapidOCR + phóng ×2 ảnh rộng < 800 px | 24/32 (75%, CI 58–87%) | 28/32 (88%, CI 72–95%) | 28/32 (88%, CI 72–95%) | 865/2327 (37%, CI 35–39%) | 16/16 (100%, CI 81–100%) | 16/16 (100%, CI 81–100%) | 26.9% (CI 17.9–35.8%) | 24.9% |
+| RapidOCR rec Latinh (PP-OCRv5 mobile) | 19/32 (59%, CI 42–74%) | 21/32 (66%, CI 48–80%) | 25/32 (78%, CI 61–89%) | 697/2327 (30%, CI 28–32%) | 16/16 (100%, CI 81–100%) | 16/16 (100%, CI 81–100%) | 28.8% (CI 19.9–37.7%) | 22.5% |
+| RapidOCR rec Latinh + phóng ×2 | 18/32 (56%, CI 39–72%) | 20/32 (62%, CI 45–77%) | 24/32 (75%, CI 58–87%) | 698/2327 (30%, CI 28–32%) | 16/16 (100%, CI 81–100%) | 16/16 (100%, CI 81–100%) | 28.8% (CI 19.7–37.8%) | 22.5% |
+| Tesseract 5.4 `vie` (tessdata_fast) | 10/32 (31%, CI 18–49%) | 10/32 (31%, CI 18–49%) | 14/32 (44%, CI 28–61%) | 1667/2327 (72%, CI 70–73%) | 12/16 (75%, CI 51–90%) | 12/16 (75%, CI 51–90%) | 39.2% (CI 30.8–49.0%) | 38.4% |
+| Tesseract 5.4 `vie+eng` (tessdata_fast) | 15/32 (47%, CI 31–64%) | 15/32 (47%, CI 31–64%) | 16/32 (50%, CI 34–66%) | 1572/2327 (68%, CI 66–69%) | 12/16 (75%, CI 51–90%) | 12/16 (75%, CI 51–90%) | 39.0% (CI 30.5–48.7%) | 37.8% |
+| PaddleOCR (det + rec mặc định, PP-OCRv6 medium) | 26/32 (81%, CI 65–91%) | 29/32 (91%, CI 76–97%) | 29/32 (91%, CI 76–97%) | 866/2327 (37%, CI 35–39%) | 16/16 (100%, CI 81–100%) | 16/16 (100%, CI 81–100%) | 27.4% (CI 18.3–36.5%) | 25.0% |
+| PaddleOCR + sắp dòng theo cột (ảnh ghép 2 khung) | 28/32 (88%, CI 72–95%) | 31/32 (97%, CI 84–99%) | 31/32 (97%, CI 84–99%) | 866/2327 (37%, CI 35–39%) | 16/16 (100%, CI 81–100%) | 16/16 (100%, CI 81–100%) | 12.7% (CI 10.4–15.5%) | 10.1% |
+| Paddle det + VietOCR (vgg_transformer) | 9/32 (28%, CI 16–45%) | 9/32 (28%, CI 16–45%) | 18/32 (56%, CI 39–72%) | 1979/2327 (85%, CI 84–86%) | 12/16 (75%, CI 51–90%) | 12/16 (75%, CI 51–90%) | 34.8% (CI 24.2–45.3%) | 33.5% |
 
 CER trên riêng các ảnh **không có vùng `[mờ]`**, và CER trung vị từng ảnh:
 
