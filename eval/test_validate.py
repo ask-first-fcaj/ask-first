@@ -148,9 +148,24 @@ def test_counts_are_warnings_per_target(tmp_path):
     rep = run(tmp_path, SCAM, BENIGN)
     assert rep.errors == []
     assert any("real_scam: 1/40" in w for w in rep.warnings)
-    assert any("AI1: 2/25" in w for w in rep.warnings)
-    assert any("mới có 1/4 tác giả" in w for w in rep.warnings)
+    assert any("tổng 2/100 mẫu (v0)" in w for w in rep.warnings)
+    assert any("mới có 1/2 tác giả" in w for w in rep.warnings)
     assert any("real_scam: 1/120" in w for w in run(tmp_path, SCAM, BENIGN, target="v1").warnings)
+    assert any("tổng 2/300 mẫu (v1)" in w for w in run(tmp_path, SCAM, BENIGN, target="v1").warnings)
+
+
+def test_two_authors_satisfy_team_size(tmp_path):
+    rep = run(tmp_path, SCAM, rec(BENIGN, author="minhvhq"))
+    assert not any("tác giả" in w for w in rep.warnings)
+
+
+def test_source_reuse_warns_above_two(tmp_path):
+    def scam(n, text):
+        return rec(SCAM, id=f"rs-{n}", **{"input.text": text})
+    three = [scam(1, "Giả công an đòi nộp phạt qua link lạ"), scam(2, "Giả ngân hàng báo khóa thẻ, đăng nhập link"),
+             scam(3, "Mời làm nhiệm vụ online nhận hoa hồng")]
+    assert any("3 mẫu cùng dựa vào" in w for w in run(tmp_path, *three).warnings)
+    assert not any("cùng dựa vào" in w for w in run(tmp_path, *three[:2]).warnings)
 
 
 def test_ocr_split_not_counted_and_uses_ocr_label(tmp_path):

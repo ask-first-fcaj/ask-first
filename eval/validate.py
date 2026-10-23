@@ -6,7 +6,8 @@
     python -m eval.validate --strict        # cảnh báo cũng làm lệnh thất bại
 
 Lỗi (schema, trùng id, trùng nội dung, thiếu source_url...) làm lệnh trả mã 1. Cảnh báo (thiếu số
-lượng so với mốc, mẫu gần trùng, nghi còn số điện thoại thật) chỉ in ra, trừ khi có --strict.
+lượng so với mốc, mẫu gần trùng, một nguồn nuôi quá 2 mẫu, nghi còn số điện thoại thật) chỉ in ra,
+trừ khi có --strict.
 Chỉ dùng thư viện chuẩn để cả team chạy được trên Windows, macOS, Linux mà không cần cài thêm.
 """
 
@@ -32,7 +33,7 @@ RISKY_ACTIONS = {
     "share_screen", "click_link", "keep_secret", "share_id_card",
 }
 FORWARD_ORIGINS = {"user", "hidden_user", "chat", "channel"}
-TEAM_SIZE = 4  # mỗi người đóng góp 1 phần; `author` là tên GitHub
+TEAM_SIZE = 2  # team chốt 23/10/2026: thiendt1608 và minhvhq làm chung bộ eval; `author` là tên GitHub
 INPUT_KEYS = {"text", "entities", "image", "audio", "forward_origin"}
 TOP_KEYS = {"id", "split", "input", "label", "source_url", "author", "notes"}
 
@@ -41,10 +42,10 @@ TARGETS = {
     "v0": {"real_scam": 40, "benign_suspicious": 20, "benign_normal": 20, "hard": 20},
     "v1": {"real_scam": 120, "benign_suspicious": 60, "benign_normal": 60, "hard": 60},
 }
-PER_AUTHOR = {"v0": 25, "v1": 75}
 COUNTED_SPLITS = set(TARGETS["v1"])  # ocr_images/voice/synthetic không tính vào 100/300 mẫu
 
 NEAR_DUP_RATIO = 0.92
+MAX_PER_SOURCE = 2  # một bài nguồn nuôi quá nhiều mẫu thì bộ eval kém đa dạng
 PHONE_RE = re.compile(r"(?<!\d)(?:\+?84|0)(?:[\s.\-]?\d){8,10}(?!\d)")
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 
@@ -247,12 +248,23 @@ def check_counts(rep: Report, records: list[tuple[str, dict]], target: str) -> N
     for split, need in TARGETS[target].items():
         if by_split[split] < need:
             rep.warn("số lượng", f"{split}: {by_split[split]}/{need} ({target})")
+    total_need = sum(TARGETS[target].values())
+    if len(counted) < total_need:
+        rep.warn("số lượng", f"tổng {len(counted)}/{total_need} mẫu ({target})")
     by_author = Counter(r.get("author") for r in counted)
     if len(by_author) < TEAM_SIZE:
         rep.warn("số lượng", f"mới có {len(by_author)}/{TEAM_SIZE} tác giả ({target})")
-    for author, n in sorted(by_author.items(), key=lambda kv: str(kv[0])):
-        if n < PER_AUTHOR[target]:
-            rep.warn("số lượng", f"{author}: {n}/{PER_AUTHOR[target]} mẫu ({target})")
+
+
+def check_source_reuse(rep: Report, records: list[tuple[str, dict]]) -> None:
+    by_src: dict[str, list[str]] = {}
+    for _, rec in records:
+        src = rec.get("source_url")
+        if isinstance(src, str) and src and rec.get("split") in COUNTED_SPLITS:
+            by_src.setdefault(src, []).append(str(rec.get("id")))
+    for src, ids in sorted(by_src.items()):
+        if len(ids) > MAX_PER_SOURCE:
+            rep.warn("nguồn", f"{len(ids)} mẫu cùng dựa vào {src[:90]} ({', '.join(ids)}); nên chia bớt sang bài khác (tối đa {MAX_PER_SOURCE})")
 
 
 def load(paths: list[Path], rep: Report) -> list[tuple[str, dict]]:
@@ -284,6 +296,7 @@ def run(paths: list[Path], target: str = "v0") -> Report:
     for where, rec in records:
         check_privacy(rep, where, rec)
     check_duplicates(rep, records)
+    check_source_reuse(rep, records)
     check_counts(rep, records, target)
     return rep
 
