@@ -11,7 +11,7 @@ SCAM = {
     "id": "rs-001",
     "split": "real_scam",
     "input": {"text": "Quý khách có biên bản phạt nguội chưa nộp, tra cứu tại dichvucong-phat[.]xyz", "entities": [], "image": None, "audio": None, "forward_origin": "hidden_user"},
-    "label": {"is_scam": True, "nhom": "N1", "kich_ban": "N1.4", "min_level": "NGHI_NGO", "max_level": None, "must_signals": ["U_TYPOSQUAT"], "risky_actions": ["bam_link"]},
+    "label": {"is_scam": True, "group": "N1", "scenario": "N1.4", "min_level": "SUSPICIOUS", "max_level": None, "must_signals": ["U_TYPOSQUAT"], "risky_actions": ["click_link"]},
     "source_url": "https://bocongan.gov.vn/bai-viet/x",
     "author": "AI1",
     "notes": "",
@@ -20,7 +20,7 @@ BENIGN = {
     "id": "bs-001",
     "split": "benign_suspicious",
     "input": {"text": "[Ngân hàng A] Mã OTP của bạn là 000000. KHÔNG cung cấp mã này cho bất kỳ ai.", "entities": [], "image": None, "audio": None, "forward_origin": None},
-    "label": {"is_scam": False, "nhom": "N0", "kich_ban": "N0", "min_level": None, "max_level": "CHUA_CHAC", "must_signals": [], "risky_actions": []},
+    "label": {"is_scam": False, "group": "N0", "scenario": "N0", "min_level": None, "max_level": "UNSURE", "must_signals": [], "risky_actions": []},
     "source_url": None,
     "author": "AI1",
     "notes": "",
@@ -66,22 +66,22 @@ def test_real_scam_requires_source_url(tmp_path):
 
 def test_scam_needs_min_level_and_null_max_level(tmp_path):
     assert any("min_level" in e for e in errors(tmp_path, rec(SCAM, **{"label.min_level": None})))
-    assert any("max_level" in e for e in errors(tmp_path, rec(SCAM, **{"label.max_level": "CHUA_CHAC"})))
+    assert any("max_level" in e for e in errors(tmp_path, rec(SCAM, **{"label.max_level": "UNSURE"})))
 
 
 def test_benign_needs_max_level(tmp_path):
     assert any("max_level" in e for e in errors(tmp_path, rec(BENIGN, **{"label.max_level": None})))
 
 
-def test_nhom_rules(tmp_path):
-    assert any("N0" in e for e in errors(tmp_path, rec(SCAM, **{"label.nhom": "N0", "label.kich_ban": "N0"})))
-    assert any("N0" in e for e in errors(tmp_path, rec(BENIGN, **{"label.nhom": "N2", "label.kich_ban": "N2.1"})))
-    assert any("KHAC" in e for e in errors(tmp_path, rec(SCAM, **{"label.nhom": "OTHER", "label.kich_ban": "KHAC"})))
-    assert errors(tmp_path, rec(SCAM, **{"label.nhom": "KHAC", "label.kich_ban": "KHAC"})) == []
+def test_group_rules(tmp_path):
+    assert any("N0" in e for e in errors(tmp_path, rec(SCAM, **{"label.group": "N0", "label.scenario": "N0"})))
+    assert any("N0" in e for e in errors(tmp_path, rec(BENIGN, **{"label.group": "N2", "label.scenario": "N2.1"})))
+    assert any("label.group" in e for e in errors(tmp_path, rec(SCAM, **{"label.group": "KHAC", "label.scenario": "KHAC"})))  # tên cũ, trước khi đổi sang tiếng Anh
+    assert errors(tmp_path, rec(SCAM, **{"label.group": "OTHER", "label.scenario": "OTHER"})) == []
 
 
-def test_kich_ban_must_match_nhom(tmp_path):
-    assert any("kich_ban" in e for e in errors(tmp_path, rec(SCAM, **{"label.kich_ban": "N2.1"})))
+def test_scenario_must_match_group(tmp_path):
+    assert any("scenario" in e for e in errors(tmp_path, rec(SCAM, **{"label.scenario": "N2.1"})))
 
 
 def test_split_and_is_scam_must_agree(tmp_path):
@@ -148,7 +148,8 @@ def test_counts_are_warnings_per_target(tmp_path):
     rep = run(tmp_path, SCAM, BENIGN)
     assert rep.errors == []
     assert any("real_scam: 1/40" in w for w in rep.warnings)
-    assert any("AI2: 0/25" in w for w in rep.warnings)
+    assert any("AI1: 2/25" in w for w in rep.warnings)
+    assert any("mới có 1/4 tác giả" in w for w in rep.warnings)
     assert any("real_scam: 1/120" in w for w in run(tmp_path, SCAM, BENIGN, target="v1").warnings)
 
 

@@ -25,14 +25,14 @@ EVAL_DIR = Path(__file__).resolve().parent
 DATASETS = EVAL_DIR / "datasets"
 
 SPLITS = {"real_scam", "benign_suspicious", "benign_normal", "hard", "ocr_images", "voice", "synthetic"}
-NHOM = {"N0", "N1", "N2", "N3", "N4", "N5", "N6", "KHAC"}
-LEVELS = {"NGUY_HIEM", "NGHI_NGO", "CHUA_CHAC", "IT_DAU_HIEU"}
+GROUPS = {"N0", "N1", "N2", "N3", "N4", "N5", "N6", "OTHER"}
+LEVELS = {"DANGEROUS", "SUSPICIOUS", "UNSURE", "LOW_RISK"}
 RISKY_ACTIONS = {
-    "chuyen_tien", "cung_cap_otp", "cung_cap_mat_khau", "cai_app",
-    "chia_se_man_hinh", "bam_link", "giu_bi_mat", "cung_cap_cccd",
+    "transfer_money", "share_otp", "share_password", "install_app",
+    "share_screen", "click_link", "keep_secret", "share_id_card",
 }
 FORWARD_ORIGINS = {"user", "hidden_user", "chat", "channel"}
-AUTHORS = {"AI1", "AI2", "BE1", "BE2"}
+TEAM_SIZE = 4  # mỗi người đóng góp 1 phần; `author` là tên GitHub
 INPUT_KEYS = {"text", "entities", "image", "audio", "forward_origin"}
 TOP_KEYS = {"id", "split", "input", "label", "source_url", "author", "notes"}
 
@@ -139,19 +139,17 @@ def check_label(rep: Report, where: str, rec: dict) -> None:
     if not isinstance(is_scam, bool):
         rep.error(where, "label.is_scam phải là true/false")
         return
-    nhom = label.get("nhom")
-    if nhom == "OTHER":
-        rep.error(where, "label.nhom='OTHER' sai: dùng 'KHAC' (enum Nhom ở plan §3; OTHER chỉ là tên trong LABELING.md)")
-    elif nhom not in NHOM:
-        rep.error(where, f"label.nhom={nhom!r} không thuộc {sorted(NHOM)}")
-    elif is_scam and nhom == "N0":
-        rep.error(where, "is_scam=true nhưng nhom=N0 (N0 là lành tính)")
-    elif not is_scam and nhom not in {"N0"}:
-        rep.error(where, f"is_scam=false thì nhom phải là N0, đang là {nhom}")
-    if not isinstance(label.get("kich_ban"), str) or not label["kich_ban"]:
-        rep.error(where, "label.kich_ban phải là chuỗi không rỗng (vd N1.4, N0, KHAC)")
-    elif nhom in NHOM and nhom != "KHAC" and label["kich_ban"] != "KHAC" and not label["kich_ban"].startswith(nhom):
-        rep.error(where, f"kich_ban={label['kich_ban']!r} không thuộc nhom {nhom}")
+    group = label.get("group")
+    if group not in GROUPS:
+        rep.error(where, f"label.group={group!r} không thuộc {sorted(GROUPS)}")
+    elif is_scam and group == "N0":
+        rep.error(where, "is_scam=true nhưng group=N0 (N0 là lành tính)")
+    elif not is_scam and group not in {"N0"}:
+        rep.error(where, f"is_scam=false thì group phải là N0, đang là {group}")
+    if not isinstance(label.get("scenario"), str) or not label["scenario"]:
+        rep.error(where, "label.scenario phải là chuỗi không rỗng (vd N1.4, N0, OTHER)")
+    elif group in GROUPS and group != "OTHER" and label["scenario"] != "OTHER" and not label["scenario"].startswith(group):
+        rep.error(where, f"scenario={label['scenario']!r} không thuộc group {group}")
     min_l, max_l = label.get("min_level"), label.get("max_level")
     if is_scam:
         if min_l not in LEVELS:
@@ -160,7 +158,7 @@ def check_label(rep: Report, where: str, rec: dict) -> None:
             rep.error(where, "is_scam=true thì label.max_level phải là null")
     else:
         if max_l not in LEVELS:
-            rep.error(where, f"is_scam=false cần label.max_level thuộc {sorted(LEVELS)} (thường CHUA_CHAC)")
+            rep.error(where, f"is_scam=false cần label.max_level thuộc {sorted(LEVELS)} (thường UNSURE)")
         if min_l is not None:
             rep.error(where, "is_scam=false thì label.min_level phải là null")
     for k in ("must_signals", "risky_actions"):
@@ -189,9 +187,7 @@ def check_record(rep: Report, where: str, rec: object) -> None:
     if split not in SPLITS:
         rep.error(where, f"split={split!r} không thuộc {sorted(SPLITS)}")
     if not isinstance(rec.get("author"), str) or not rec["author"]:
-        rep.error(where, "author phải là chuỗi không rỗng")
-    elif rec["author"] not in AUTHORS:
-        rep.warn(where, f"author={rec['author']!r} không thuộc {sorted(AUTHORS)}")
+        rep.error(where, "author phải là chuỗi không rỗng (tên GitHub của người duyệt mẫu)")
     if not isinstance(rec.get("notes"), str):
         rep.error(where, "notes phải là chuỗi (có thể rỗng)")
     src = rec.get("source_url")
@@ -252,9 +248,11 @@ def check_counts(rep: Report, records: list[tuple[str, dict]], target: str) -> N
         if by_split[split] < need:
             rep.warn("số lượng", f"{split}: {by_split[split]}/{need} ({target})")
     by_author = Counter(r.get("author") for r in counted)
-    for author in sorted(AUTHORS):
-        if by_author[author] < PER_AUTHOR[target]:
-            rep.warn("số lượng", f"{author}: {by_author[author]}/{PER_AUTHOR[target]} mẫu ({target})")
+    if len(by_author) < TEAM_SIZE:
+        rep.warn("số lượng", f"mới có {len(by_author)}/{TEAM_SIZE} tác giả ({target})")
+    for author, n in sorted(by_author.items(), key=lambda kv: str(kv[0])):
+        if n < PER_AUTHOR[target]:
+            rep.warn("số lượng", f"{author}: {n}/{PER_AUTHOR[target]} mẫu ({target})")
 
 
 def load(paths: list[Path], rep: Report) -> list[tuple[str, dict]]:
