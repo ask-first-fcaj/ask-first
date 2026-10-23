@@ -16,7 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 
 public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
-
+    // sửa lại xíu nha
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
     private final String queueUrl = System.getenv("WEBHOOK_QUEUE_URL");

@@ -8,7 +8,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class WorkerHandler implements RequestHandler<SQSEvent, Void> {
-
+    // sửa lại xíu nha
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
     private static final String WARNING_TEXT = "Nội dung bạn vừa gửi có nguy cơ dính đến lừa đảo chuyển tiền. Vui lòng không thực hiện giao dịch.";
