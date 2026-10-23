@@ -13,6 +13,8 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - Cắt scope MVP còn text + ảnh (OCR) + người thân + RAG cơ bản; **hoãn** voice/ASR, VLM fallback, multi-turn, Phase 2, Mini App; **bỏ pilot**, thay bằng test nội bộ ở W6.
 
 ### Added
+- SH-01 (#3, G0): hợp đồng BE↔AI v1.0 trong `ai/src/askfirst/domain/` (`models.py`, `export.py`), `contracts/schema/*.json` sinh tự động, `StubPipeline` + `build_pipeline("stub")`, fixtures `contracts/fixtures/<op>/<case>.json`, test `ai/tests/contract/`, khung `ai/config/models.yaml` và `artifacts.yaml`.
+- Quy ước code bằng tiếng Anh (README): đổi tên trong contract v1.0 sang tiếng Anh. Mức: `DANGEROUS`/`SUSPICIOUS`/`UNSURE`/`LOW_RISK`; `nhom`→`group`, `kich_ban`→`scenario`, `KHAC`→`OTHER`, `xung_ho`→`address_form` (`elder`/`aunt`/`uncle`); `risky_actions` dùng `transfer_money`, `share_otp`, `share_password`, `install_app`, `share_screen`, `click_link`, `keep_secret`, `share_id_card`. Cập nhật tài liệu liên quan; schema và fixtures sinh lại.
 - `eval/ocr_benchmark.py` và `docs/results/ocr-spike.md`: script so 3 stack OCR local (RapidOCR, Tesseract, PaddleOCR; 10 cấu hình) trên 50 ảnh `ocr_images` theo CER, đúng dấu, chép đúng URL, độ trễ (AI-20); RapidOCR + sắp dòng theo cột là ứng viên cho ADR-003, chưa kiểm tra độc lập.
 - `eval/assets/ocr/` và `eval/datasets/ocr_images.jsonl`: bộ 50 ảnh OCR (oi-001–050) và nhãn.
 - `eval/test_ocr_postprocess.py`: test cho `repair_urls` (nối URL xuống dòng, dấu `.` thừa, `ttps:`) và `repair_phones` (`O`→`0` trong SĐT), gồm ca âm; các luật viết sau khi thấy lỗi, chưa kiểm tra độc lập.

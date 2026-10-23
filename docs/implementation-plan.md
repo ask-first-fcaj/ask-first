@@ -172,10 +172,10 @@ Việc **webhook** (BE, Java) làm trước khi có job, AI không cần biết:
 ### 3.3 Domain model: `ai/src/askfirst/domain/models.py` (copy nguyên văn; nguồn của `contracts/schema/`)
 
 ```python
-"""askfirst.domain.models: hợp đồng BE (Java) <-> AI (Python), plan §3.2.
+"""askfirst.domain.models: BE (Java) <-> AI (Python) contract, plan §3.2.
 
-Nguồn sự thật duy nhất: `uv run python -m askfirst.domain.export` xuất các model WIRE_MODELS ra contracts/schema/*.json, Java sinh class từ đó.
-Sửa file này phải có 1 BE + 1 AI duyệt.
+Single source of truth: `uv run python -m askfirst.domain.export` writes the WIRE_MODELS to contracts/schema/*.json, and Java generates its classes from them.
+Changing this file needs 1 BE + 1 AI review.
 """
 from __future__ import annotations
 
@@ -189,17 +189,17 @@ from pydantic.json_schema import GenerateJsonSchema
 
 CONTRACT_VERSION = "1.0"
 
-Level = Literal["NGUY_HIEM", "NGHI_NGO", "CHUA_CHAC", "IT_DAU_HIEU"]
-LEVEL_ORDER: dict[str, int] = {"IT_DAU_HIEU": 0, "CHUA_CHAC": 1, "NGHI_NGO": 2, "NGUY_HIEM": 3}
-Nhom = Literal["N0", "N1", "N2", "N3", "N4", "N5", "N6", "KHAC"]
+Level = Literal["DANGEROUS", "SUSPICIOUS", "UNSURE", "LOW_RISK"]
+LEVEL_ORDER: dict[str, int] = {"LOW_RISK": 0, "UNSURE": 1, "SUSPICIOUS": 2, "DANGEROUS": 3}
+Group = Literal["N0", "N1", "N2", "N3", "N4", "N5", "N6", "OTHER"]
 RiskyAction = Literal[
-    "chuyen_tien", "cung_cap_otp", "cung_cap_mat_khau", "cai_app",
-    "chia_se_man_hinh", "bam_link", "giu_bi_mat", "cung_cap_cccd",
+    "transfer_money", "share_otp", "share_password", "install_app",
+    "share_screen", "click_link", "keep_secret", "share_id_card",
 ]
 Path = Literal["cache", "fast", "llm", "escalated", "rules_only"]
 Outcome = Literal["verdict", "smalltalk", "unreadable"]
 ForwardOrigin = Literal["user", "hidden_user", "chat", "channel"]
-XungHo = Literal["bac", "co", "chu"]
+AddressForm = Literal["elder", "aunt", "uncle"]
 Answer = Literal["yes", "no", "unknown"]
 
 
@@ -207,18 +207,18 @@ class _M(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-# ---------- Đầu vào: BE (Java) tạo, gửi qua wire ----------
+# ---------- Input: created by BE (Java), sent over the wire ----------
 
 class EntityRef(_M):
     kind: Literal["url", "text_link"]
-    offset: int                      # tính theo UTF-16 code unit, giữ nguyên như Telegram
+    offset: int                      # in UTF-16 code units, same as Telegram
     length: int
-    url: str | None = None           # bắt buộc khi kind == "text_link" (URL thật, khác chữ hiển thị)
+    url: str | None = None           # required when kind == "text_link" (the real URL, not the displayed text)
 
     @model_validator(mode="after")
     def _text_link_has_url(self) -> EntityRef:
         if self.kind == "text_link" and not self.url:
-            raise ValueError("text_link phải có url")
+            raise ValueError("text_link requires url")
         return self
 
 
@@ -226,20 +226,20 @@ class MediaRef(_M):
     file_id: str
     file_unique_id: str
     mime: str | None = None
-    size: int | None = None          # byte
-    duration: int | None = None      # giây, chỉ voice/audio
-    file_name: str | None = None     # chỉ document
+    size: int | None = None          # bytes
+    duration: int | None = None      # seconds, voice/audio only
+    file_name: str | None = None     # document only
 
 
 class InboundMessage(_M):
-    """Adapter tạo từ một update. Lưu tạm trong BUFFER# (≤ 10 phút, xoá ngay sau xử lý)."""
+    """Built by the adapter from one update. Kept temporarily in BUFFER# (≤ 10 minutes, deleted right after processing)."""
     channel: Literal["telegram", "zalo"]
     update_id: str
     chat_id: str
     user_id: str                     # "tg:<telegram_user_id>"
     message_id: str
     kind: Literal["text", "photo", "voice", "audio", "document"]
-    text: str | None = None          # text hoặc caption, đã cắt ở 4.000 ký tự
+    text: str | None = None          # text or caption, truncated at 4,000 characters
     entities: list[EntityRef] = Field(default_factory=list)
     media: MediaRef | None = None
     forward_origin: ForwardOrigin | None = None
@@ -247,11 +247,11 @@ class InboundMessage(_M):
     received_at: datetime            # UTC
 
 
-# ---------- Nội bộ AI: KHÔNG qua wire (Lambda `ai` tự dựng từ InboundMessage, plan §3.6) ----------
+# ---------- AI-internal: NOT sent over the wire (Lambda `ai` builds these from InboundMessage, plan §3.6) ----------
 
 class TextPart(_M):
     text: str
-    entities: list[EntityRef] = Field(default_factory=list)   # offset tính trong chính text này
+    entities: list[EntityRef] = Field(default_factory=list)   # offset within this text
 
 
 class ImageInput(_M):
@@ -263,30 +263,30 @@ class ImageInput(_M):
 class AudioInput(_M):
     data: bytes
     file_unique_id: str
-    mime: str                        # "audio/ogg" (voice Telegram), "audio/mpeg"…
+    mime: str                        # "audio/ogg" (Telegram voice), "audio/mpeg"…
     duration_s: int
 
 
 class SessionContext(_M):
-    """Lượt hỏi thêm (ARCH §6.12). BE lấy từ SESSION# rồi gửi trong AnalyzeRequest, AI ghép vào Judge. Có qua wire."""
+    """Follow-up turn (ARCH §6.12). BE reads it from SESSION# and sends it in AnalyzeRequest; AI merges it into the Judge input. Goes over the wire."""
     prev_check_id: str
-    masked_text: str                 # = Verdict.masked_text của lượt trước
-    question: str                    # = Verdict.followup_question của lượt trước
+    masked_text: str                 # = Verdict.masked_text of the previous turn
+    question: str                    # = Verdict.followup_question of the previous turn
     answer: Answer
     turn: int = Field(ge=1, le=2)
 
 
 class Bundle(_M):
-    """Input của pipeline: cả cụm tin đã gom (ARCH §5.2), media đã tải vào RAM của Lambda `ai`."""
+    """Pipeline input: the whole batch of messages (ARCH §5.2), with media already downloaded into the RAM of Lambda `ai`."""
     texts: list[TextPart] = Field(default_factory=list)
     images: list[ImageInput] = Field(default_factory=list)
     audios: list[AudioInput] = Field(default_factory=list)
-    forward_origin: ForwardOrigin | None = None   # của tin đầu tiên có forward
+    forward_origin: ForwardOrigin | None = None   # from the first message that has a forward
     session: SessionContext | None = None
 
 
 class Flags(_M):
-    """BE đọc từ DynamoDB CONFIG#global/FLAGS (ARCH §5.8), cache 30 giây, gửi trong AnalyzeContext."""
+    """BE reads these from DynamoDB CONFIG#global/FLAGS (ARCH §5.8), caches them for 30 seconds, and sends them in AnalyzeContext."""
     llm_enabled: bool = True
     feature_image: bool = True
     feature_voice: bool = True
@@ -294,19 +294,19 @@ class Flags(_M):
 
 
 class AnalyzeContext(_M):
-    check_id: str                    # ULID do BE sinh (= job_id); cũng là trace_id trong log
+    check_id: str                    # ULID generated by BE (= job_id); also the trace_id in logs
     user_id: str
     flags: Flags
-    deadline_s: float                # số giây BE còn chờ được (≤ timeout của `ai`); pipeline phải trả trước deadline_s - 5
+    deadline_s: float                # seconds BE can still wait (≤ the `ai` timeout); the pipeline must return before deadline_s - 5
 
 
-# ---------- Đầu ra của analyze: AI tạo, BE nhận qua wire ----------
+# ---------- Output of analyze: created by AI, received by BE over the wire ----------
 
 class Signal(_M):
-    code: str                        # mã trong kb/rules.yaml, ví dụ "R_OTP_REQUEST", "U_TYPOSQUAT"
+    code: str                        # code from kb/rules.yaml, e.g. "R_OTP_REQUEST", "U_TYPOSQUAT"
     weight: int
     hard: bool = False
-    evidence: str | None = None      # đoạn đã mask, ≤ 120 ký tự; CẤM ghi log
+    evidence: str | None = None      # masked excerpt, ≤ 120 characters; MUST NOT be logged
 
 
 class Citation(_M):
@@ -317,87 +317,87 @@ class Citation(_M):
 
 
 class Verdict(_M):
-    outcome: Outcome                 # smalltalk → level IT_DAU_HIEU; unreadable → level CHUA_CHAC
+    outcome: Outcome                 # smalltalk → level LOW_RISK; unreadable → level UNSURE
     level: Level
     score: int = Field(ge=0, le=100)
-    nhom: Nhom
-    kich_ban: str                    # mã taxonomy, ví dụ "N1.4"; không khớp thì "KHAC"
+    group: Group
+    scenario: str                    # taxonomy code, e.g. "N1.4"; "OTHER" if nothing matches
     signals: list[Signal] = Field(default_factory=list)
     risky_actions: list[RiskyAction] = Field(default_factory=list)
-    should_alert: bool               # level == NGUY_HIEM và có risky_actions; BE vẫn phải kiểm người thân, consent, ALERTLOCK
-    explanation: str = ""            # đã hậu kiểm, CHƯA escape HTML (render lo việc escape)
+    should_alert: bool               # level == DANGEROUS and risky_actions is non-empty; BE must still check guardians, consent, ALERTLOCK
+    explanation: str = ""            # post-checked, NOT HTML-escaped (render does the escaping)
     citations: list[Citation] = Field(default_factory=list)
     followup_question: str | None = None
-    masked_text: str = ""            # input đã mask; CHỈ dùng cho SESSION# (30 phút) và donated/ khi user đồng ý; CẤM log
+    masked_text: str = ""            # masked input; ONLY for SESSION# (30 minutes) and donated/ with user consent; MUST NOT be logged
     path: Path
     model_ids: list[str] = Field(default_factory=list)
-    versions: dict[str, str] = Field(default_factory=dict)   # khoá: prompt, rules, kb, local_models, contract
-    latency_ms: dict[str, int] = Field(default_factory=dict) # theo stage, ví dụ {"ocr": 1800, "judge": 2400}
+    versions: dict[str, str] = Field(default_factory=dict)   # keys: prompt, rules, kb, local_models, contract
+    latency_ms: dict[str, int] = Field(default_factory=dict) # per stage, e.g. {"ocr": 1800, "judge": 2400}
     cost_usd_est: float = 0.0
 
     def for_cache(self) -> Verdict:
-        """Bản để lưu CACHE# (24 giờ): bỏ mọi phần có chữ lấy từ input."""
+        """Copy to store in CACHE# (24 hours): drops everything that contains text taken from the input."""
         return self.model_copy(update={
             "masked_text": "", "explanation": "", "followup_question": None,
             "signals": [s.model_copy(update={"evidence": None}) for s in self.signals],
         })
 
 
-# ---------- Đầu ra của render: AI tạo, BE gửi ----------
+# ---------- Output of render: created by AI, sent by BE ----------
 
 ButtonKind = Literal[
-    "checklist",        # BE: callback "cl"           → gửi checklist /bilua
-    "call_guardian",    # BE: callback "cg:<check_id>" → sendContact người thân
-    "alert_guardian",   # BE: callback "ag:<check_id>" → người cao tuổi tự báo người thân (mức NGHI_NGO)
+    "checklist",        # BE: callback "cl"           → sends the /bilua checklist
+    "call_guardian",    # BE: callback "cg:<check_id>" → sendContact for the guardian
+    "alert_guardian",   # BE: callback "ag:<check_id>" → the elder alerts the guardian themself (level SUSPICIOUS)
     "report_wrong",     # BE: callback "fb:wrong:<check_id>"
-    "donate",           # BE: callback "dn:<check_id>" → hỏi đồng ý rồi lưu masked_text vào donated/
+    "donate",           # BE: callback "dn:<check_id>" → asks for consent, then stores masked_text in donated/
     "answer_yes", "answer_no", "answer_unknown",   # BE: callback "fu:<check_id>:y|n|u"
-    "ack",              # BE: callback "ack:<alert_id>" (tin cảnh báo người thân)
+    "ack",              # BE: callback "ack:<alert_id>" (guardian alert message)
 ]
 
 
 class Button(_M):
     kind: ButtonKind
-    label: str                       # chữ hiển thị, AI viết
+    label: str                       # display text, written by AI
 
 
 class OutMessage(_M):
-    text_html: str                   # ĐÃ escape HTML và defang URL; BE gửi parse_mode=HTML, luôn tắt link preview
-    buttons: list[list[Button]] = Field(default_factory=list)   # danh sách hàng nút
+    text_html: str                   # HTML-escaped and URL-defanged; BE sends with parse_mode=HTML and always disables link preview
+    buttons: list[list[Button]] = Field(default_factory=list)   # list of button rows
     silent: bool = False             # True → disable_notification
 
 
 class ReplyPlan(_M):
-    messages: list[OutMessage] = Field(min_length=1)   # [0] = kết luận, sửa vào tin "⏳"; phần còn lại gửi tin mới
+    messages: list[OutMessage] = Field(min_length=1)   # [0] = the conclusion, edited into the "⏳" message; the rest are sent as new messages
 
 
 class AlertResult(_M):
     guardian_name: str
-    status: Literal["sent", "failed"]   # "sent" chỉ khi Telegram trả message_id
+    status: Literal["sent", "failed"]   # "sent" only when Telegram returned a message_id
 
 
 class RenderContext(_M):
     check_id: str
-    xung_ho: XungHo
-    has_guardian: bool               # có ít nhất 1 người thân active
-    alerts: list[AlertResult] = Field(default_factory=list)   # rỗng nếu không gửi cảnh báo
+    address_form: AddressForm
+    has_guardian: bool               # at least one active guardian
+    alerts: list[AlertResult] = Field(default_factory=list)   # empty if no alert was sent
     maintenance: bool = False        # = not flags.llm_enabled
 
 
 class GuardianAlertContext(_M):
     alert_id: str                    # ULID
-    elder_name: str                  # tên hiển thị trên Telegram, chưa escape
+    elder_name: str                  # display name on Telegram, not escaped
     share_level: Literal[1, 2, 3]
-    at: datetime                     # UTC; render hiển thị giờ Việt Nam
+    at: datetime                     # UTC; render shows Vietnam time
 
 
-# ---------- Wire: Lambda `ai` (Java worker gọi bằng InvokeFunction, ARCH §4.5) ----------
+# ---------- Wire: Lambda `ai` (the Java worker calls it with InvokeFunction, ARCH §4.5) ----------
 
 class AnalyzeRequest(_M):
     v: str = CONTRACT_VERSION
     op: Literal["analyze"] = "analyze"
-    items: list[InboundMessage] = Field(default_factory=list)   # chỉ metadata + file_id; `ai` tự tải media
-    session: SessionContext | None = None                       # job "answer": items rỗng, có session
+    items: list[InboundMessage] = Field(default_factory=list)   # metadata + file_id only; `ai` downloads the media itself
+    session: SessionContext | None = None                       # "answer" job: items empty, session present
     ctx: AnalyzeContext
 
 
@@ -414,7 +414,7 @@ class RenderGuardianAlertsRequest(_M):
 
 
 class RenderGuardianAlertsResult(_M):
-    alerts: list[OutMessage]                                    # cùng thứ tự với request.guardians
+    alerts: list[OutMessage]                                    # same order as request.guardians
 
 
 class RenderRequest(_M):
@@ -425,12 +425,12 @@ class RenderRequest(_M):
 
 
 class AiError(_M):
-    kind: Literal["retryable", "fatal"]   # retryable: BE để SQS retry; fatal: input sai/bug, BE trả câu suy giảm, không retry
-    code: str                             # ví dụ "bad_request", "unsupported_version", "telegram_download", "deadline"
+    kind: Literal["retryable", "fatal"]   # retryable: BE lets SQS retry; fatal: bad input/bug, BE sends the degraded reply, no retry
+    code: str                             # e.g. "bad_request", "unsupported_version", "telegram_download", "deadline"
 
 
 class AiResponse(_M):
-    """Mọi op trả về đúng một trong các trường kết quả, hoặc error. Không dùng union để Java codegen dễ."""
+    """Every op returns exactly one of the result fields, or error. No union, to keep the Java codegen simple."""
     v: str = CONTRACT_VERSION
     op: Literal["analyze", "render_guardian_alerts", "render"]
     analyze: AnalyzeResult | None = None
@@ -442,25 +442,25 @@ class AiResponse(_M):
     def _exactly_one(self) -> AiResponse:
         filled = [k for k in ("analyze", "render_guardian_alerts", "render", "error") if getattr(self, k) is not None]
         if len(filled) != 1 or (filled[0] != "error" and filled[0] != self.op):
-            raise ValueError(f"op={self.op} phải có đúng một kết quả cùng tên hoặc error, đang có {filled}")
+            raise ValueError(f"op={self.op} must have exactly one result with the same name, or error; got {filled}")
         return self
 
 
 WIRE_MODELS: tuple[type[BaseModel], ...] = (
     AnalyzeRequest, RenderGuardianAlertsRequest, RenderRequest, AiResponse,
-    InboundMessage,                                             # BE còn lưu dạng JSON trong BUFFER#
+    InboundMessage,                                             # BE also stores it as JSON in BUFFER#
 )
 
 
 class _JavaFriendlySchema(GenerateJsonSchema):
-    """`X | None` → chỉ X (trường không nằm trong `required`), để codegen Java ra field nullable thay vì anyOf."""
+    """`X | None` → just X (the field is not in `required`), so the Java codegen emits a nullable field instead of anyOf."""
 
     def nullable_schema(self, schema: Any) -> dict[str, Any]:
         return self.generate_inner(schema["schema"])
 
 
 def export_json_schemas(out_dir: pathlib.Path) -> list[pathlib.Path]:
-    """Gọi từ askfirst.domain.export: ghi contracts/schema/<Model>.json. CI chạy lại rồi `git diff --exit-code contracts/`."""
+    """Called from askfirst.domain.export: writes contracts/schema/<Model>.json. CI reruns it, then `git diff --exit-code contracts/`."""
     out_dir.mkdir(parents=True, exist_ok=True)
     written = []
     for model in WIRE_MODELS:
@@ -474,38 +474,38 @@ def export_json_schemas(out_dir: pathlib.Path) -> list[pathlib.Path]:
     return written
 
 
-# ---------- Interface nội bộ Python (không qua wire) ----------
+# ---------- Python-internal interfaces (not sent over the wire) ----------
 
 class KVCache(Protocol):
-    """Lambda `ai` cài bằng DynamoDB (URL#…, CACHE#…); CLI và eval dùng bản trong RAM."""
+    """Lambda `ai` implements it with DynamoDB (URL#…, CACHE#…); the CLI and eval use an in-RAM version."""
     def get(self, key: str) -> dict | None: ...
     def put(self, key: str, value: dict, ttl_s: int) -> None: ...
 
 
 class ArtifactStore(Protocol):
-    """Trả thư mục local chứa artifact (weights model, index RAG) theo config/artifacts.yaml.
-    Lambda `ai` cài bản S3: lần đầu gọi thì tải s3://…/<prefix>/ về /tmp/artifacts/<name>/<version>/ và kiểm sha256.
-    CLI và eval dùng bản đọc thẳng thư mục local."""
+    """Returns the local directory holding an artifact (model weights, RAG index) per config/artifacts.yaml.
+    Lambda `ai` implements it with S3: on first call it downloads s3://…/<prefix>/ to /tmp/artifacts/<name>/<version>/ and checks the sha256.
+    The CLI and eval read the local directory directly."""
     def path(self, name: str) -> pathlib.Path: ...
 
 
 class Pipeline(Protocol):
-    """Lambda `ai` (handler.py) gọi các hàm này theo `op`; CLI và eval gọi thẳng. Java không thấy interface này."""
+    """Lambda `ai` (handler.py) calls these methods by `op`; the CLI and eval call them directly. Java never sees this interface."""
 
     def fingerprint(self, bundle: Bundle) -> str:
-        """Khoá cache (ARCH §6.2): sha256 của text đã chuẩn hoá + mọi file_unique_id + URL từ entities."""
+        """Cache key (ARCH §6.2): sha256 of the normalised text + every file_unique_id + URLs from entities."""
         ...
 
     def analyze(self, bundle: Bundle, ctx: AnalyzeContext) -> Verdict:
-        """Không raise vì lỗi model/mạng (tự suy giảm về rules_only). Có exception nghĩa là bug → SQS retry."""
+        """Never raises on model/network errors (degrades to rules_only on its own). An exception means a bug → SQS retry."""
         ...
 
     def render(self, verdict: Verdict, ctx: RenderContext) -> ReplyPlan:
-        """Hàm thuần, không gọi mạng. Verdict lấy từ cache (explanation rỗng) thì dùng template theo mã dấu hiệu."""
+        """Pure function, no network calls. A Verdict taken from cache (empty explanation) uses a template keyed by signal code."""
         ...
 
     def render_guardian_alert(self, verdict: Verdict, ctx: GuardianAlertContext) -> OutMessage:
-        """Nội dung theo share_level (ARCH §5.5); luôn có nút "ack"."""
+        """Content depends on share_level (ARCH §5.5); always has an "ack" button."""
         ...
 ```
 
@@ -542,16 +542,16 @@ Mọi message có `v` (version của schema) và `type`; Java dùng `record` + J
 ```python
 # ai/src/askfirst/pipeline/__init__.py (AI)
 def build_pipeline(impl: str, config_dir: pathlib.Path, artifacts: ArtifactStore, url_cache: KVCache) -> Pipeline:
-    """impl = "stub" | "real". Gọi MỘT lần lúc cold start (biến cấp module); object dùng lại giữa các lần gọi."""
+    """impl = "stub" | "real". Called ONCE at cold start (module-level variable); the object is reused across invocations."""
 
-# ai/src/askfirst/handler.py (AI1): entry point của Lambda `ai`
+# ai/src/askfirst/handler.py (AI1): entry point of Lambda `ai`
 PIPELINE = build_pipeline(os.environ["PIPELINE_IMPL"], CONFIG_DIR, S3ArtifactStore(...), DynamoKV(prefix="URL#"))
 
 def lambda_handler(event: dict, context) -> dict:
-    """Không bao giờ raise: mọi nhánh trả AiResponse.model_dump(mode="json") (§3.2)."""
-    # op = event.get("op"); v lạ → AiError("fatal","unsupported_version")
+    """Never raises: every branch returns AiResponse.model_dump(mode="json") (§3.2)."""
+    # op = event.get("op"); unknown v → AiError("fatal","unsupported_version")
     # analyze: validate AnalyzeRequest → media.telegram.build_bundle(items, flags) (§3.6) → fingerprint → CACHE# → analyze
-    # render_guardian_alerts / render: validate → gọi PIPELINE.render_* (hàm thuần, không gọi mạng)
+    # render_guardian_alerts / render: validate → call PIPELINE.render_* (pure functions, no network)
 ```
 
 | Biến môi trường của Lambda `ai` | Giá trị | Ai đọc |
@@ -610,15 +610,15 @@ pricing_usd_per_1m:            # dùng để tính Verdict.cost_usd_est; cập n
 
 | Input | `Verdict` trả về |
 |---|---|
-| Không có text, ảnh, voice | `outcome="unreadable"`, `level="CHUA_CHAC"` |
-| Chỉ có text và text (lowercase) thuộc {"cảm ơn", "alo", "ok"} | `outcome="smalltalk"`, `level="IT_DAU_HIEU"` |
-| Text chứa "otp" | `NGUY_HIEM`, score 90, `nhom="N1"`, `kich_ban="N1.1"`, `risky_actions=["cung_cap_otp"]`, `should_alert=True` |
-| Text chứa "http" hoặc "link" | `NGHI_NGO`, score 60, `kich_ban="N1.4"`, `risky_actions=["bam_link"]` |
-| Text chứa "hỏi thêm" | `CHUA_CHAC`, score 30, `followup_question="Người gọi có bảo bác giữ bí mật không ạ?"` (trừ khi `session.turn == 2`) |
-| Có ảnh hoặc voice, không khớp dòng nào ở trên | `CHUA_CHAC`, score 30 |
-| Còn lại | `IT_DAU_HIEU`, score 10, `nhom="N0"`, `kich_ban="N0"` |
+| Không có text, ảnh, voice | `outcome="unreadable"`, `level="UNSURE"` |
+| Chỉ có text và text (lowercase) thuộc {"cảm ơn", "alo", "ok"} | `outcome="smalltalk"`, `level="LOW_RISK"` |
+| Text chứa "otp" | `DANGEROUS`, score 90, `group="N1"`, `scenario="N1.1"`, `risky_actions=["share_otp"]`, `should_alert=True` |
+| Text chứa "http" hoặc "link" | `SUSPICIOUS`, score 60, `scenario="N1.4"`, `risky_actions=["click_link"]` |
+| Text chứa "hỏi thêm" | `UNSURE`, score 30, `followup_question="Người gọi có bảo bác giữ bí mật không ạ?"` (trừ khi `session.turn == 2`) |
+| Có ảnh hoặc voice, không khớp dòng nào ở trên | `UNSURE`, score 30 |
+| Còn lại | `LOW_RISK`, score 10, `group="N0"`, `scenario="N0"` |
 
-Mọi trường hợp: `path="fast"`, `versions={"contract": CONTRACT_VERSION, "pipeline": "stub"}`, `masked_text` = text gốc (stub không mask, **chỉ dùng ở bot `dev`**). `render` của stub trả 1 tin `"[STUB] <level> <kich_ban>"` kèm nút `report_wrong`; `render_guardian_alert` trả `"[STUB] cảnh báo <elder_name>"` kèm nút `ack`. Output của stub cho mỗi dòng bảng trên được chụp thành `contracts/fixtures/<op>/<case>.json` (request + response) để `FakeAiClient` phía Java dùng lại.
+Mọi trường hợp: `path="fast"`, `versions={"contract": CONTRACT_VERSION, "pipeline": "stub"}`, `masked_text` = text gốc (stub không mask, **chỉ dùng ở bot `dev`**). `render` của stub trả 1 tin `"[STUB] <level> <scenario>"` kèm nút `report_wrong`; `render_guardian_alert` trả `"[STUB] cảnh báo <elder_name>"` kèm nút `ack`. Output của stub cho mỗi dòng bảng trên được chụp thành `contracts/fixtures/<op>/<case>.json` (request + response) để `FakeAiClient` phía Java dùng lại.
 
 ### 3.6 Dựng `Bundle` từ các `InboundMessage` (AI2, trong Lambda `ai`)
 
@@ -634,7 +634,7 @@ Mọi trường hợp: `path="fast"`, `versions={"contract": CONTRACT_VERSION, "
 | Trường `CHECK` | Lấy từ | Ghi chú |
 |---|---|---|
 | `input_kind` | `items[].kind`: `text` / `image` / `voice` / `mixed` | BE tự suy ra từ `InboundMessage` (không cần `Bundle`) |
-| `outcome`, `level`, `score`, `nhom`, `kich_ban`, `path`, `model_ids`, `cost_usd_est` | `Verdict` cùng tên | |
+| `outcome`, `level`, `score`, `group`, `scenario`, `path`, `model_ids`, `cost_usd_est` | `Verdict` cùng tên | |
 | `signal_codes` | `[s.code for s in verdict.signals]` | **Không** lưu `evidence` |
 | `prompt_version`, `rules_version`, `kb_version`, `local_models_version` | `verdict.versions[...]` | |
 | `latency_ms` | `verdict.latency_ms` + `{"e2e": …}` do BE đo | |
@@ -650,8 +650,8 @@ Mỗi dòng một mẫu:
 ```json
 {"id":"rs-001","split":"real_scam",
  "input":{"text":"Quý khách có biên bản phạt nguội…","entities":[],"image":null,"audio":null,"forward_origin":"hidden_user"},
- "label":{"is_scam":true,"nhom":"N1","kich_ban":"N1.4","min_level":"NGHI_NGO","max_level":null,
-          "must_signals":["U_TYPOSQUAT"],"risky_actions":["bam_link"]},
+ "label":{"is_scam":true,"group":"N1","scenario":"N1.4","min_level":"SUSPICIOUS","max_level":null,
+          "must_signals":["U_TYPOSQUAT"],"risky_actions":["click_link"]},
  "source_url":"https://…","author":"AI2","notes":""}
 ```
 
@@ -661,13 +661,13 @@ Mỗi dòng một mẫu:
 | `input.image` / `input.audio` | Đường dẫn tương đối tới `eval/assets/…`, hoặc `null`. Có thể vừa có `text` vừa có ảnh |
 | `input.entities` | Cùng dạng `EntityRef` (§3.3), dùng cho ca `text_link` |
 | `label.min_level` | Bắt buộc khi `is_scam=true` |
-| `label.max_level` | Bắt buộc khi `is_scam=false`; thường là `"CHUA_CHAC"` |
+| `label.max_level` | Bắt buộc khi `is_scam=false`; thường là `"UNSURE"` |
 | `source_url` | Bắt buộc với mẫu viết lại từ cảnh báo chính thức |
 
 `eval/run_eval.py` đổi mỗi dòng thành `Bundle` (đọc file ảnh/voice thành bytes), gọi `pipeline.analyze()` với `Flags()` mặc định, **không cần BE**. Định nghĩa chỉ số (dùng thống nhất ở G1, M4, CI):
 
-- **Bắt được** = `LEVEL_ORDER[level] >= LEVEL_ORDER["NGHI_NGO"]` (mức `NGHI_NGO` hoặc `NGUY_HIEM`).
-- **Recall** = tỷ lệ mẫu `is_scam=true` bị bắt được. `CHUA_CHAC` **không** tính là bắt được, báo cáo riêng thành "tỷ lệ chưa chắc".
+- **Bắt được** = `LEVEL_ORDER[level] >= LEVEL_ORDER["SUSPICIOUS"]` (mức `SUSPICIOUS` hoặc `DANGEROUS`).
+- **Recall** = tỷ lệ mẫu `is_scam=true` bị bắt được. `UNSURE` **không** tính là bắt được, báo cáo riêng thành "tỷ lệ chưa chắc".
 - **Báo nhầm** = tỷ lệ mẫu `benign_suspicious` bị bắt được.
 - **Đạt nhãn mức** = `level ≥ min_level` (mẫu lừa đảo) hoặc `level ≤ max_level` (mẫu lành tính).
 - `must_signals` thiếu thì ghi vào báo cáo, không tính là sai kết luận.
@@ -691,14 +691,14 @@ ULID = "01J" + "0" * 23
 
 
 def _verdict(**kw) -> m.Verdict:
-    base = {"outcome": "verdict", "level": "NGUY_HIEM", "score": 90, "nhom": "N1", "kich_ban": "N1.4",
+    base = {"outcome": "verdict", "level": "DANGEROUS", "score": 90, "group": "N1", "scenario": "N1.4",
             "signals": [m.Signal(code="U_TEXT_LINK_MISMATCH", weight=40, hard=True, evidence="Bấm vào đây")],
-            "risky_actions": ["bam_link"], "should_alert": True, "explanation": "x", "masked_text": "Bấm vào đây",
+            "risky_actions": ["click_link"], "should_alert": True, "explanation": "x", "masked_text": "Bấm vào đây",
             "path": "fast", "versions": {"contract": m.CONTRACT_VERSION}}
     return m.Verdict(**(base | kw))
 
 
-def test_inbound_message_json_round_trip() -> None:   # BUFFER# lưu dạng JSON
+def test_inbound_message_json_round_trip() -> None:   # BUFFER# stores it as JSON
     msg = m.InboundMessage(
         channel="telegram", update_id="1", chat_id="42", user_id="tg:42", message_id="7", kind="text",
         text="Bấm vào đây", entities=[m.EntityRef(kind="text_link", offset=0, length=3, url="https://dichvucong-vn.com")],
@@ -716,16 +716,16 @@ def test_for_cache_strips_user_text() -> None:
     c = v.for_cache()
     assert c.masked_text == "" and c.explanation == "" and c.followup_question is None
     assert all(s.evidence is None for s in c.signals)
-    assert v.signals[0].evidence == "Bấm vào đây"          # bản gốc không bị đổi
+    assert v.signals[0].evidence == "Bấm vào đây"          # the original is untouched
     assert m.Verdict.model_validate_json(c.model_dump_json()) == c
 
 
 @pytest.mark.parametrize("bad", [
-    lambda: _verdict(level="AN_TOAN"),                       # không có mức "an toàn"
+    lambda: _verdict(level="SAFE"),                       # there is no "safe" level
     lambda: _verdict(score=101),
-    lambda: _verdict(risky_actions=["chuyen_khoan"]),        # sai enum
-    lambda: m.ReplyPlan(messages=[]),                        # phải có ít nhất 1 tin
-    lambda: m.Flags(llm_enabled=True, typo=1),               # không cho trường lạ
+    lambda: _verdict(risky_actions=["chuyen_khoan"]),        # invalid enum value
+    lambda: m.ReplyPlan(messages=[]),                        # needs at least 1 message
+    lambda: m.Flags(llm_enabled=True, typo=1),               # unknown fields are rejected
     lambda: m.SessionContext(prev_check_id=ULID, masked_text="x", question="?", answer="yes", turn=3),
 ])
 def test_invalid_values_are_rejected(bad) -> None:
@@ -739,7 +739,7 @@ def test_contexts_and_reply_plan_build() -> None:
     ctx = m.AnalyzeContext(check_id=ULID, user_id="tg:42", flags=m.Flags(), deadline_s=85)
     plan = m.ReplyPlan(messages=[m.OutMessage(
         text_html="<b>x</b>", buttons=[[m.Button(kind="report_wrong", label="Bot báo sai")]])])
-    rctx = m.RenderContext(check_id=ULID, xung_ho="bac", has_guardian=True,
+    rctx = m.RenderContext(check_id=ULID, address_form="elder", has_guardian=True,
                            alerts=[m.AlertResult(guardian_name="Nam", status="sent")])
     gctx = m.GuardianAlertContext(alert_id=ULID, elder_name="Lan", share_level=1, at=NOW)
     assert bundle.images[0].data and ctx.flags.llm_enabled and plan.messages and rctx.alerts and gctx.share_level == 1
@@ -756,13 +756,13 @@ def _msg() -> m.InboundMessage:
         media=m.MediaRef(file_id="AgAC", file_unique_id="AQAD", mime="image/jpeg", size=120_000), received_at=NOW)
 
 
-def test_wire_round_trip_all_ops() -> None:   # đúng những gì Java gửi/nhận
+def test_wire_round_trip_all_ops() -> None:   # exactly what Java sends/receives
     ctx = m.AnalyzeContext(check_id=ULID, user_id="tg:42", flags=m.Flags(llm_enabled=False), deadline_s=85)
     reqs = [
         m.AnalyzeRequest(items=[_msg()], ctx=ctx),
         m.RenderGuardianAlertsRequest(verdict=_verdict(), guardians=[
             m.GuardianAlertContext(alert_id=ULID, elder_name="Lan", share_level=2, at=NOW)]),
-        m.RenderRequest(verdict=_verdict(), ctx=m.RenderContext(check_id=ULID, xung_ho="co", has_guardian=False)),
+        m.RenderRequest(verdict=_verdict(), ctx=m.RenderContext(check_id=ULID, address_form="aunt", has_guardian=False)),
     ]
     for req in reqs:
         assert type(req).model_validate_json(req.model_dump_json()) == req
@@ -778,19 +778,19 @@ def test_wire_round_trip_all_ops() -> None:   # đúng những gì Java gửi/nh
         assert m.AiResponse.model_validate_json(r.model_dump_json()) == r
 
 
-def test_wire_request_has_no_media_bytes() -> None:   # media chỉ nằm trong RAM của `ai` (ARCH §4.5)
+def test_wire_request_has_no_media_bytes() -> None:   # media only lives in the RAM of `ai` (ARCH §4.5)
     raw = m.AnalyzeRequest(items=[_msg()], ctx=m.AnalyzeContext(
         check_id=ULID, user_id="tg:42", flags=m.Flags(), deadline_s=85)).model_dump_json()
     assert "data" not in json.loads(raw)["items"][0]
 
 
 @pytest.mark.parametrize("bad", [
-    lambda: m.AiResponse(op="render"),                                                   # không có kết quả
-    lambda: m.AiResponse(op="render", analyze=m.AnalyzeResult(verdict=_verdict(), cache_hit=True)),   # sai op
+    lambda: m.AiResponse(op="render"),                                                   # no result
+    lambda: m.AiResponse(op="render", analyze=m.AnalyzeResult(verdict=_verdict(), cache_hit=True)),   # wrong op
     lambda: m.AiResponse(op="render", render=m.ReplyPlan(messages=[m.OutMessage(text_html="x")]),
-                         error=m.AiError(kind="fatal", code="bad_request")),            # vừa kết quả vừa lỗi
+                         error=m.AiError(kind="fatal", code="bad_request")),            # both a result and an error
     lambda: m.RenderGuardianAlertsRequest(verdict=_verdict(), guardians=[]),
-    lambda: m.AnalyzeRequest.model_validate({"op": "analyse", "ctx": {}}),             # op sai chính tả
+    lambda: m.AnalyzeRequest.model_validate({"op": "analyse", "ctx": {}}),             # misspelled op
 ])
 def test_invalid_wire_rejected(bad) -> None:
     with pytest.raises(ValidationError):
@@ -826,7 +826,7 @@ Mỗi mục có nguồn thì có `source_url` và `verified_at` (`YYYY-MM-DD`). 
 ```yaml
 # kb/scenarios.yaml: scenario card (ARCH §6.5)
 - code: N1.4
-  nhom: N1
+  group: N1
   title: Giả mạo Cổng Dịch vụ công / phạt nguội
   description: Tin nhắn báo vi phạm giao thông, kèm link trang giả để lấy thông tin thẻ và OTP.
   example_phrases: ["biên bản phạt nguội chưa xử lý", "nộp phạt trực tuyến tại"]
@@ -1008,7 +1008,7 @@ Code Java **và** hạ tầng của lane B: nền DynamoDB, CI/CD, stage `prod`,
 | AI-24b | **URL intel, phần mạng** (ARCH §6.4): mở rộng shortener **chống SSRF** (chặn IP private, loopback, link-local, metadata; kiểm lại sau mỗi redirect), RDAP tuỳ chọn, cache `URL#` (`DynamoKV`) | W4–W5 | M | AI-24a | Test SSRF: URL trỏ `169.254.169.254` hoặc `127.0.0.1` (kể cả qua redirect) đều bị chặn |
 | AI-10 | **Hiệu chỉnh ngưỡng** 75/50/25 trên bộ v1 (300 mẫu); vẽ đường đánh đổi recall và báo nhầm | W5 | M | SH-03 v1, INT-02 | ADR-005 ghi ngưỡng đã chọn kèm số liệu |
 | AI-13 | **Báo cáo eval cho MVP freeze**: số liệu trên dữ liệu thật và dữ liệu tổng hợp **tách riêng**, kèm chi phí mỗi lượt | W5 | S | AI-10 | Gate M4 |
-| AI-12 | ⏸ **Hoãn (ngoài phạm vi 6 tuần).** Xử lý `can_hoi_them` trong prompt và ghép câu trả lời ở lượt sau | Hoãn | S | AI-04 | 5 mẫu mơ hồ đều hỏi lại đúng 1 câu |
+| AI-12 | ⏸ **Hoãn (ngoài phạm vi 6 tuần).** Xử lý `followup_question` trong prompt và ghép câu trả lời ở lượt sau | Hoãn | S | AI-04 | 5 mẫu mơ hồ đều hỏi lại đúng 1 câu |
 
 #### AI2: Dữ liệu, KB & việc dễ, có AI1 kèm (minhvhq)
 

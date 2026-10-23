@@ -1,0 +1,60 @@
+{
+  "request": {
+    "ctx": {
+      "address_form": "elder",
+      "alerts": [],
+      "check_id": "01J00000000000000000000000",
+      "has_guardian": true,
+      "maintenance": false
+    },
+    "op": "render",
+    "v": "1.0",
+    "verdict": {
+      "citations": [],
+      "cost_usd_est": 0.0,
+      "explanation": "",
+      "followup_question": null,
+      "group": "N1",
+      "latency_ms": {},
+      "level": "DANGEROUS",
+      "masked_text": "Gửi mã OTP cho tôi",
+      "model_ids": [],
+      "outcome": "verdict",
+      "path": "fast",
+      "risky_actions": [
+        "share_otp"
+      ],
+      "scenario": "N1.1",
+      "score": 90,
+      "should_alert": true,
+      "signals": [],
+      "versions": {
+        "contract": "1.0",
+        "pipeline": "stub"
+      }
+    }
+  },
+  "response": {
+    "analyze": null,
+    "error": null,
+    "op": "render",
+    "render": {
+      "messages": [
+        {
+          "buttons": [
+            [
+              {
+                "kind": "report_wrong",
+                "label": "Bot báo sai"
+              }
+            ]
+          ],
+          "silent": false,
+          "text_html": "[STUB] DANGEROUS N1.1"
+        }
+      ]
+    },
+    "render_guardian_alerts": null,
+    "v": "1.0"
+  }
+}

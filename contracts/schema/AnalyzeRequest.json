@@ -1,0 +1,297 @@
+{
+  "$id": "askfirst/1.0/AnalyzeRequest.json",
+  "additionalProperties": false,
+  "definitions": {
+    "AnalyzeContext": {
+      "additionalProperties": false,
+      "properties": {
+        "check_id": {
+          "title": "Check Id",
+          "type": "string"
+        },
+        "deadline_s": {
+          "title": "Deadline S",
+          "type": "number"
+        },
+        "flags": {
+          "$ref": "#/definitions/Flags"
+        },
+        "user_id": {
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "check_id",
+        "user_id",
+        "flags",
+        "deadline_s"
+      ],
+      "title": "AnalyzeContext",
+      "type": "object"
+    },
+    "EntityRef": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "url",
+            "text_link"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "length": {
+          "title": "Length",
+          "type": "integer"
+        },
+        "offset": {
+          "title": "Offset",
+          "type": "integer"
+        },
+        "url": {
+          "default": null,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "offset",
+        "length"
+      ],
+      "title": "EntityRef",
+      "type": "object"
+    },
+    "Flags": {
+      "additionalProperties": false,
+      "description": "BE reads these from DynamoDB CONFIG#global/FLAGS (ARCH §5.8), caches them for 30 seconds, and sends them in AnalyzeContext.",
+      "properties": {
+        "feature_image": {
+          "default": true,
+          "title": "Feature Image",
+          "type": "boolean"
+        },
+        "feature_rag": {
+          "default": true,
+          "title": "Feature Rag",
+          "type": "boolean"
+        },
+        "feature_voice": {
+          "default": true,
+          "title": "Feature Voice",
+          "type": "boolean"
+        },
+        "llm_enabled": {
+          "default": true,
+          "title": "Llm Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "Flags",
+      "type": "object"
+    },
+    "InboundMessage": {
+      "additionalProperties": false,
+      "description": "Built by the adapter from one update. Kept temporarily in BUFFER# (≤ 10 minutes, deleted right after processing).",
+      "properties": {
+        "channel": {
+          "enum": [
+            "telegram",
+            "zalo"
+          ],
+          "title": "Channel",
+          "type": "string"
+        },
+        "chat_id": {
+          "title": "Chat Id",
+          "type": "string"
+        },
+        "entities": {
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "title": "Entities",
+          "type": "array"
+        },
+        "forward_origin": {
+          "default": null,
+          "enum": [
+            "user",
+            "hidden_user",
+            "chat",
+            "channel"
+          ],
+          "title": "Forward Origin",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "photo",
+            "voice",
+            "audio",
+            "document"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "media": {
+          "$ref": "#/definitions/MediaRef",
+          "default": null
+        },
+        "media_group_id": {
+          "default": null,
+          "title": "Media Group Id",
+          "type": "string"
+        },
+        "message_id": {
+          "title": "Message Id",
+          "type": "string"
+        },
+        "received_at": {
+          "format": "date-time",
+          "title": "Received At",
+          "type": "string"
+        },
+        "text": {
+          "default": null,
+          "title": "Text",
+          "type": "string"
+        },
+        "update_id": {
+          "title": "Update Id",
+          "type": "string"
+        },
+        "user_id": {
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "channel",
+        "update_id",
+        "chat_id",
+        "user_id",
+        "message_id",
+        "kind",
+        "received_at"
+      ],
+      "title": "InboundMessage",
+      "type": "object"
+    },
+    "MediaRef": {
+      "additionalProperties": false,
+      "properties": {
+        "duration": {
+          "default": null,
+          "title": "Duration",
+          "type": "integer"
+        },
+        "file_id": {
+          "title": "File Id",
+          "type": "string"
+        },
+        "file_name": {
+          "default": null,
+          "title": "File Name",
+          "type": "string"
+        },
+        "file_unique_id": {
+          "title": "File Unique Id",
+          "type": "string"
+        },
+        "mime": {
+          "default": null,
+          "title": "Mime",
+          "type": "string"
+        },
+        "size": {
+          "default": null,
+          "title": "Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "file_id",
+        "file_unique_id"
+      ],
+      "title": "MediaRef",
+      "type": "object"
+    },
+    "SessionContext": {
+      "additionalProperties": false,
+      "description": "Follow-up turn (ARCH §6.12). BE reads it from SESSION# and sends it in AnalyzeRequest; AI merges it into the Judge input. Goes over the wire.",
+      "properties": {
+        "answer": {
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ],
+          "title": "Answer",
+          "type": "string"
+        },
+        "masked_text": {
+          "title": "Masked Text",
+          "type": "string"
+        },
+        "prev_check_id": {
+          "title": "Prev Check Id",
+          "type": "string"
+        },
+        "question": {
+          "title": "Question",
+          "type": "string"
+        },
+        "turn": {
+          "maximum": 2,
+          "minimum": 1,
+          "title": "Turn",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "prev_check_id",
+        "masked_text",
+        "question",
+        "answer",
+        "turn"
+      ],
+      "title": "SessionContext",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "ctx": {
+      "$ref": "#/definitions/AnalyzeContext"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/definitions/InboundMessage"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "op": {
+      "const": "analyze",
+      "default": "analyze",
+      "title": "Op",
+      "type": "string"
+    },
+    "session": {
+      "$ref": "#/definitions/SessionContext",
+      "default": null
+    },
+    "v": {
+      "default": "1.0",
+      "title": "V",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ctx"
+  ],
+  "title": "AnalyzeRequest",
+  "type": "object"
+}

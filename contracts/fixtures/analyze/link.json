@@ -1,0 +1,68 @@
+{
+  "request": {
+    "ctx": {
+      "check_id": "01J00000000000000000000000",
+      "deadline_s": 85.0,
+      "flags": {
+        "feature_image": true,
+        "feature_rag": true,
+        "feature_voice": true,
+        "llm_enabled": true
+      },
+      "user_id": "tg:42"
+    },
+    "items": [
+      {
+        "channel": "telegram",
+        "chat_id": "42",
+        "entities": [],
+        "forward_origin": null,
+        "kind": "text",
+        "media": null,
+        "media_group_id": null,
+        "message_id": "7",
+        "received_at": "2026-10-14T07:05:00Z",
+        "text": "Bấm link này nhé",
+        "update_id": "1",
+        "user_id": "tg:42"
+      }
+    ],
+    "op": "analyze",
+    "session": null,
+    "v": "1.0"
+  },
+  "response": {
+    "analyze": {
+      "cache_hit": false,
+      "verdict": {
+        "citations": [],
+        "cost_usd_est": 0.0,
+        "explanation": "",
+        "followup_question": null,
+        "group": "N1",
+        "latency_ms": {},
+        "level": "SUSPICIOUS",
+        "masked_text": "Bấm link này nhé",
+        "model_ids": [],
+        "outcome": "verdict",
+        "path": "fast",
+        "risky_actions": [
+          "click_link"
+        ],
+        "scenario": "N1.4",
+        "score": 60,
+        "should_alert": false,
+        "signals": [],
+        "versions": {
+          "contract": "1.0",
+          "pipeline": "stub"
+        }
+      }
+    },
+    "error": null,
+    "op": "analyze",
+    "render": null,
+    "render_guardian_alerts": null,
+    "v": "1.0"
+  }
+}

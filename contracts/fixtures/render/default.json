@@ -1,0 +1,58 @@
+{
+  "request": {
+    "ctx": {
+      "address_form": "aunt",
+      "alerts": [],
+      "check_id": "01J00000000000000000000000",
+      "has_guardian": false,
+      "maintenance": false
+    },
+    "op": "render",
+    "v": "1.0",
+    "verdict": {
+      "citations": [],
+      "cost_usd_est": 0.0,
+      "explanation": "",
+      "followup_question": null,
+      "group": "N0",
+      "latency_ms": {},
+      "level": "LOW_RISK",
+      "masked_text": "Chào bạn",
+      "model_ids": [],
+      "outcome": "verdict",
+      "path": "fast",
+      "risky_actions": [],
+      "scenario": "N0",
+      "score": 10,
+      "should_alert": false,
+      "signals": [],
+      "versions": {
+        "contract": "1.0",
+        "pipeline": "stub"
+      }
+    }
+  },
+  "response": {
+    "analyze": null,
+    "error": null,
+    "op": "render",
+    "render": {
+      "messages": [
+        {
+          "buttons": [
+            [
+              {
+                "kind": "report_wrong",
+                "label": "Bot báo sai"
+              }
+            ]
+          ],
+          "silent": false,
+          "text_html": "[STUB] LOW_RISK N0"
+        }
+      ]
+    },
+    "render_guardian_alerts": null,
+    "v": "1.0"
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "request": {
+    "ctx": {
+      "check_id": "01J00000000000000000000000",
+      "deadline_s": 85.0,
+      "flags": {
+        "feature_image": true,
+        "feature_rag": true,
+        "feature_voice": true,
+        "llm_enabled": true
+      },
+      "user_id": "tg:42"
+    },
+    "items": [],
+    "op": "analyze",
+    "session": {
+      "answer": "yes",
+      "masked_text": "hỏi thêm",
+      "prev_check_id": "01J00000000000000000000000",
+      "question": "Người gọi có bảo bác giữ bí mật không ạ?",
+      "turn": 2
+    },
+    "v": "1.0"
+  },
+  "response": {
+    "analyze": {
+      "cache_hit": false,
+      "verdict": {
+        "citations": [],
+        "cost_usd_est": 0.0,
+        "explanation": "",
+        "followup_question": null,
+        "group": "OTHER",
+        "latency_ms": {},
+        "level": "UNSURE",
+        "masked_text": "",
+        "model_ids": [],
+        "outcome": "unreadable",
+        "path": "fast",
+        "risky_actions": [],
+        "scenario": "OTHER",
+        "score": 30,
+        "should_alert": false,
+        "signals": [],
+        "versions": {
+          "contract": "1.0",
+          "pipeline": "stub"
+        }
+      }
+    },
+    "error": null,
+    "op": "analyze",
+    "render": null,
+    "render_guardian_alerts": null,
+    "v": "1.0"
+  }
+}
