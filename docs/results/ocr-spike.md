@@ -27,9 +27,9 @@ Việc chờ quyết định: AI1 cùng AI2 chốt ADR-003. Đọc kỹ mục 6 
 - Mức đạt phụ thuộc regex: nếu không sửa đầu URL thì RapidOCR + cột chỉ đạt 27/32 (84%, CI 68–93%), chưa qua 90%.
 - Mẫu nhỏ (32 URL), khoảng tin cậy rộng.
 
-**Điều kiện trước khi chốt thật (chưa làm mục nào):**
+**Điều kiện trước khi chốt thật:**
 
-1. **Kiểm tra độc lập:** thêm 10–20 ảnh mới, không dùng để chỉnh regex hay quy tắc cột, chạy đúng một lần với ngưỡng chép đúng URL ≥ 90%.
+1. **Kiểm tra độc lập (ĐÃ THỰC HIỆN):** chạy trên 16 ảnh mới (`eval/testocr/test_images.jsonl`, 18 URL), hoàn toàn không sửa code/regex, chạy đúng một lần: URL nghiêm ngặt đạt 15/18 (83%, CI 61–94%); sau regex đạt **17/18 (94%, CI 74–99%)** (vượt ngưỡng ≥ 90%); CER 7.2% (CI 5.9–8.7%); SĐT 20/20 (100%). Chi tiết xem mục 8.
 2. **AI1 xác nhận quy ước URL bị mờ** (`oi-015`). Nếu không đồng ý thì số URL đổi (xem mục 6).
 3. **Đo trên Lambda thật** (BE-06, AI-26): cold start, RAM đỉnh, p95 so với mục tiêu 3 giây ở 3–4 GB. Số trong báo cáo đo trên máy dev 18 luồng, không so trực tiếp được. Đã thử chạy trong Docker giả lập Lambda (3008 MB RAM, khoảng 1,7 vCPU, 2 lõi) với RapidOCR + sắp dòng theo cột: chạy được, khoảng 2 giây mỗi ảnh khi đặt số luồng onnxruntime bằng số lõi, nhưng khoảng 10 giây nếu để onnxruntime tự chọn luồng. Chỉ thử 4 ảnh, chưa tính p95, chưa phải Lambda thật.
 4. **Đưa quy tắc cột và regex vào code pipeline** kèm test (AI-26), giữ cả URL gốc và URL đã sửa như ARCH yêu cầu.
@@ -353,3 +353,57 @@ URL chép sai: 23/32 (hiện tối đa 10).
 | oi-048 |  | 3% | 3% | 3% | 2% | 3% | 3% | 3% | 3% | 3% | 2% |
 | oi-049 |  | 67% | 9% | 67% | 70% | 70% | 63% | 64% | 68% | 10% | 66% |
 | oi-050 |  | 13% | 13% | 13% | 15% | 15% | 6% | 7% | 13% | 13% | 3% |
+
+## 8. Kết quả kiểm tra độc lập trên 16 ảnh mới (`eval/testocr/`)
+
+> Thực hiện kiểm tra độc lập theo **Điều kiện 1 của ADR-003** trên 16 ảnh chụp màn hình mới (`001.png`–`016.png`), hoàn toàn giữ nguyên code và bộ luật hậu xử lý, chạy đúng một lần duy nhất. Nhãn ground truth lưu tại `eval/testocr/test_images.jsonl`.
+
+### 8.1 Bảng tổng hợp số đo (18 URL, 20 SĐT)
+
+| Tiêu chí | Tập 50 ảnh gốc (Spike) | Tập 16 ảnh mới (Độc lập) | Đánh giá |
+|---|---|---|---|
+| **Số lượng URL** | 32 URL | **18 URL** | Đạt điều kiện cỡ mẫu (≥ 15 URL) |
+| **URL nghiêm ngặt (Strict exact-match)** | 27/32 (84%, CI 68–93%) | **15/18 (83%, CI 61–94%)** | Độ chính xác gốc nhất quán |
+| **URL sau sửa đầu bằng regex (`repair_urls`)** | 31/32 (97%, CI 84–99%) | **17/18 (94%, CI 74–99%)** | **ĐẠT MỐC G2 (≥ 90%)** |
+| **Đúng tên miền + path (`url_host`)** | 31/32 (97%, CI 84–99%) | 17/18 (94%, CI 74–99%) | |
+| **SĐT đúng** | 16/16 (100%, CI 81–100%) | **20/20 (100%, CI 84–100%)** | 100% |
+| **CER tổng thể** | 12.9% (CI 10.5–15.5%) | **7.2% (CI 5.9–8.7%)** | Rất tốt, thấp hơn tập 50 ảnh |
+| **CER bỏ dấu** | 10.9% | 6.6% | |
+| **Từ có dấu đọc đúng** | 37% (CI 35–39%) | 28% (CI 21–36%) | Mẫu chứa nhiều tin leetspeak/ký tự đặc biệt |
+| **Độ trễ p50** | 1.91 s | 5.35 s (máy dev) | |
+
+### 8.2 Chi tiết 3 ca lỗi URL
+
+1. **`oi-test-003`** (SMS OTP Long Châu):
+   - Đáp án: `https://sl.nhathuoclongchau.com.vn/WVjAt8oD`
+   - Đọc thô: `ttps://.sl.nhathuoclongchau.com.vn/WVjAt8oD` (mất chữ `h`, thừa dấu chấm sau `://`).
+   - Kết quả: **`repair_urls` sửa thành công** thành đúng 100%.
+2. **`oi-test-016`** (SMS khuyến mãi Viettel Tammi):
+   - Đáp án: `https://viettel.vn/qua22nam`
+   - Đọc thô: `https://.` (cuối dòng trên) và `viettel.vn/qua22nam` (dòng dưới).
+   - Kết quả: **`repair_urls` nối dòng & bỏ dấu chấm thành công** thành đúng 100%.
+3. **`oi-test-015`** (SMS spam cờ bạc):
+   - Đáp án: `qqlcp.riua.online`
+   - Đọc thô: `gglcp.riua.online` (nhầm chữ `q` thành chữ `g` do phông chữ/dấu móc).
+   - Kết quả: **Không sửa được bằng regex** (lỗi đọc nhầm ký tự tương tự `oi-037`).
+
+### 8.3 Bảng CER từng ảnh (16 ảnh độc lập)
+
+| Ảnh | CER RapidOCR + cột | Ghi chú |
+|---|---|---|
+| oi-test-001 | 9.3% | SMS spam leetspeak |
+| oi-test-002 | 6.8% | SMS spam leetspeak |
+| oi-test-003 | 5.4% | SMS Long Châu OTP + link tra cứu |
+| oi-test-004 | 7.9% | SMS spam link casino |
+| oi-test-005 | 7.0% | SMS spam link |
+| oi-test-006 | 5.9% | SMS BM88 khuyến mãi |
+| oi-test-007 | 7.4% | SMS spam 2 link |
+| oi-test-008 | 8.2% | SMS spam link |
+| oi-test-009 | 6.8% | SMS spam link |
+| oi-test-010 | 3.8% | SMS ViettelPost chính thức |
+| oi-test-011 | 6.7% | SMS spam casino link |
+| oi-test-012 | 8.6% | SMS spam link |
+| oi-test-013 | 7.8% | SMS spam link |
+| oi-test-014 | 6.2% | SMS ViettelPost giao hàng |
+| oi-test-015 | 8.8% | SMS spam link (`q` -> `g`) |
+| oi-test-016 | 11.4% | SMS Viettel Tammi (2 link) |
