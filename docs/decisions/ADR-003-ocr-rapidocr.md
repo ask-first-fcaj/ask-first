@@ -33,12 +33,16 @@ Pipeline giữ cả URL gốc lẫn URL đã sửa (ARCH yêu cầu).
 - Tesseract và Paddle + VietOCR chép URL quá thấp.
 - Phóng ×2 ảnh rộng và bộ đọc Latinh PP-OCRv5 không cải thiện, nên không dùng.
 
-## Điều kiện (chưa làm mục nào trừ mục 4)
+## Điều kiện (mục 1 và 4 đã xong; mục 2 hoãn sang AI-26)
 
-1. **Kiểm tra độc lập:** thêm 10–20 ảnh mới, không dùng để chỉnh luật cột hay regex, chạy đúng **một lần**. Cần chép đúng URL ≥ 90%. Số hiện tại đo trên chính 50 ảnh đã dùng để chỉnh luật nên có thể lạc quan; không có regex thì chỉ 84%.
-2. **Đo trên Lambda ở AI-26:** cold start, RAM đỉnh, p95 so với 3 giây ở 3–4 GB. Số hiện tại là máy dev 18 luồng, không so trực tiếp được. Mới thử Docker giả lập (3008 MB, 2 lõi, 4 ảnh, khoảng 2 giây mỗi ảnh).
+1. **Kiểm tra độc lập (xong, 2026-10-23, PR #99):** 16 ảnh mới (`eval/testocr/`, 18 URL, 20 SĐT), không sửa code hay regex, chạy đúng một lần. URL nghiêm ngặt 15/18 (83%, CI 61–94%); sau `repair_urls` 17/18 (94%, CI 74–99%), vượt ngưỡng 90%; SĐT 20/20; CER 7.2% (CI 5.9–8.7%). Chi tiết: `docs/results/ocr-spike.md` mục 8. Hạn chế: 18 URL là mẫu nhỏ (cận dưới CI 74%); không có regex thì chỉ 83%, dưới 90%; p50 trên tập này 5,35 s (máy dev), cao hơn 1,91 s của tập 50 ảnh; nhãn 16 ảnh chưa có AI1 duyệt.
+2. **Đo trên Lambda ở AI-26 (hoãn theo quyết định của team 2026-10-23, chưa làm):** cold start, RAM đỉnh, p95 so với 3 giây ở 3–4 GB. Số hiện tại là máy dev 18 luồng, không so trực tiếp được. Mới thử Docker giả lập (3008 MB, 2 lõi, 4 ảnh, khoảng 2 giây mỗi ảnh).
 3. **Đưa luật cột và `repair_urls`/`repair_phones` vào code pipeline** kèm test (AI-26).
 4. **Quy ước URL bị mờ (`oi-015`, `oi-020`, `oi-039`):** AI1 đã xác nhận: URL có phần bị mờ không đưa vào `urls` và không dùng để đo exact-match. Báo cáo ghi cả hai mẫu số (32 và 33).
+
+## CER so với mục tiêu G2
+
+Issue #17 đặt mục tiêu CER ≤ 5%. Kết quả: 12.9% trên 50 ảnh, 7.2% trên 16 ảnh độc lập; **cả hai chưa đạt**. Báo cáo spike gọi 7.2% là "rất tốt", nhưng so với ngưỡng thì chưa đạt. G2 chưa thể coi là đạt cho tới khi AI1 quyết định một trong hai: hạ ngưỡng CER (CER gộp cả ảnh `[mờ]` và leetspeak, trong khi pipeline chỉ cần URL/SĐT đúng), hoặc cải thiện tiền xử lý.
 
 ## Nếu điều kiện 1 hoặc 2 không đạt
 
@@ -46,6 +50,6 @@ Không coi G2 là đạt. Xem lại theo thứ tự: tiền xử lý ảnh, rồ
 
 ## Chưa kiểm
 
-- License trọng số model (PP-OCRv6, `tessdata_fast`) và Tesseract: **not verified**.
+- License trọng số model (PP-OCRv6, `tessdata_fast`) và Tesseract: team xác nhận ổn (2026-10-23); chưa có nguồn license được trích dẫn trong repo.
 - Hiệu năng trên Lambda thật: **not verified**.
 - Ngưỡng sắp cột chỉ chỉnh theo 1 ảnh (`oi-022`).
