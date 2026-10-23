@@ -42,7 +42,11 @@ Pipeline giữ cả URL gốc lẫn URL đã sửa (ARCH yêu cầu).
 
 ## CER so với mục tiêu G2
 
-Issue #17 đặt mục tiêu CER ≤ 5%. Kết quả: 12.9% trên 50 ảnh, 7.2% trên 16 ảnh độc lập; **cả hai chưa đạt**. Báo cáo spike gọi 7.2% là "rất tốt", nhưng so với ngưỡng thì chưa đạt. G2 chưa thể coi là đạt cho tới khi AI1 quyết định một trong hai: hạ ngưỡng CER (CER gộp cả ảnh `[mờ]` và leetspeak, trong khi pipeline chỉ cần URL/SĐT đúng), hoặc cải thiện tiền xử lý.
+Issue #17 ban đầu đặt CER ≤ 5%. Kết quả: 12.9% trên 50 ảnh, 7.2% trên 16 ảnh độc lập; cả hai đều trên 5%.
+
+**Quyết định (AI1, 2026-10-23): hạ ngưỡng CER xuống ≤ 10%, tính trên tập độc lập.** Lý do: CER gộp cả vùng `[mờ]` và tin leetspeak, còn pipeline chỉ cần URL và SĐT đúng; chỉ số quyết định vẫn là URL ≥ 90%. Kết quả 7.2% (CI 5.9–8.7%) đạt ngưỡng mới.
+
+Lưu ý: ngưỡng này đặt **sau khi đã thấy số đo**, không phải ngưỡng đặt trước. Số 12.9% trên 50 ảnh tuning vẫn trên 10%. Ngưỡng 10% chưa có căn cứ độc lập ngoài việc URL mới là chỉ số chính.
 
 ## Nếu điều kiện 1 hoặc 2 không đạt
 
