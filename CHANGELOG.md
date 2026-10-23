@@ -13,6 +13,8 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - Cắt scope MVP còn text + ảnh (OCR) + người thân + RAG cơ bản; **hoãn** voice/ASR, VLM fallback, multi-turn, Phase 2, Mini App; **bỏ pilot**, thay bằng test nội bộ ở W6.
 
 ### Added
+- SH-01 (#3, G0): hợp đồng BE↔AI v1.0 trong `ai/src/askfirst/domain/` (`models.py`, `export.py`), `contracts/schema/*.json` sinh tự động, `StubPipeline` + `build_pipeline("stub")`, fixtures `contracts/fixtures/<op>/<case>.json`, test `ai/tests/contract/`, khung `ai/config/models.yaml` và `artifacts.yaml`.
+- Quy ước code bằng tiếng Anh (README): đổi tên trong contract v1.0 sang tiếng Anh. Mức: `DANGEROUS`/`SUSPICIOUS`/`UNSURE`/`LOW_RISK`; `nhom`→`group`, `kich_ban`→`scenario`, `KHAC`→`OTHER`, `xung_ho`→`address_form` (`elder`/`aunt`/`uncle`); `risky_actions` dùng `transfer_money`, `share_otp`, `share_password`, `install_app`, `share_screen`, `click_link`, `keep_secret`, `share_id_card`. Cập nhật tài liệu liên quan; schema và fixtures sinh lại.
 - `docs/ai-viec-nghien-cuu-phu.md`: hướng dẫn 3 việc nghiên cứu phụ cho AI2 (bộ dữ liệu OTP, bộ test mask PII, script đo độ dễ đọc), kèm quy tắc dữ liệu và tiêu chí xong.
 - `docs/decisions/ADR-003-ocr-rapidocr.md`: chọn RapidOCR + sắp dòng theo cột + sửa đầu URL cho OCR local, **có điều kiện** (kiểm độc lập ≥ 90% chép đúng URL, đo Lambda ở AI-26); chưa qua Gate G2 (AI-20, issue #17).
 - `eval/ocr_benchmark.py` và `docs/results/ocr-spike.md`: script so 3 stack OCR local (RapidOCR, Tesseract, PaddleOCR; 10 cấu hình) trên 50 ảnh `ocr_images` theo CER, đúng dấu, chép đúng URL, độ trễ (AI-20); RapidOCR + sắp dòng theo cột là ứng viên cho ADR-003, chưa kiểm tra độc lập.

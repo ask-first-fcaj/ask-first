@@ -89,10 +89,10 @@ Nếu bạn từng học môn Nhập môn Trí tuệ nhân tạo hoặc Xử lý
 
 | Mức độ | Điểm số khởi điểm | Ý nghĩa thực tế với người dùng |
 |---|---|---|
-| **`NGUY_HIEM`** | ≥ 75 điểm | Dấu hiệu lừa đảo rất rõ ràng. Nhắc người dùng dừng lại ngay. **Tự động báo động cho con cháu.** |
-| **`NGHI_NGO`** | 50 – 74 điểm | Có nhiều điểm bất thường. Khuyên người dùng hỏi ý kiến con cháu trước khi làm theo. |
-| **`CHUA_CHAC`** | 25 – 49 điểm | Thông tin quá ngắn hoặc chưa đủ dữ liệu. Bot có thể hỏi thêm 1 câu hỏi làm rõ. |
-| **`IT_DAU_HIEU`** | < 25 điểm | Chưa thấy dấu hiệu lừa đảo. Vẫn kèm khuyến cáo cảnh giác cơ bản. |
+| **`DANGEROUS`** | ≥ 75 điểm | Dấu hiệu lừa đảo rất rõ ràng. Nhắc người dùng dừng lại ngay. **Tự động báo động cho con cháu.** |
+| **`SUSPICIOUS`** | 50 – 74 điểm | Có nhiều điểm bất thường. Khuyên người dùng hỏi ý kiến con cháu trước khi làm theo. |
+| **`UNSURE`** | 25 – 49 điểm | Thông tin quá ngắn hoặc chưa đủ dữ liệu. Bot có thể hỏi thêm 1 câu hỏi làm rõ. |
+| **`LOW_RISK`** | < 25 điểm | Chưa thấy dấu hiệu lừa đảo. Vẫn kèm khuyến cáo cảnh giác cơ bản. |
 
 ⚠️ **Lưu ý:** Ngưỡng 75 / 50 / 25 là mốc khởi điểm. Ở tuần thứ 5 (AI-10), bạn sẽ dùng dữ liệu 300 mẫu test thật để vẽ biểu đồ và tinh chỉnh lại các ngưỡng này bằng số liệu khoa học.
 
@@ -366,10 +366,10 @@ class SignalItem(BaseModel):
 
 class Verdict(BaseModel):
     outcome: Literal["verdict", "smalltalk", "unreadable"]
-    level: Literal["NGUY_HIEM", "NGHI_NGO", "CHUA_CHAC", "IT_DAU_HIEU"]
+    level: Literal["DANGEROUS", "SUSPICIOUS", "UNSURE", "LOW_RISK"]
     score: int = Field(ge=0, le=100)
-    nhom: str
-    kich_ban: str
+    group: str
+    scenario: str
     signals: list[SignalItem]
     should_alert: bool
     explanation: str

@@ -1,0 +1,61 @@
+{
+  "request": {
+    "guardians": [
+      {
+        "alert_id": "01J00000000000000000000000",
+        "at": "2026-10-14T07:05:00Z",
+        "elder_name": "Lan",
+        "share_level": 2
+      }
+    ],
+    "op": "render_guardian_alerts",
+    "v": "1.0",
+    "verdict": {
+      "citations": [],
+      "cost_usd_est": 0.0,
+      "explanation": "",
+      "followup_question": null,
+      "group": "N1",
+      "latency_ms": {},
+      "level": "DANGEROUS",
+      "masked_text": "Gửi mã OTP cho tôi",
+      "model_ids": [],
+      "outcome": "verdict",
+      "path": "fast",
+      "risky_actions": [
+        "share_otp"
+      ],
+      "scenario": "N1.1",
+      "score": 90,
+      "should_alert": true,
+      "signals": [],
+      "versions": {
+        "contract": "1.0",
+        "pipeline": "stub"
+      }
+    }
+  },
+  "response": {
+    "analyze": null,
+    "error": null,
+    "op": "render_guardian_alerts",
+    "render": null,
+    "render_guardian_alerts": {
+      "alerts": [
+        {
+          "buttons": [
+            [
+              {
+                "kind": "ack",
+                "label": "Tôi đã liên hệ"
+              }
+            ]
+          ],
+          "silent": false,
+          "text_html": "[STUB] cảnh báo Lan"
+        }
+      ]
+    },
+    "v": "1.0"
+  }
+}

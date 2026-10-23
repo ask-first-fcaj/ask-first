@@ -39,7 +39,7 @@ Người cao tuổi **chuyển tiếp, chụp màn hình hoặc dán link** tin 
 
 - **Không có FR16**: ARCH đánh số nhảy từ FR15 sang FR17. File này giữ nguyên mã cho khớp ARCH.
 - **FR9 và FR14** ghi "MVP+" ở ARCH §1.2, nhưng PLAN v3 đã gộp vào BE-29 và BE-25, nên trong 6 tuần vẫn làm.
-- **4 mức kết luận**: `NGUY_HIEM`, `NGHI_NGO`, `CHUA_CHAC`, `IT_DAU_HIEU`. Không có mức "an toàn".
+- **4 mức kết luận**: `DANGEROUS`, `SUSPICIOUS`, `UNSURE`, `LOW_RISK`. Không có mức "an toàn".
 - Chỉ tiêu chung của MVP (ARCH §1.3, PLAN §4 M4): recall lớp lừa đảo ≥ 90%, báo nhầm ≤ 10% trên bộ 300 mẫu; p95 ≤ 15 giây cho văn bản và ảnh; ảnh gốc không ra khỏi Lambda `ai`; LLM chỉ nhận văn bản đã mask; log không có nội dung.
 
 ## 2. Thứ tự làm
@@ -129,7 +129,7 @@ Trong MVP, gửi voice (mọi độ dài) thì bot trả câu "chưa hỗ trợ 
 Đây là lõi của sản phẩm: luồng `normalize → mask → rules → (RAG) → judge → fuse → respond` trong Lambda `ai`, do worker Java gọi.
 
 **Người dùng nhận được:**
-- Một trong 4 mức: `NGUY_HIEM`, `NGHI_NGO`, `CHUA_CHAC`, `IT_DAU_HIEU` (không có "an toàn").
+- Một trong 4 mức: `DANGEROUS`, `SUSPICIOUS`, `UNSURE`, `LOW_RISK` (không có "an toàn").
 - Tên kịch bản lừa đảo (N0–N6), các dấu hiệu trích từ chính tin, việc cần làm ngay, hotline hoặc kênh chính thức đã xác minh, và trích nguồn cảnh báo chính thức (từ M3).
 - Phần kết luận ≤ 600 ký tự; link nghi ngờ đã bị vô hiệu (`hxxps://…[.]…`), không bấm được.
 
@@ -217,7 +217,7 @@ Trong MVP, gửi voice (mọi độ dài) thì bot trả câu "chưa hỗ trợ 
 
 **Issue:** [#24](https://github.com/ask-first-fcaj/ask-first/issues/24) · **Phạm vi:** MVP · **Xong ở:** M2 (W4) · **Tham chiếu:** ARCH §5.5
 
-**Khi nào báo tự động:** mức `NGUY_HIEM` **và** có hành động rủi ro (chuyển tiền, đưa OTP, cài app, chia sẻ màn hình, giữ bí mật) **và** có người thân đang `active`. Ở mức `NGHI_NGO` bot chỉ hiện nút "📣 Báo cho con" để người cao tuổi tự quyết.
+**Khi nào báo tự động:** mức `DANGEROUS` **và** có hành động rủi ro (chuyển tiền, đưa OTP, cài app, chia sẻ màn hình, giữ bí mật) **và** có người thân đang `active`. Ở mức `SUSPICIOUS` bot chỉ hiện nút "📣 Báo cho con" để người cao tuổi tự quyết.
 
 **Bot phải:**
 - Gửi **song song** cho mọi người thân `active`, nội dung theo mức chia sẻ.
