@@ -1,34 +1,34 @@
 package com.askfirst.common.channel;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.askfirst.common.channel.model.EntityRef;
 import com.askfirst.common.channel.model.InboundMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
 class TelegramAdapterTest {
 
-    private TelegramAdapter adapter;
-    private ObjectMapper mapper;
+  private TelegramAdapter adapter;
+  private ObjectMapper mapper;
 
-    @BeforeEach
-    void setUp() {
-        adapter = new TelegramAdapter();
-        mapper = new ObjectMapper();
-        mapper.registerModule(new JavaTimeModule());
-    }
+  @BeforeEach
+  void setUp() {
+    adapter = new TelegramAdapter();
+    mapper = new ObjectMapper();
+    mapper.registerModule(new JavaTimeModule());
+  }
 
-    @Test
-    @DisplayName("Parse regular text message")
-    void testParseTextMessage() throws Exception {
-        String json = """
+  @Test
+  @DisplayName("Parse regular text message")
+  void testParseTextMessage() throws Exception {
+    String json =
+        """
             {
               "update_id": 10001,
               "message": {
@@ -40,27 +40,28 @@ class TelegramAdapterTest {
               }
             }
             """;
-        JsonNode update = mapper.readTree(json);
-        Optional<InboundMessage> result = adapter.parseUpdate(update);
+    JsonNode update = mapper.readTree(json);
+    Optional<InboundMessage> result = adapter.parseUpdate(update);
 
-        assertThat(result).isPresent();
-        InboundMessage msg = result.get();
-        assertThat(msg.channel()).isEqualTo("telegram");
-        assertThat(msg.updateId()).isEqualTo("10001");
-        assertThat(msg.messageId()).isEqualTo("42");
-        assertThat(msg.chatId()).isEqualTo("888");
-        assertThat(msg.userId()).isEqualTo("tg:999");
-        assertThat(msg.kind()).isEqualTo("text");
-        assertThat(msg.text()).isEqualTo("Chào bạn, đây là tin nhắn text");
-        assertThat(msg.media()).isNull();
-        assertThat(msg.entities()).isEmpty();
-        assertThat(msg.receivedAt()).isNotNull();
-    }
+    assertThat(result).isPresent();
+    InboundMessage msg = result.get();
+    assertThat(msg.channel()).isEqualTo("telegram");
+    assertThat(msg.updateId()).isEqualTo("10001");
+    assertThat(msg.messageId()).isEqualTo("42");
+    assertThat(msg.chatId()).isEqualTo("888");
+    assertThat(msg.userId()).isEqualTo("tg:999");
+    assertThat(msg.kind()).isEqualTo("text");
+    assertThat(msg.text()).isEqualTo("Chào bạn, đây là tin nhắn text");
+    assertThat(msg.media()).isNull();
+    assertThat(msg.entities()).isEmpty();
+    assertThat(msg.receivedAt()).isNotNull();
+  }
 
-    @Test
-    @DisplayName("Parse text message containing url and text_link entities")
-    void testParseTextWithEntities() throws Exception {
-        String json = """
+  @Test
+  @DisplayName("Parse text message containing url and text_link entities")
+  void testParseTextWithEntities() throws Exception {
+    String json =
+        """
             {
               "update_id": 10002,
               "message": {
@@ -85,23 +86,24 @@ class TelegramAdapterTest {
               }
             }
             """;
-        JsonNode update = mapper.readTree(json);
-        Optional<InboundMessage> result = adapter.parseUpdate(update);
+    JsonNode update = mapper.readTree(json);
+    Optional<InboundMessage> result = adapter.parseUpdate(update);
 
-        assertThat(result).isPresent();
-        InboundMessage msg = result.get();
-        assertThat(msg.entities()).hasSize(1);
-        EntityRef entity = msg.entities().get(0);
-        assertThat(entity.kind()).isEqualTo("text_link");
-        assertThat(entity.offset()).isEqualTo(0);
-        assertThat(entity.length()).isEqualTo(10);
-        assertThat(entity.url()).isEqualTo("https://dichvucong-fake.com");
-    }
+    assertThat(result).isPresent();
+    InboundMessage msg = result.get();
+    assertThat(msg.entities()).hasSize(1);
+    EntityRef entity = msg.entities().get(0);
+    assertThat(entity.kind()).isEqualTo("text_link");
+    assertThat(entity.offset()).isEqualTo(0);
+    assertThat(entity.length()).isEqualTo(10);
+    assertThat(entity.url()).isEqualTo("https://dichvucong-fake.com");
+  }
 
-    @Test
-    @DisplayName("Parse photo message and pick the largest PhotoSize")
-    void testParsePhotoMessage() throws Exception {
-        String json = """
+  @Test
+  @DisplayName("Parse photo message and pick the largest PhotoSize")
+  void testParsePhotoMessage() throws Exception {
+    String json =
+        """
             {
               "update_id": 10003,
               "message": {
@@ -118,24 +120,25 @@ class TelegramAdapterTest {
               }
             }
             """;
-        JsonNode update = mapper.readTree(json);
-        Optional<InboundMessage> result = adapter.parseUpdate(update);
+    JsonNode update = mapper.readTree(json);
+    Optional<InboundMessage> result = adapter.parseUpdate(update);
 
-        assertThat(result).isPresent();
-        InboundMessage msg = result.get();
-        assertThat(msg.kind()).isEqualTo("photo");
-        assertThat(msg.text()).isEqualTo("Ảnh chụp màn hình tin nhắn phạt nguội");
-        assertThat(msg.media()).isNotNull();
-        assertThat(msg.media().fileId()).isEqualTo("largest_id");
-        assertThat(msg.media().fileUniqueId()).isEqualTo("u_largest");
-        assertThat(msg.media().mime()).isEqualTo("image/jpeg");
-        assertThat(msg.media().size()).isEqualTo(85000L);
-    }
+    assertThat(result).isPresent();
+    InboundMessage msg = result.get();
+    assertThat(msg.kind()).isEqualTo("photo");
+    assertThat(msg.text()).isEqualTo("Ảnh chụp màn hình tin nhắn phạt nguội");
+    assertThat(msg.media()).isNotNull();
+    assertThat(msg.media().fileId()).isEqualTo("largest_id");
+    assertThat(msg.media().fileUniqueId()).isEqualTo("u_largest");
+    assertThat(msg.media().mime()).isEqualTo("image/jpeg");
+    assertThat(msg.media().size()).isEqualTo(85000L);
+  }
 
-    @Test
-    @DisplayName("Parse voice message")
-    void testParseVoiceMessage() throws Exception {
-        String json = """
+  @Test
+  @DisplayName("Parse voice message")
+  void testParseVoiceMessage() throws Exception {
+    String json =
+        """
             {
               "update_id": 10004,
               "message": {
@@ -153,23 +156,24 @@ class TelegramAdapterTest {
               }
             }
             """;
-        JsonNode update = mapper.readTree(json);
-        Optional<InboundMessage> result = adapter.parseUpdate(update);
+    JsonNode update = mapper.readTree(json);
+    Optional<InboundMessage> result = adapter.parseUpdate(update);
 
-        assertThat(result).isPresent();
-        InboundMessage msg = result.get();
-        assertThat(msg.kind()).isEqualTo("voice");
-        assertThat(msg.media()).isNotNull();
-        assertThat(msg.media().fileId()).isEqualTo("voice_file_id");
-        assertThat(msg.media().mime()).isEqualTo("audio/ogg");
-        assertThat(msg.media().duration()).isEqualTo(15);
-        assertThat(msg.media().size()).isEqualTo(32000L);
-    }
+    assertThat(result).isPresent();
+    InboundMessage msg = result.get();
+    assertThat(msg.kind()).isEqualTo("voice");
+    assertThat(msg.media()).isNotNull();
+    assertThat(msg.media().fileId()).isEqualTo("voice_file_id");
+    assertThat(msg.media().mime()).isEqualTo("audio/ogg");
+    assertThat(msg.media().duration()).isEqualTo(15);
+    assertThat(msg.media().size()).isEqualTo(32000L);
+  }
 
-    @Test
-    @DisplayName("Parse forwarded message origin")
-    void testParseForwardOrigin() throws Exception {
-        String json = """
+  @Test
+  @DisplayName("Parse forwarded message origin")
+  void testParseForwardOrigin() throws Exception {
+    String json =
+        """
             {
               "update_id": 10005,
               "message": {
@@ -184,17 +188,18 @@ class TelegramAdapterTest {
               }
             }
             """;
-        JsonNode update = mapper.readTree(json);
-        Optional<InboundMessage> result = adapter.parseUpdate(update);
+    JsonNode update = mapper.readTree(json);
+    Optional<InboundMessage> result = adapter.parseUpdate(update);
 
-        assertThat(result).isPresent();
-        assertThat(result.get().forwardOrigin()).isEqualTo("channel");
-    }
+    assertThat(result).isPresent();
+    assertThat(result.get().forwardOrigin()).isEqualTo("channel");
+  }
 
-    @Test
-    @DisplayName("Ignore message from bot account")
-    void testIgnoreBotMessage() throws Exception {
-        String json = """
+  @Test
+  @DisplayName("Ignore message from bot account")
+  void testIgnoreBotMessage() throws Exception {
+    String json =
+        """
             {
               "update_id": 10006,
               "message": {
@@ -206,17 +211,18 @@ class TelegramAdapterTest {
               }
             }
             """;
-        JsonNode update = mapper.readTree(json);
-        Optional<InboundMessage> result = adapter.parseUpdate(update);
+    JsonNode update = mapper.readTree(json);
+    Optional<InboundMessage> result = adapter.parseUpdate(update);
 
-        assertThat(result).isEmpty();
-    }
+    assertThat(result).isEmpty();
+  }
 
-    @Test
-    @DisplayName("Truncate text over 4000 characters")
-    void testTruncateLongText() throws Exception {
-        String longText = "a".repeat(5000);
-        String json = """
+  @Test
+  @DisplayName("Truncate text over 4000 characters")
+  void testTruncateLongText() throws Exception {
+    String longText = "a".repeat(5000);
+    String json =
+        """
             {
               "update_id": 10007,
               "message": {
@@ -227,18 +233,20 @@ class TelegramAdapterTest {
                 "text": "%s"
               }
             }
-            """.formatted(longText);
-        JsonNode update = mapper.readTree(json);
-        Optional<InboundMessage> result = adapter.parseUpdate(update);
+            """
+            .formatted(longText);
+    JsonNode update = mapper.readTree(json);
+    Optional<InboundMessage> result = adapter.parseUpdate(update);
 
-        assertThat(result).isPresent();
-        assertThat(result.get().text()).hasSize(4000);
-    }
+    assertThat(result).isPresent();
+    assertThat(result.get().text()).hasSize(4000);
+  }
 
-    @Test
-    @DisplayName("Verify InboundMessage serializes to valid JSON matching schema")
-    void testJsonRoundTripSerialization() throws Exception {
-        String json = """
+  @Test
+  @DisplayName("Verify InboundMessage serializes to valid JSON matching schema")
+  void testJsonRoundTripSerialization() throws Exception {
+    String json =
+        """
             {
               "update_id": 10008,
               "message": {
@@ -250,17 +258,17 @@ class TelegramAdapterTest {
               }
             }
             """;
-        JsonNode update = mapper.readTree(json);
-        InboundMessage msg = adapter.parseUpdate(update).orElseThrow();
+    JsonNode update = mapper.readTree(json);
+    InboundMessage msg = adapter.parseUpdate(update).orElseThrow();
 
-        String serialized = mapper.writeValueAsString(msg);
-        JsonNode tree = mapper.readTree(serialized);
+    String serialized = mapper.writeValueAsString(msg);
+    JsonNode tree = mapper.readTree(serialized);
 
-        assertThat(tree.path("channel").asText()).isEqualTo("telegram");
-        assertThat(tree.path("user_id").asText()).isEqualTo("tg:999");
-        assertThat(tree.path("chat_id").asText()).isEqualTo("888");
-        assertThat(tree.path("message_id").asText()).isEqualTo("49");
-        assertThat(tree.path("kind").asText()).isEqualTo("text");
-        assertThat(tree.has("received_at")).isTrue();
-    }
+    assertThat(tree.path("channel").asText()).isEqualTo("telegram");
+    assertThat(tree.path("user_id").asText()).isEqualTo("tg:999");
+    assertThat(tree.path("chat_id").asText()).isEqualTo("888");
+    assertThat(tree.path("message_id").asText()).isEqualTo("49");
+    assertThat(tree.path("kind").asText()).isEqualTo("text");
+    assertThat(tree.has("received_at")).isTrue();
+  }
 }

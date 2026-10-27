@@ -28,3 +28,4 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - Khung repo: `docs/`, `backend/`, `ai/`, `contracts/`, `infra/`.
 - Tài liệu: kiến trúc (`docs/system-architecture.md`), kế hoạch (`docs/implementation-plan.md`), hướng dẫn cho team Backend và AI.
 - `CODEOWNERS`, template PR, workflow CI khung (3 OS, job `contract`).
+- BE-02: Tích hợp plugin Spotless chuẩn hoá code Java, hoàn thiện kiểm tra CI 3 hệ điều hành và kiểm tra chéo lệnh chuẩn BE/AI.

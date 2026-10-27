@@ -8,8 +8,8 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Built by the adapter from one update. Kept temporarily in BUFFER# (<= 10 minutes, deleted right after processing).
- * Matches contracts/schema/InboundMessage.json
+ * Built by the adapter from one update. Kept temporarily in BUFFER# (<= 10 minutes, deleted right
+ * after processing). Matches contracts/schema/InboundMessage.json
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record InboundMessage(
@@ -25,35 +25,37 @@ public record InboundMessage(
     @JsonProperty("forward_origin") String forwardOrigin,
     @JsonProperty("media_group_id") String mediaGroupId,
     @JsonProperty("received_at")
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss[.SSS]X", timezone = "UTC")
-    Instant receivedAt
-) {
-    public InboundMessage {
-        if (channel == null || channel.isBlank()) {
-            throw new IllegalArgumentException("channel is required");
-        }
-        if (updateId == null || updateId.isBlank()) {
-            throw new IllegalArgumentException("update_id is required");
-        }
-        if (chatId == null || chatId.isBlank()) {
-            throw new IllegalArgumentException("chat_id is required");
-        }
-        if (userId == null || userId.isBlank()) {
-            throw new IllegalArgumentException("user_id is required");
-        }
-        if (messageId == null || messageId.isBlank()) {
-            throw new IllegalArgumentException("message_id is required");
-        }
-        if (kind == null || kind.isBlank()) {
-            throw new IllegalArgumentException("kind is required");
-        }
-        if (receivedAt == null) {
-            throw new IllegalArgumentException("received_at is required");
-        }
-        if (entities == null) {
-            entities = Collections.emptyList();
-        } else {
-            entities = List.copyOf(entities);
-        }
+        @JsonFormat(
+            shape = JsonFormat.Shape.STRING,
+            pattern = "yyyy-MM-dd'T'HH:mm:ss[.SSS]X",
+            timezone = "UTC")
+        Instant receivedAt) {
+  public InboundMessage {
+    if (channel == null || channel.isBlank()) {
+      throw new IllegalArgumentException("channel is required");
     }
+    if (updateId == null || updateId.isBlank()) {
+      throw new IllegalArgumentException("update_id is required");
+    }
+    if (chatId == null || chatId.isBlank()) {
+      throw new IllegalArgumentException("chat_id is required");
+    }
+    if (userId == null || userId.isBlank()) {
+      throw new IllegalArgumentException("user_id is required");
+    }
+    if (messageId == null || messageId.isBlank()) {
+      throw new IllegalArgumentException("message_id is required");
+    }
+    if (kind == null || kind.isBlank()) {
+      throw new IllegalArgumentException("kind is required");
+    }
+    if (receivedAt == null) {
+      throw new IllegalArgumentException("received_at is required");
+    }
+    if (entities == null) {
+      entities = Collections.emptyList();
+    } else {
+      entities = List.copyOf(entities);
+    }
+  }
 }
