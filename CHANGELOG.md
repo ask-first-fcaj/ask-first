@@ -41,6 +41,9 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - Khung repo: `docs/`, `backend/`, `ai/`, `contracts/`, `infra/`.
 - Tài liệu: kiến trúc (`docs/system-architecture.md`), kế hoạch (`docs/implementation-plan.md`), hướng dẫn cho team Backend và AI.
 - `CODEOWNERS`, template PR, workflow CI khung (3 OS, job `contract`).
+- BE-02: Tích hợp plugin Spotless chuẩn hoá code Java, hoàn thiện kiểm tra CI 3 hệ điều hành và kiểm tra chéo lệnh chuẩn BE/AI.
+- BE-03 (#1): Khung hạ tầng AWS SAM (`infra/template.yaml`, `infra/samconfig.toml`, `infra/README.md`) cho môi trường `dev`: Lambda `webhook` (Java 21, Function URL), DynamoDB `askfirst` (PK/SK, GSI1, TTL, PITR), SQS `jobs` + `jobs-dlq`, S3 Data Bucket (Block Public Access, lifecycle `donated/` 90 ngày), SSM Parameter Store; kèm handler `HelloWebhookHandler` và unit test.
+
 
 ### Fixed
 - AI-20 (#17): `eval/ocr_benchmark.py` chấm "chép đúng URL" theo **ranh giới URL** thay vì so chuỗi con sau khi xoá hết khoảng trắng. Trước đây `https://a.vn` được tính là đúng khi OCR đọc ra `https://a.vn.evil.com` hay `https://a.vn/x?id=1`; chấm lại kết quả thô bằng cách mới ra **cùng số** với bản cũ (cả bộ 50 ảnh và bộ 16 ảnh). Vẫn chấp nhận URL bị ngắt dòng, dấu câu cuối câu, và URL có `http(s)://` dính chữ phía trước (`oi-048`).
