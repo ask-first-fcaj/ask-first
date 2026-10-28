@@ -26,7 +26,16 @@ jobs:
         id: has
         shell: bash
         run: |
-          if [ -f backend/mvnw ]; then echo "found=true" >> "$GITHUB_OUTPUT"; else echo "found=false" >> "$GITHUB_OUTPUT"; echo "::notice::backend/mvnw chưa có, bỏ qua (khung repo)"; fi
+          if [ -f backend/ScamProtection/mvnw ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "dir=backend/ScamProtection" >> "$GITHUB_OUTPUT"
+          elif [ -f backend/mvnw ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "dir=backend" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::backend mvnw chưa có, bỏ qua (khung repo)"
+          fi
       - uses: actions/setup-java@v4
         if: steps.has.outputs.found == 'true'
         with:
@@ -35,7 +44,7 @@ jobs:
           cache: maven
       - name: Maven verify
         if: steps.has.outputs.found == 'true'
-        working-directory: backend
+        working-directory: ${{ steps.has.outputs.dir }}
         shell: bash
         run: ./mvnw -B verify
 
