@@ -1,6 +1,6 @@
 # Đáp án gán thử 10 mẫu (SH-02)
 
-> Chỉ mở sau khi cả 4 người (AI1, AI2, BE1, BE2) đã gán xong `eval/labeling_trial/samples.md` một cách độc lập.
+> Chỉ mở sau khi đã tự gán xong `eval/labeling_trial/samples.md`.
 >
 > Đáp án theo **`eval/LABELING.md` bản 2** (mã kịch bản research-concept §2.2). Bản 1 dùng nhóm cũ `N1`–`N6`; cách đổi ở `LABELING.md` mục 12.
 
@@ -19,22 +19,4 @@
 | 09 | `N1.4` | N1 | **Mẫu biên:** bảo đăng nhập tài khoản ngân hàng, nhưng bên bị mạo danh là cơ quan thuế → `N1.4`, không phải `N1.3` (mục 3, quy tắc 5). | Mẫu tự dựng |
 | 10 | `N3.1` | N3 | Tuyển xem video TikTok tại nhà, lương theo giờ, dẫn sang Telegram → việc nhẹ lương cao (mục 5, quy tắc 6). | Công an tỉnh Vĩnh Long (link trong `samples.md`) |
 
-Mẫu 06 là ca khó nhất (`N1.1` hay `N1.4`). Nếu nhóm lệch ở mẫu này, sửa ranh giới `N1.1`/`N1.4` trong `LABELING.md` mục 3 trước khi gán lại.
-
-## 2. Kết quả gán thử
-
-| Mẫu | Đáp án | AI1 | AI2 | BE1 | BE2 | Cùng `scenario` | Cùng `group` | Ghi chú |
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---|
-| 01 | `N1.3` | | | | | | | |
-| 02 | `N3.3` | | | | | | | |
-| 03 | `N0` | | | | | | | |
-| 04 | `N1.6` | | | | | | | |
-| 05 | `N5.4` | | | | | | | |
-| 06 | `N1.4` | | | | | | | |
-| 07 | `N2.1` | | | | | | | |
-| 08 | `N0` | | | | | | | |
-| 09 | `N1.4` | | | | | | | |
-| 10 | `N3.1` | | | | | | | |
-
-- Cùng `scenario`: `... / 10` (cần ≥ 8). Cùng `group`: `... / 10`.
-- Đạt hay phải sửa guide và gán lại bằng 10 mẫu mới (`LABELING.md` mục 11, bước 4)?
+Mẫu 06 là ca khó nhất (`N1.1` hay `N1.4`). Lệch ở mẫu này thì đọc lại ranh giới `N1.1`/`N1.4` trong `LABELING.md` mục 3.

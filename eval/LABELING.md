@@ -1,10 +1,9 @@
 # Hướng dẫn gán nhãn (SH-02)
 
-Mục đích: 4 người gán cùng 1 tin nhắn thì ra **cùng 1 nhãn**. Dùng cho bộ eval (SH-03) và scenario card của KB (AI-25).
+Mục đích: ai gán cùng 1 tin nhắn cũng ra **cùng 1 nhãn**. Dùng cho bộ eval (SH-03) và scenario card của KB (AI-25).
 
 > **Trạng thái:** bản 2 (30/10/2026). Đổi sang **mã kịch bản theo `docs/research-concept.md` §2.2** (`N1.4`, `N3.1`…), vì plan §3.8, fixture contract và KB (AI-25) đều dùng bảng đó. Bản 1 dùng N1–N6 với nghĩa khác (N2 = ngân hàng, N6 = tống tiền…), nên nhãn cũ **không dùng lại được**; bảng đổi ở mục 12.
-> Thêm 3 mã con vào §2.2 cho những loại team đã chốt ở bản 1 mà bảng §2.2 chưa có: `N1.6` trúng thưởng/quà tri ân, `N2.3` ghép ảnh nhạy cảm tống tiền, `N5.4` chiếm tài khoản chat vay tiền; nới `N3.3` để gồm cả "bạn quen online gửi quà rồi đòi phí". **Cần AI1 duyệt** phần đổi taxonomy này.
-> Chưa đạt điều kiện xong SH-02: 4 người chưa gán thử (mục 10).
+> Thêm 3 mã con vào §2.2 cho những loại team đã chốt ở bản 1 mà bảng §2.2 chưa có: `N1.6` trúng thưởng/quà tri ân, `N2.3` ghép ảnh nhạy cảm tống tiền, `N5.4` chiếm tài khoản chat vay tiền; nới `N3.3` để gồm cả "bạn quen online gửi quà rồi đòi phí". **AI1 đã duyệt** phần đổi taxonomy này (30/10/2026), kèm nới `N1.6` sang cả hoàn tiền/bồi thường.
 
 ---
 
@@ -34,7 +33,7 @@ Nhóm cấp 1 theo 5 nhóm của Bộ Công an (research-concept §2.1): mạo d
 | `N1.3` | Giả ngân hàng, ví điện tử, công ty tài chính | Khoá thẻ, điểm thưởng hết hạn, xác minh giao dịch, cập nhật sinh trắc học, vay ưu đãi |
 | `N1.4` | Giả dịch vụ công: phạt nguội, VNeID, thuế, BHXH, hải quan, cư trú | Tên miền giả DVC/thuế, "cài app DVC/VNeID" qua link, hải quan đòi phí khi **không** có bối cảnh bạn quen |
 | `N1.5` | Giả điện lực, nhà mạng | Cắt điện, khoá SIM vì chưa chuẩn hoá, nợ cước |
-| `N1.6` | **(mới)** Giả doanh nghiệp/sàn TMĐT báo trúng thưởng, quà tri ân | Trúng xe/điện thoại, quà tri ân, bắt đóng phí trước hoặc quét QR nhận quà |
+| `N1.6` | **(mới)** Giả doanh nghiệp/sàn TMĐT báo trúng thưởng, quà tri ân, hoàn tiền/bồi thường | Trúng xe/điện thoại, quà tri ân, hãng bay/cửa hàng báo hoàn tiền hoặc bồi thường; bắt đóng phí trước, bấm link hoặc quét QR để nhận |
 | `N2.1` | Deepfake mặt/giọng người thân, sếp | **Có** dấu hiệu cuộc gọi video/voice giả trong mẫu: hình mờ, "mạng yếu", gọi rất ngắn rồi nhắn vay |
 | `N2.2` | Gọi thu mẫu giọng nói | Cuộc gọi im lặng, khảo sát dài bất thường |
 | `N2.3` | **(mới)** Ghép ảnh/video nhạy cảm để tống tiền | "Tôi giữ video nhạy cảm của anh", đòi tiền nếu không sẽ phát tán |
@@ -94,6 +93,7 @@ Nguồn:
 - `N1.4`: https://bocongan.gov.vn/bai-viet/canh-bao-thu-doan-gia-danh-co-quan-cong-an-gui-tin-nhan-phat-nguoi-kem-duong-link-gia-mao-de-lua-dao-chiem-doat-tai-san-1788945012 (09/09/2026): SMS "phạt nguội", link giống Cổng DVC, "giảm 50% nếu nộp sớm", trang giả đòi đăng nhập ngân hàng/OTP.
 - `N1.3`: https://hangthat.thuonghieucongluan.com.vn/cong-an-canh-bao-chieu-gia-mao-techcombank-gui-sms-bam-nham-link-co-the-mat-sach-tien-a291635.html (15/07/2026, theo Công an Gia Lai): điểm thưởng hết hạn, xác minh giao dịch, link kiểu `techcombank[.]cfd`, `tcb[.]lat`.
 - `N1.6`: https://bocongan.gov.vn/bai-viet/thanh-hoa-triet-xoa-o-nhom-lua-dao-chiem-doat-tai-san-bang-hinh-thuc-mua-hang-boc-tham-trung-thuong-d22-t45630 (18/06/2025, Công an Thanh Hóa): báo trúng xe SH mode, đòi 1,5–7 triệu "làm biển số", rồi đòi tiếp tiền vận chuyển.
+- `N1.6` phần hoàn tiền/bồi thường (vd giả hãng bay báo đổi giờ, nhận bồi thường qua link): **chưa có bài cảnh báo chính thức riêng**, AI1 chốt gộp vào `N1.6` vì cùng cách dụ (doanh nghiệp giả hứa trả tiền, bắt bấm link hoặc đóng phí). Tìm được nguồn thì bổ sung ở AI-25.
 
 **Dễ nhầm → `N1.4` (không phải `N1.3`)**
 > `Cong dich vu cong thong bao: ban co khoan phat chua nop. Vui long nhap so the va ma OTP tren trang de xac nhan nop phat.`
@@ -243,25 +243,18 @@ Nguồn: research-concept §2.2 dòng N6 và danh sách 24 hình thức của C�
 
 ---
 
-## 11. Gán thử 10 mẫu (điều kiện xong)
+## 11. Duyệt guide (điều kiện xong)
 
-1. AI2 chọn 10 mẫu **mới** (không trùng mẫu minh họa): 1–2 mẫu N0, ít nhất 5 mã lừa đảo khác nhau, **ít nhất 3 mẫu biên**. Đề ở `eval/labeling_trial/samples.md`, đáp án ở `eval/labeling_trial/answer_key.md`.
-2. 4 người gán **độc lập**, không bàn trước, ghi `mẫu | scenario | ghi chú`.
-3. Một mẫu tính là **đồng ý** khi cả 4 người ra cùng **`scenario`**. Cần **≥ 8/10**. Ghi thêm số mẫu cùng `group` để biết lệch nằm ở mã con hay ở nhóm.
-4. Mẫu lệch: sửa guide ở đúng chỗ gây lệch, rồi gán lại bằng **10 mẫu mới**. Không sửa đáp án cho khớp.
-5. Ghi kết quả vào PR:
+SH-02 xong khi **AI1 duyệt** guide này và các mã thêm vào §2.2 (quyết định 30/10/2026: không gán thử 4 người).
 
-| Lần | Cùng `scenario` / 10 | Cùng `group` / 10 | Mẫu lệch | Đã sửa gì trong guide |
-|---|---|---|---|---|
-| 1 | | | | |
+`eval/labeling_trial/` giữ lại làm bài tự luyện cho người mới gán nhãn (vd BE gán mẫu cho bộ v1): tự gán 10 mẫu trong `samples.md` rồi so với `answer_key.md`. Lệch ở mẫu nào thì đọc lại mục và quy tắc mà đáp án dẫn.
 
 Checklist SH-02:
 - [x] Mỗi nhóm N0–N6 có định nghĩa, 2 ví dụ dương, ít nhất 1 ví dụ dễ nhầm (mục 2–8).
 - [x] Mã kịch bản thống nhất với research-concept §2.2, plan §3.8 và KB (AI-25).
 - [x] Giải thích cách gán `min_level`/`max_level`, `risky_actions`, `must_signals`, `provenance` (mục 10).
-- [ ] AI1 duyệt 3 mã mới (`N1.6`, `N2.3`, `N5.4`) và phần nới `N3.3`.
-- [ ] Bổ sung bài nguồn riêng cho mẫu minh họa N4, `N5.2`, N6 (AI-25).
-- [ ] 4 người gán thử đạt ≥ 8/10 cùng `scenario`, điền bảng mục 11.
+- [x] AI1 duyệt 3 mã mới (`N1.6`, `N2.3`, `N5.4`), phần nới `N3.3` và `N1.6` (30/10/2026).
+- [ ] Bổ sung bài nguồn riêng cho mẫu minh họa N4, `N5.2`, N6 và phần hoàn tiền/bồi thường của `N1.6` (AI-25).
 
 ---
 

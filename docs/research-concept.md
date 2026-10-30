@@ -92,7 +92,7 @@ Các kênh chính gồm: cuộc gọi thoại (mạo danh công an, ngân hàng,
 | N1.3 | Giả ngân hàng (lãi cao, sinh trắc học) | Gọi, SMS, tờ rơi QR | "Ưu đãi nội bộ", "cập nhật sinh trắc học" | Lãi bất thường; tên miền lạ | Đăng nhập web giả, đọc OTP/PIN | Ngân hàng không xin OTP |
 | N1.4 | Giả dịch vụ công/phạt nguội/VNeID/thuế/BHXH | SMS, mạng xã hội | "Lỗi phạt nguội 50.000 VND chưa xử lý", "xác minh cư trú" | Tên miền dichvucong-vn.com, dichvuconggov.vn, dichvuconghs.com, dichvuconghanhchinh.com, viet.lgovn.cc | Nhập thẻ, CVV, OTP; cài "app DVC" | Chỉ dùng dichvucong.gov.vn; Cổng DVC **không có app riêng** (ngoài VNeID)\[28\]\[40\]\[41\]\[42\]\[43\]\[44\] |
 | N1.5 | Giả điện lực/viễn thông | Gọi, SMS | "Thuê bao sẽ bị khoá", "nợ cước" | Doạ cắt dịch vụ | Bấm link, cài app | Gọi tổng đài chính thức |
-| N1.6 | Giả doanh nghiệp/sàn TMĐT báo trúng thưởng, quà tri ân *(bổ sung, SH-02)* | Gọi, SMS, mạng xã hội, bưu phẩm | "Chúc mừng quý khách trúng xe SH", "quà tri ân khách hàng" | Trúng giải mình không tham gia; đóng phí trước mới nhận | Chuyển phí "làm biển số", thuế, vận chuyển; quét QR | Doanh nghiệp thật không thu phí trước để trao thưởng |
+| N1.6 | Giả doanh nghiệp/sàn TMĐT báo trúng thưởng, quà tri ân, hoàn tiền/bồi thường *(bổ sung, SH-02)* | Gọi, SMS, mạng xã hội, bưu phẩm | "Chúc mừng quý khách trúng xe SH", "quà tri ân khách hàng", "chuyến bay đổi giờ, nhận bồi thường tại…" | Trúng giải mình không tham gia; đóng phí trước mới nhận | Chuyển phí "làm biển số", thuế, vận chuyển; quét QR | Doanh nghiệp thật không thu phí trước để trao thưởng |
 | N2.1 | Deepfake người thân/sếp | Video call | Cuộc gọi ngắn, hình mờ, vay gấp | "Mạng yếu" | Chuyển khoản | Gọi lại bằng số đã biết |
 | N2.2 | Thu mẫu giọng nói | Gọi | Cuộc gọi im lặng hoặc khảo sát | — | Nói chuyện lâu | Hạn chế nói với số lạ |
 | N2.3 | Ghép ảnh/video nhạy cảm để tống tiền *(bổ sung, SH-02)* | Tin nhắn, email, mạng xã hội | "Tôi có video nhạy cảm của anh", đòi tiền nếu không phát tán | Ảnh ghép; người lạ; đe doạ gửi cho gia đình, cơ quan | Chuyển tiền "chuộc" | Không chuyển tiền, giữ bằng chứng, trình báo công an |
@@ -111,7 +111,7 @@ Các kênh chính gồm: cuộc gọi thoại (mạo danh công an, ngân hàng,
 
 *Mẫu câu tóm tắt từ các cảnh báo của công an; trong knowledge base nên lưu kèm URL nguồn của từng mẫu.*
 
-*Ba mã `N1.6`, `N2.3`, `N5.4` và phần nới `N3.3` thêm ngày 30/10/2026 (SH-02, #4) để khớp các loại team đã gán nhãn ở bản 1 của `eval/LABELING.md`; nguồn từng mã ở `eval/LABELING.md` §3–§7. **Chờ AI1 duyệt.***
+*Ba mã `N1.6`, `N2.3`, `N5.4` và phần nới `N3.3` thêm ngày 30/10/2026 (SH-02, #4) để khớp các loại team đã gán nhãn ở bản 1 của `eval/LABELING.md`; nguồn từng mã ở `eval/LABELING.md` §3–§7. AI1 duyệt ngày 30/10/2026. Phần "hoàn tiền/bồi thường" của `N1.6` thêm cùng ngày, chưa có bài cảnh báo chính thức riêng.*
 
 ### 2.3 Xuyên biên giới
 
