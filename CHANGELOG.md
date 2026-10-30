@@ -14,6 +14,7 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - Cắt scope MVP còn text + ảnh (OCR) + người thân + RAG cơ bản; **hoãn** voice/ASR, VLM fallback, multi-turn, Phase 2, Mini App; **bỏ pilot**, thay bằng test nội bộ ở W6.
 
 ### Added
+- AI-02 (#16): `ai/src/askfirst/llm/bedrock.py` (Converse client: timeout, retry backoff + jitter, đếm token và chi phí, model từ `models.yaml`, không log nội dung), test `ai/tests/llm/`, `ai/scripts/spike_bedrock.py` và khung `docs/decisions/ADR-001-bedrock-qwen3.md`. **Spike chưa chạy** (chưa có credentials, `judge.model_id` còn trống), ADR-001 chưa trả lời câu nào.
 - SH-01 (#3, G0): hợp đồng BE↔AI v1.0 trong `ai/src/askfirst/domain/` (`models.py`, `export.py`), `contracts/schema/*.json` sinh tự động, `StubPipeline` + `build_pipeline("stub")`, fixtures `contracts/fixtures/<op>/<case>.json`, test `ai/tests/contract/`, khung `ai/config/models.yaml` và `artifacts.yaml`.
 - Quy ước code bằng tiếng Anh (README): đổi tên trong contract v1.0 sang tiếng Anh. Mức: `DANGEROUS`/`SUSPICIOUS`/`UNSURE`/`LOW_RISK`; `nhom`→`group`, `kich_ban`→`scenario`, `KHAC`→`OTHER`, `xung_ho`→`address_form` (`elder`/`aunt`/`uncle`); `risky_actions` dùng `transfer_money`, `share_otp`, `share_password`, `install_app`, `share_screen`, `click_link`, `keep_secret`, `share_id_card`. Cập nhật tài liệu liên quan; schema và fixtures sinh lại.
 - `docs/ai-viec-nghien-cuu-phu.md`: hướng dẫn 3 việc nghiên cứu phụ cho AI2 (bộ dữ liệu OTP, bộ test mask PII, script đo độ dễ đọc), kèm quy tắc dữ liệu và tiêu chí xong.
@@ -29,3 +30,9 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - Khung repo: `docs/`, `backend/`, `ai/`, `contracts/`, `infra/`.
 - Tài liệu: kiến trúc (`docs/system-architecture.md`), kế hoạch (`docs/implementation-plan.md`), hướng dẫn cho team Backend và AI.
 - `CODEOWNERS`, template PR, workflow CI khung (3 OS, job `contract`).
+
+### Fixed
+- AI-20 (#17): `eval/ocr_benchmark.py` chấm "chép đúng URL" theo **ranh giới URL** thay vì so chuỗi con sau khi xoá hết khoảng trắng. Trước đây `https://a.vn` được tính là đúng khi OCR đọc ra `https://a.vn.evil.com` hay `https://a.vn/x?id=1`; chấm lại kết quả thô bằng cách mới ra **cùng số** với bản cũ (cả bộ 50 ảnh và bộ 16 ảnh). Vẫn chấp nhận URL bị ngắt dòng, dấu câu cuối câu, và URL có `http(s)://` dính chữ phía trước (`oi-048`).
+- `eval/ocr_benchmark.py`: thêm `--dataset` (chạy được bộ 16 ảnh độc lập `eval/testocr/test_images.jsonl`), báo cáo mặc định ghi ra thư mục tạm thay vì ghi đè `docs/results/ocr-spike.md` (file có phần viết tay), không lỗi khi máy không có Tesseract, biến môi trường `OCR_THREADS` đặt số luồng onnxruntime. Bỏ `eval/testocr/run_test.py` (pytest nhặt nhầm vì tên `*_test.py` và chạy OCR khi import).
+- CI: job `ai` chạy thêm test trong `eval/` (validator, chấm OCR); workflow mới `.github/workflows/ocr-bench.yml` chạy lại RapidOCR (2 cấu hình) trên cả hai bộ ảnh, khoá 2 lõi, lưu kết quả thô + báo cáo + RAM đỉnh làm artifact.
+- AI-20 docs: `docs/results/ocr-spike.md` thêm mục 9 (chạy lại trên GitHub Actions: tái lập số URL/CER trên Linux, p95 1.63 s trên 2 lõi, RAM đỉnh 826 MB; bộ 16 ảnh không kiểm được sắp cột), nguồn license (`rapidocr` Apache-2.0, `onnxruntime` MIT; trọng số ONNX vẫn **not verified**), sửa "nặng gấp 3 lần" thành 5 lần; ADR-003 và mốc G2 trong `docs/implementation-plan.md` đổi sang CER ≤ 10% trên tập độc lập.

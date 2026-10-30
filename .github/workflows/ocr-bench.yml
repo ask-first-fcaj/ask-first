@@ -1,0 +1,56 @@
+# Chạy lại benchmark OCR (AI-20, Gate G2) để số trong docs/results/ocr-spike.md tái lập được:
+# hai cấu hình RapidOCR trên bộ 50 ảnh phát triển và bộ 16 ảnh độc lập, lưu kết quả thô + báo cáo làm artifact.
+# Đo trên runner Linux, khoá 2 lõi và 2 luồng onnxruntime cho gần cấu hình Lambda 3008 MB (~1,7 vCPU).
+# Đây vẫn chỉ là số đo thay thế, KHÔNG phải số trên Lambda thật (AI-26).
+name: OCR bench
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - eval/ocr_benchmark.py
+      - eval/datasets/ocr_images.jsonl
+      - eval/assets/ocr/**
+      - eval/testocr/**
+      - .github/workflows/ocr-bench.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ocr-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OCR_THREADS: "2"
+      PY_DEPS: --no-project --python 3.12 --with rapidocr==3.10.0 --with onnxruntime==1.31.0 --with numpy --with pillow
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Bộ 50 ảnh phát triển
+        run: |
+          mkdir -p out
+          /usr/bin/time -v -o out/time-dev.txt taskset -c 0,1 uv run $PY_DEPS python eval/ocr_benchmark.py \
+            --engines rapidocr rapidocr_cols --raw-dir out/raw-dev --out out/report-dev.md
+      - name: Bộ 16 ảnh độc lập
+        run: |
+          /usr/bin/time -v -o out/time-test.txt taskset -c 0,1 uv run $PY_DEPS python eval/ocr_benchmark.py \
+            --engines rapidocr rapidocr_cols --dataset eval/testocr/test_images.jsonl \
+            --raw-dir out/raw-test --out out/report-test.md
+      - name: Tóm tắt
+        if: always()
+        run: |
+          for s in dev test; do
+            echo "### $s: RAM đỉnh cả tiến trình (2 engine), $(grep 'Maximum resident' out/time-$s.txt 2>/dev/null)" >> "$GITHUB_STEP_SUMMARY"
+            sed -n '/^## 3\./,/^## 4\./p' out/report-$s.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ocr-bench-${{ github.run_id }}
+          path: out/
+          retention-days: 30
