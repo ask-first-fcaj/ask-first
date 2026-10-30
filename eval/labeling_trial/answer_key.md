@@ -1,40 +1,40 @@
-# Đáp án chuẩn và Bảng tổng hợp kết quả gán thử (SH-02)
+# Đáp án gán thử 10 mẫu (SH-02)
 
-> **Lưu ý:** File này chứa đáp án chuẩn và phân tích chi tiết. Chỉ mở ra đối chiếu sau khi cả 4 thành viên (AI1, AI2, BE1, BE2) đã hoàn thành gán nhãn độc lập cho 10 mẫu trong `eval/labeling_trial/samples.md`.
+> Chỉ mở sau khi cả 4 người (AI1, AI2, BE1, BE2) đã gán xong `eval/labeling_trial/samples.md` một cách độc lập.
+>
+> Đáp án theo **`eval/LABELING.md` bản 2** (mã kịch bản research-concept §2.2). Bản 1 dùng nhóm cũ `N1`–`N6`; cách đổi ở `LABELING.md` mục 12.
 
----
+## 1. Đáp án
 
-## 1. ĐÁP ÁN CHUẨN & PHÂN TÍCH CĂN CỨ THEO `LABELING.md`
+| Mẫu | `scenario` | `group` | Căn cứ trong `LABELING.md` | Nguồn |
+|:---:|:---:|:---:|---|---|
+| 01 | `N1.3` | N1 | Giả SMS VPBank báo đăng nhập lạ, dụ vào link giả. Mạo danh ngân hàng → `N1.3` (mục 3, quy tắc 5). | Công an Gia Lai cảnh báo SMS giả ngân hàng (link trong `samples.md`) |
+| 02 | `N3.3` | N3 | **Mẫu biên:** có "hải quan sân bay" đòi phí, nhưng bối cảnh tình cảm ("em yêu", "anh David", chuẩn bị cưới) → `N3.3`, không phải `N1.4` (mục 5, quy tắc 3). | Công an xã Bát Xát (link trong `samples.md`) |
+| 03 | `N0` | N0 | Báo giao hàng: không đòi phí, không link, không đòi OTP (mục 2, quy tắc 8). | Mẫu tự dựng |
+| 04 | `N1.6` | N1 | Giả Shopee báo trúng iPhone, đòi 850.000đ phí vận chuyển trước. Bên bị mạo danh là sàn TMĐT → `N1.6` (mục 3, quy tắc 5). | Công an Thanh Hóa (link trong `samples.md`) |
+| 05 | `N5.4` | N5 | **Mẫu biên:** tin chữ từ tài khoản bạn thân xin vay gấp, không có mặt/giọng giả → `N5.4`, không phải `N2.1` hay `N1.2` (mục 7, quy tắc 4). | CafeF dẫn cảnh báo của công an (link trong `samples.md`) |
+| 06 | `N1.4` | N1 | **Mẫu biên:** xưng "công an phường" nhưng nội dung là hồ sơ định danh/VNeID, dụ tải app qua link lạ. Bên bị mạo danh là dịch vụ định danh VNeID → `N1.4`, không phải `N5.1` (mục 3, quy tắc 5). Không có "vụ án", "tài khoản an toàn" nên không phải `N1.1`. | Bộ Công an (link trong `samples.md`) |
+| 07 | `N2.1` | N2 | Có cuộc gọi video 4 giây thấy mặt con trai mờ ảo rồi tắt → có dấu hiệu mặt/giọng giả → `N2.1`, thắng `N1.2`/`N5.4` (mục 4, quy tắc 2). | Học viện Kỹ thuật và Công nghệ An ninh (link trong `samples.md`) |
+| 08 | `N0` | N0 | SMS biến động số dư thật: có ngân hàng và số tiền, nhưng không link, hotline chính thức, không bảo giữ bí mật (mục 2, quy tắc 8). | Mẫu tự dựng |
+| 09 | `N1.4` | N1 | **Mẫu biên:** bảo đăng nhập tài khoản ngân hàng, nhưng bên bị mạo danh là cơ quan thuế → `N1.4`, không phải `N1.3` (mục 3, quy tắc 5). | Mẫu tự dựng |
+| 10 | `N3.1` | N3 | Tuyển xem video TikTok tại nhà, lương theo giờ, dẫn sang Telegram → việc nhẹ lương cao (mục 5, quy tắc 6). | Công an tỉnh Vĩnh Long (link trong `samples.md`) |
 
-| Mẫu | Nhãn chuẩn | Phân loại | Căn cứ & Quy tắc phân giải theo `LABELING.md` | Nguồn tham khảo / Cảnh báo thực tế |
-|:---:|:---:|---|---|---|
-| **01** | **N2** | Mạo danh ngân hàng | Giả mạo tin nhắn thương hiệu VPBank, tạo tâm lý hoang mang (đăng nhập lạ ở nước ngoài) để dụ bấm link phishing `vpbank-xacthuc[.]top`. Khớp Mục 3. | Báo Tuổi Trẻ / Công an Gia Lai cảnh báo SMS Brandname mạo danh ngân hàng. |
-| **02** | **N5** | **Mẫu biên 1** (Tình cảm vs Hải quan) | Dù có tình tiết đóng phí Hải quan sân bay, nhưng tin nhắn có bối cảnh tình cảm yêu đương ("em yêu", "David", chuẩn bị cưới, bạn gửi quà). Áp dụng Mục 6 và **Quy tắc 4** -> **N5**. | Công an Lào Cai triệt phá: https://www.bocongan.gov.vn/bai-viet/cong-an-xa-bat-xat-kip-thoi-ngan-chan-vu-lua-dao-qua-tang-quoc-te-giup-nguoi-dan-tranh-mat-140-trieu-dong-1783613735 |
-| **03** | **N0** | Lành tính thường | Tin nhắn shipper thật: không yêu cầu bấm link, không đòi OTP/mật khẩu, không yêu cầu chuyển tiền. Khớp Mục 1. | Mẫu tự dựng theo định dạng thông báo giao hàng thực tế của bưu chính SPX Express. |
-| **04** | **N4** | Trúng thưởng / Tri ân | Thông báo trúng điện thoại iPhone giá trị lớn từ chương trình tri ân, nhưng bắt đóng 850k phí bảo hiểm vận chuyển trước. Khớp Mục 5. | Công an Thanh Hóa triệt phá: https://bocongan.gov.vn/bai-viet/thanh-hoa-triet-xoa-o-nhom-lua-dao-chiem-doat-tai-san-bang-hinh-thuc-mua-hang-boc-tham-trung-thuong-d22-t45630 |
-| **05** | **OTHER** | **Mẫu biên 2** (Hack nick vs N6) | Nick bạn thân bị hack/chiếm quyền nhắn tin vay tiền bằng chữ thông thường. Không có video Deepfake (khác N6), không mạo danh tổ chức (khác N1, N2). Khớp Mục 8 và **Quy tắc 6** -> **OTHER**. | Báo CafeF / Công an cảnh báo: https://cafef.vn/cong-an-canh-bao-chieu-chiem-quyen-tai-khoan-zalo-ma-nguoi-dan-can-canh-giac-188260521103656632.chn |
-| **06** | **N1** | Mạo danh nhà nước | Giả danh công an phường, lấy cớ sáp nhập đơn vị hành chính để dụ tải app VNeID chứa mã độc qua link lạ `dichvucong-vneid[.]cc`. Khớp Mục 2. | Bộ Công an cảnh báo: https://bocongan.gov.vn/bai-viet/canh-bao-thu-doan-lua-dao-cai-ung-dung-vneid-gia-mao-d22-t45880 |
-| **07** | **N6** | Tống tiền / Deepfake | Có cuộc gọi video ngắn Deepfake nhại mặt con trai, kết hợp tin nhắn khẩn cấp mượn tiền nộp phạt/chuộc người. Khớp Mục 7 và **Quy tắc 3** -> **N6**. | Học viện Kỹ thuật & Công nghệ An ninh - Bộ Công an: https://hvktcnan.bocongan.gov.vn/TrangChu/tin-tuc/1931-phong-chong-hoat-dong-loi-dung-cong-nghe-deepfake-lua-dao-tren-khong-gian-mang.html |
-| **08** | **N0** | Lành tính dễ nhầm | SMS trừ tiền dịch vụ ngân hàng thật: có nhắc ngân hàng và số tiền trừ, nhưng số hotline chính thống (`1900545413`), không có link lạ, không bảo giữ bí mật. Áp dụng Mục 1 và **Quy tắc 5** -> **N0**. | Mẫu tự dựng theo định dạng SMS biến động số dư thực tế từ ngân hàng Vietcombank. |
-| **09** | **N1** | **Mẫu biên 3** (Thuế vs Ngân hàng) | Có nhắc tới "đăng nhập tài khoản ngân hàng" nhưng bên bị mạo danh là **Tổng cục Thuế (cơ quan nhà nước)**. Áp dụng Mục 2 và **Quy tắc 1 & 2** (mạo danh cơ quan nhà nước thắng) -> **N1**. | Mẫu tự dựng theo cảnh báo của Tổng cục Thuế về đường link giả mạo `gdtgov[.]cfd`. |
-| **10** | **N3** | Việc nhẹ lương cao | Mời làm cộng tác viên xem video TikTok kiếm 300k–500k/ngày, không cần kinh nghiệm, dẫn dụ chat qua Telegram để nạp tiền làm nhiệm vụ. Khớp Mục 4. | Công an Vĩnh Long cảnh báo: https://bocongan.gov.vn/bai-viet/cong-an-tinh-vinh-long-canh-giac-voi-bay-viec-nhe-luong-cao-1780907526 |
+Mẫu 06 là ca khó nhất (`N1.1` hay `N1.4`). Nếu nhóm lệch ở mẫu này, sửa ranh giới `N1.1`/`N1.4` trong `LABELING.md` mục 3 trước khi gán lại.
 
----
+## 2. Kết quả gán thử
 
-## 2. BẢNG TỔNG HỢP KẾT QUẢ GÁN THỬ 4 NGƯỜI
+| Mẫu | Đáp án | AI1 | AI2 | BE1 | BE2 | Cùng `scenario` | Cùng `group` | Ghi chú |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---|
+| 01 | `N1.3` | | | | | | | |
+| 02 | `N3.3` | | | | | | | |
+| 03 | `N0` | | | | | | | |
+| 04 | `N1.6` | | | | | | | |
+| 05 | `N5.4` | | | | | | | |
+| 06 | `N1.4` | | | | | | | |
+| 07 | `N2.1` | | | | | | | |
+| 08 | `N0` | | | | | | | |
+| 09 | `N1.4` | | | | | | | |
+| 10 | `N3.1` | | | | | | | |
 
-| Mẫu | Đáp án chuẩn | AI1 | AI2 | BE1 | BE2 | Thống nhất (Đ/S) | Ghi chú tranh luận |
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---|
-| 01 | **N2** | | | | | | |
-| 02 | **N5** | | | | | | |
-| 03 | **N0** | | | | | | |
-| 04 | **N4** | | | | | | |
-| 05 | **OTHER** | | | | | | |
-| 06 | **N1** | | | | | | |
-| 07 | **N6** | | | | | | |
-| 08 | **N0** | | | | | | |
-| 09 | **N1** | | | | | | |
-| 10 | **N3** | | | | | | |
-
-- **Tổng số mẫu thống nhất:** `... / 10`
-- **Kết luận:** Đạt điều kiện nghiệm thu (≥ 8/10) hay cần hiệu chỉnh lại guide?
+- Cùng `scenario`: `... / 10` (cần ≥ 8). Cùng `group`: `... / 10`.
+- Đạt hay phải sửa guide và gán lại bằng 10 mẫu mới (`LABELING.md` mục 11, bước 4)?
