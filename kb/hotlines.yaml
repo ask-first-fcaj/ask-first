@@ -2,23 +2,23 @@
 #
 # Chỉ mục đã xác minh (`verified_at` có ngày hợp lệ, không quá 30 ngày) mới được đưa ra cho người dùng.
 # `verified_at` chỉ được điền sau khi NGƯỜI tự mở `source_url`, thấy đúng số trên trang, đúng đơn vị và đúng loại hỗ trợ.
-# Mục không thấy số trên trang thì xóa mục, không đoán. CI báo đỏ nếu `verified_at` trống hoặc cũ hơn 30 ngày.
+# Mục không thấy số trên trang thì xóa mục, không đoán. CI của PR báo đỏ nếu `verified_at` trống; job hằng tuần `kb-freshness.yml` báo đỏ nếu cũ hơn 30 ngày.
 #
 # Trạng thái ngày 2026-10-30:
 #  - Cả 20 mục: AI2 đã tự mở link nguồn, sửa số hoặc link chỗ sai (VIB đổi số; MB, VPBank, Sacombank, OCB đổi link), rồi đồng ý điền ngày.
-#  - Phần t kiểm bằng máy cùng ngày: thấy số trên trang cho 17/20 mục. Ba mục máy KHÔNG xác nhận được (MB bị chặn HTTP 403, VIB và VPBank nạp số bằng JS), nên AI2 chụp màn hình trang nguồn ngày 2026-10-30 để đối chiếu:
+#  - Phần máy kiểm cùng ngày: thấy số trên trang cho 17/20 mục. Ba mục máy KHÔNG xác nhận được (MB bị chặn HTTP 403, VIB và VPBank nạp số bằng JS), nên AI2 chụp màn hình trang nguồn ngày 2026-10-30 để đối chiếu:
 #    VPBank footer "Hotline 1900 545 415"; MB footer "HOTLINE 1900 545426" và "(84-24)3767 4050" (quốc tế gọi về); VIB trang liên hệ "Tổng đài chung 1900 2200 (1.000 đ/phút)". Cả ba khớp `value`.
 #  - `kind: app` dùng cho kênh không phải số điện thoại (plan §3.10 mới chỉ có ví dụ `phone`). Số lưu dạng chỉ chữ số, không khoảng trắng.
 
 # --- Đã xác minh ---
-- {id: police_113, name: "Công an (khẩn cấp)", kind: phone, value: "113", source_url: "https://bocongan.gov.vn/bai-viet/bac-ninh-canh-sat-113-diem-tua-trong-nhung-tinh-huong-khan-cap-1783907449", verified_at: 2026-10-30}
+- {id: police_113, name: "Công an (khẩn cấp)", kind: phone, value: "113", source_url: "https://bocongan.gov.vn/bai-viet/moi-lam-viec-01-cong-dan-nhieu-lan-goi-dien-quay-roi-so-113-1782459200", verified_at: 2026-10-30}
 - {id: vcb_hotline, name: "Vietcombank (hotline 24/7, khóa thẻ)", kind: phone, value: "1900545413", source_url: "https://www.vietcombank.com.vn/en/Personal/Truy-cap-nhanh/Tin-noi-bat/Articles/05-cach-de-khoa-the-tam-thoi-trong-truong-hop-khan-cap", verified_at: 2026-10-30}
-- {id: bidv_hotline, name: "BIDV (hotline 24/7)", kind: phone, value: "19009247", source_url: "https://bidv.com.vn/en/ca-nhan/lien-he", verified_at: 2026-10-30}
-- {id: agribank_hotline, name: "Agribank (tổng đài chăm sóc khách hàng)", kind: phone, value: "1900558818", source_url: "https://www.agribank.com.vn/vn/lien-he", verified_at: 2026-10-30}
+- {id: bidv_hotline, name: "BIDV (hotline)", kind: phone, value: "19009247", source_url: "https://bidv.com.vn/en/ca-nhan/lien-he", verified_at: 2026-10-30}
+- {id: agribank_hotline, name: "Agribank (hotline hỗ trợ)", kind: phone, value: "1900558818", source_url: "https://www.agribank.com.vn/vn/lien-he", verified_at: 2026-10-30}
 - {id: vietinbank_hotline, name: "VietinBank (hotline)", kind: phone, value: "1900558868", source_url: "https://contact.vietinbank.vn/", verified_at: 2026-10-30}
 - {id: techcombank_hotline, name: "Techcombank (hotline cá nhân, miễn phí)", kind: phone, value: "1800588822", source_url: "https://techcombank.com/en/help-support", verified_at: 2026-10-30}
 - {id: mb_hotline, name: "MB (hotline, chân trang web mbbank.com.vn)", kind: phone, value: "1900545426", source_url: "https://www.mbbank.com.vn/", verified_at: 2026-10-30}
-- {id: vpbank_hotline, name: "VPBank (hotline khách hàng)", kind: phone, value: "1900545415", source_url: "https://www.vpbank.com.vn/ve-chung-toi", verified_at: 2026-10-30}
+- {id: vpbank_hotline, name: "VPBank (hotline)", kind: phone, value: "1900545415", source_url: "https://www.vpbank.com.vn/ve-chung-toi", verified_at: 2026-10-30}
 
 # --- Mới thêm ngày 2026-10-30 (ngân hàng, ví, nhà mạng, kênh VNeID) ---
 # Ngân hàng
@@ -39,8 +39,8 @@
 - {id: vneid_report, name: "Tố giác tội phạm trên ứng dụng VNeID (chuyển tới Công an cấp xã)", kind: app, value: "Ứng dụng VNeID, chức năng tố giác tin báo về tội phạm", source_url: "https://bocongan.gov.vn/bai-viet/hieu-qua-cua-viec-to-giac-toi-pham-thong-qua-ung-dung-vneid-d22-t36752", verified_at: 2026-10-30}
 
 # --- CÒN THIẾU (chưa có nguồn chính thức, đừng điền từ bài báo hay mạng xã hội) ---
-# - Cổng cảnh báo / tiếp nhận phản ánh lừa đảo của Cục An toàn thông tin (NCSC): máy t kh vào được khonggianmang.vn.
+# - Cổng cảnh báo / tiếp nhận phản ánh lừa đảo của Cục An toàn thông tin (NCSC): máy kiểm không vào được khonggianmang.vn.
 #   Cẩn thận: có trang giả mạo NCSC, chỉ lấy link từ trang .gov.vn của đơn vị.
 # - Đường dây nóng của Bộ Công an: có bài ngày 24/04/2023 trên bocongan.gov.vn nhưng số nằm trong ảnh, cần người đọc.
-# - Viettel (số 198 chỉ thấy trong ảnh SMS thật, chưa thấy trên trang của Viettel), SHB (kh vào được trang), chongluadao.vn (kh phải .gov.vn: hỏi AI1/BE2).
+# - Viettel (số 198 chỉ thấy trong ảnh SMS thật, chưa thấy trên trang của Viettel), SHB (máy kiểm không vào được trang), chongluadao.vn (không phải .gov.vn: hỏi AI1/BE2).
 # - Công an phường/xã: mỗi nơi một số, không có số chung; nên chỉ hướng dẫn gọi 113.

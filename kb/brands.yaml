@@ -3,7 +3,8 @@
 # Quy ước:
 #  - `tokens`: chữ thường, KHÔNG dấu, không khoảng trắng.
 #  - `official_domains`: mỗi tên miền phải nằm trong kb/allowlist.yaml (scripts/validate_kb.py kiểm tra chéo).
-#  - Token rất ngắn (mb, tcb, vcb, dvc) dễ khớp nhầm khi so Levenshtein: nên bắt buộc khớp nguyên token hoặc đặt độ dài tối thiểu ở code AI-24a.
+#  - Token rất ngắn hoặc là từ thông dụng (mb, vib, acb, ocb, msb, tcb, vcb, dvc, thue) dễ khớp nhầm khi so Levenshtein: AI-24a nên bắt buộc khớp nguyên token hoặc đặt độ dài tối thiểu.
+#  - Viettel Post: SMS thật dùng domain vtp.vn nhưng máy kiểm chưa mở được (HTTP 503) nên chưa vào allowlist; vì vậy chưa đặt token `vtp`, tránh báo nhầm SMS thật là typosquat. Thêm lại cả hai khi đã xác minh vtp.vn.
 #  - Danh sách là điểm khởi đầu từ các thương hiệu xuất hiện trong bài cảnh báo (Cổng dịch vụ công, VNeID, CSGT, Techcombank, Vietcombank, Viettel Post...)
 #    và nhóm cơ quan/ngân hàng/ví/sàn lớn. Chưa phủ hết.
 
@@ -45,6 +46,6 @@
 # Giao nhận, bưu chính
 - {name: "Giao Hàng Nhanh", tokens: [ghn, giaohangnhanh], official_domains: [ghn.vn]}
 - {name: "Giao Hàng Tiết Kiệm", tokens: [ghtk, giaohangtietkiem], official_domains: [ghtk.vn]}
-- {name: "Viettel Post", tokens: [viettelpost, vtp], official_domains: [viettelpost.com.vn, viettelpost.vn]}
+- {name: "Viettel Post", tokens: [viettelpost], official_domains: [viettelpost.com.vn, viettelpost.vn]}
 - {name: "Bưu điện Việt Nam", tokens: [vnpost, buudien], official_domains: [vnpost.vn]}
 - {name: "SPX Express", tokens: [spx], official_domains: [spx.vn]}
