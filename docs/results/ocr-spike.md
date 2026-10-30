@@ -365,6 +365,8 @@ URL chép sai: 23/32 (hiện tối đa 10).
 ## 8. Kết quả kiểm tra độc lập trên 16 ảnh mới (`eval/testocr/`)
 
 > Thực hiện kiểm tra độc lập theo **Điều kiện 1 của ADR-003** trên 16 ảnh chụp màn hình mới (`001.png`–`016.png`), hoàn toàn giữ nguyên code và bộ luật hậu xử lý, chạy đúng một lần duy nhất. Nhãn ground truth lưu tại `eval/testocr/test_images.jsonl`.
+>
+> **Duyệt nhãn (30/10/2026, viết tay):** nhãn do AI2 gõ; AI1 đã soát lại cả 16 ảnh, đối chiếu từng ảnh với `urls`, `phones`, `ocr_text`, không sửa nhãn nào (kể cả `oi-test-011`: giữ `luyCNs` chữ `l` thường). Vì nhãn không đổi nên số ở mục 8 và mục 9 giữ nguyên.
 
 ### 8.1 Bảng tổng hợp số đo (18 URL, 20 SĐT)
 
