@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import unicodedata
 from pathlib import Path
 
@@ -44,6 +45,11 @@ def masked(text: str) -> str:
         ("Số 09-12-34-56-78 nhé", ["09-12-34-56-78"], ["[SĐT_1]"]),
         ("Nhắn t.me/+84912345678 nhé", ["84912345678"], ["t.me/[SĐT_1]"]),
         ("CCCD: 0 1 2 3 4 5 6 7 8 9 0 1", ["0 1 2 3"], ["[CCCD_1]"]),
+        ("LH: 0937 70 4636 / ikEr", ["0937 70 4636"], ["[SĐT_1]"]),  # nhóm 4-2-4
+        ("Số lạ +212 6 49 02 06 39 gọi", ["212 6 49"], ["[SĐT_1]"]),  # số quốc tế khác +84
+        ("Tin từ +1 415 555 0123", ["415 555"], ["[SĐT_1]"]),
+        ("2302030732222\nNGUYEN TAN HUNG\nMB BANK\n245k", ["2302030732222"], ["[STK_1 • MB]"]),  # tên chủ TK chen giữa số và ngân hàng
+        ("CT tu 0011000390 TRAN VAN B toi 9704", ["0011000390"], ["[STK_1]"]),
         # --- CCCD / CMND
         ("CCCD của tôi 012345678901", ["012345678901"], ["[CCCD_1]"]),
         ("Số định danh 012 345 678 901", ["012 345 678 901"], ["[CCCD_1]"]),
@@ -103,17 +109,40 @@ def test_otp_masked_even_with_amount_and_time_between_keyword_and_code() -> None
     assert "5,000,000 VND" in out and "14:22" in out and "05/10/2026" in out
 
 
-def test_realistic_scam_message_masks_everything_but_keeps_link_and_amount() -> None:
+def test_realistic_scam_message_masks_everything_but_keeps_domain_and_amount() -> None:
     text = (
         "Cán bộ ngân hàng đây. Tài khoản STK 0123456789 Vietcombank của bác bị khóa, bác đọc mã OTP 482913 "
         "cho cháu, hoặc gọi 0912 345 678, mail cb.nganhang@gmail.com. Chuyển 50 triệu vào "
         "https://vcb-xacthuc.example.xyz/otp/482913 trước 10:45."
     )
     out = masked(text)
-    for secret in ("0123456789", "482913 cho", "0912 345 678", "cb.nganhang@gmail.com"):
+    for secret in ("0123456789", "482913", "0912", "345 678", "cb.nganhang@gmail.com"):
         assert secret not in out
-    assert "https://vcb-xacthuc.example.xyz/otp/482913" in out  # URL là bằng chứng, không mask
+    assert "gọi [SĐT_1]" in out  # cả số là một SĐT, không bị băm thành từng mảnh OTP
+    assert "https://vcb-xacthuc.example.xyz/otp/[OTP_1]" in out  # giữ tên miền + đường dẫn, chỉ thay mã OTP lặp lại
     assert "50 triệu" in out and "10:45" in out
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Mã OTP: 482913 ... https://x.xyz/?code=482913", "Mã OTP: [OTP_1] ... https://x.xyz/?code=[OTP_1]"),
+        ("code: 491-028, v.whatsapp.com/491028", "code: [OTP_1], v.whatsapp.com/[OTP_1]"),
+        ("OTP 482913. Xem https://x.xyz/?id=48291355&t=1234", "OTP [OTP_1]. Xem https://x.xyz/?id=48291355&t=1234"),  # số khác thì giữ
+        ("https://x.xyz/?code=482913 xem thêm", "https://x.xyz/?code=482913 xem thêm"),  # không có OTP ngoài URL: không đoán
+    ],
+)
+def test_otp_repeated_inside_url_is_masked_but_domain_and_rest_are_kept(text: str, expected: str) -> None:
+    assert masked(text) == expected
+
+
+def test_long_inputs_are_masked_in_linear_time() -> None:
+    """Một "từ" rất dài (OCR/spam) từng làm regex email/URL chạy O(n²): 20.000 ký tự mất ~2 s."""
+    for chunk in ("a", "a1-", "ab.cd", "0 ", "1.2"):
+        text = chunk * (20000 // len(chunk))
+        start = time.perf_counter()
+        masked(text)
+        assert time.perf_counter() - start < 1.0, f"quá chậm với {chunk!r}"
 
 
 # ------------------------------------------------------------------ mẫu bẫy: KHÔNG được che nhầm
@@ -239,12 +268,15 @@ def test_r_otp_genuine_does_not_fire_on_plain_text_without_a_code() -> None:
 # ------------------------------------------------------------------ không mẫu nào trong bộ eval lọt số điện thoại / CCCD
 
 
-_DATASETS = Path(__file__).resolve().parents[3] / "eval" / "datasets"
+_EVAL = Path(__file__).resolve().parents[3] / "eval"
+_DATASET_FILES = [*sorted((_EVAL / "datasets").glob("*.jsonl")), _EVAL / "testocr" / "test_images.jsonl"]
 
 
 def _eval_texts() -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
-    for path in sorted(_DATASETS.glob("*.jsonl")):
+    for path in _DATASET_FILES:
+        if not path.exists():
+            continue
         for line in path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
@@ -256,12 +288,49 @@ def _eval_texts() -> list[tuple[str, str]]:
     return out
 
 
-_LEAK = re.compile(r"(?<![0-9])(?:0[35789][0-9]{8}|84[35789][0-9]{8}|[0-9]{12})(?![0-9])")
+_URL = re.compile(r"(?:https?://|www\.)\S+")
+# Ngày, giờ, số tiền chấm/phẩy nghìn: nhìn giống chuỗi số dài nhưng không phải PII.
+_DATE_TIME = re.compile(r"[0-9]{1,4}[-/.][0-9]{1,2}[-/.][0-9]{1,4}(?:[ T][0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)?")
+_THOUSANDS = re.compile(r"[0-9]{1,3}(?:[.,][0-9]{3})+")
+_HOTLINE = re.compile(r"(?<![0-9])1[89]00[ .]?[0-9]{4}(?![0-9])")
+_YEAR = re.compile(r"(?<![0-9])(?:19|20)[0-9]{2}(?![0-9])")
+# Chuỗi >= 9 chữ số (cho phép cách/chấm/gạch) còn lại ngoài URL = có thể là SĐT/STK/CCCD lọt.
+_LONG_CHAIN = re.compile(r"(?<![0-9])[0-9](?:[ .\-]?[0-9]){8,}(?![0-9])")
+# Mã 4-8 chữ số trong ~120 ký tự sau từ khoá OTP (tính cả trong URL).
+_OTP_NEAR_KEYWORD = re.compile(r"(?i)(?:otp|ma xac|mã xác|code|mat khau|mật khẩu|\bpin\b)[^\n]{0,120}?(?<![0-9])(?P<c>[0-9]{4,8})(?![0-9])")
+
+# Chuỗi số còn lại trong bộ eval mà KHÔNG phải PII, kèm lý do. Thêm vào đây phải có lý do.
+_ALLOWED = {
+    "987654321": "mã vận đơn 24VN987654321 (bs-ai-10)",
+    "0000000000": "số điện thoại giữ chỗ toàn số 0 (bs-ai-18)",
+    "105052632": "mã giao dịch ngân hàng 'ma GD' (oi-007)",
+    "21019853875490": "mã tham chiếu FT… của ngân hàng (oi-019)",
+    "6347829150": "mã vận đơn SP…VN (oi-022)",
+    "53765393422": "mã tham chiếu MBVCB.… (otp-b-028)",
+    "0000052 10000": "nội dung nạp ví: mã nhỏ + số tiền (otp-b-029)",
+    "01.2026.009876": "mã hồ sơ G01.2026.009876 (bs-ai-11)",
+    "1900545413": "tổng đài 1900… (oi-015)",
+}
 
 
-def test_no_eval_sample_leaks_phone_or_cccd_after_masking() -> None:
+def _leaks(text: str) -> list[str]:
+    out = masked(text)
+    found = [m.group("c") for m in _OTP_NEAR_KEYWORD.finditer(_YEAR.sub("", _HOTLINE.sub("", out)))]
+    plain = _THOUSANDS.sub("", _DATE_TIME.sub("", _URL.sub("", out)))
+    found += [m.group() for m in _LONG_CHAIN.finditer(plain)]
+    return [f for f in found if f not in _ALLOWED]
+
+
+def test_no_eval_sample_leaks_phone_cccd_stk_or_otp_after_masking() -> None:
     texts = _eval_texts()
     if not texts:
         pytest.skip("không có eval/datasets/*.jsonl")
-    leaked = [(rid, m.group()) for rid, t in texts for m in _LEAK.finditer(masked(t))]
+    leaked = [(rid, f) for rid, t in texts for f in _leaks(t)]
     assert leaked == []
+
+
+def test_leak_check_itself_catches_spaced_phone_stk_and_otp_in_unmasked_text() -> None:
+    """Kiểm chứng bộ dò: nó phải kêu trên text CHƯA che (cái mà _LEAK cũ bỏ sót)."""
+    assert _LONG_CHAIN.search("SĐT 0937 70 4636") is not None
+    assert _LONG_CHAIN.search("STK 2302030732222 MB BANK") is not None
+    assert _OTP_NEAR_KEYWORD.search("OTP la 482913") is not None

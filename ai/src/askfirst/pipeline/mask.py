@@ -114,11 +114,11 @@ def _fold(text: str) -> str:
 # ---------------------------------------------------------------- URL (được bảo vệ, không mask)
 _URL = re.compile(
     r"(?:(?:https?|hxxps?|ftp)://|www\.)[^\s,;\"'<>()]+"
-    r"|(?<![\w@.\-])(?:[a-z0-9\-]*[a-z][a-z0-9\-]*(?:\.|\[\.\]))+[a-z]{2,}(?:/[^\s,;\"'<>()]*)?"
+    r"|(?<![\w@.\-])(?:(?=[0-9\-]*[a-z])[a-z0-9\-]+(?:\.|\[\.\]))+[a-z]{2,}(?:/[^\s,;\"'<>()]*)?"
 )
 
 # ---------------------------------------------------------------- email
-_EMAIL = re.compile(r"[a-z0-9._%+\-]+(?:@|\[at\]|\(at\))[a-z0-9\-]+(?:(?:\.|\[\.\]|\[dot\]|\(dot\))[a-z0-9\-]+)+")
+_EMAIL = re.compile(r"(?<![a-z0-9._%+\-])[a-z0-9._%+\-]+(?:@|\[at\]|\(at\))[a-z0-9\-]+(?:(?:\.|\[\.\]|\[dot\]|\(dot\))[a-z0-9\-]+)+")
 
 # ---------------------------------------------------------------- OTP
 _OTP_KW = (
@@ -143,10 +143,12 @@ _OTP_USE = re.compile(rf"\b(?:su dung|use)\s+(?P<c>{_OTP_NUM})\s+(?:duoi dang|as
 _OTP_ADJ = re.compile(rf"\b(?:ma|code)\b(?:\s+so\b)?\s*[:\-]?\s*(?P<c>{_OTP_NUM})")
 
 # ---------------------------------------------------------------- STK
-_STK_KW = re.compile(rf"(?:\bstk\b|\bs\.t\.k\b|\bso tai khoan|\btai khoan|\bso tk\b|\btk\b|\baccount\b|\bacc\b|\b(?:{_BANK_ALT})\b)")
+_STK_KW = re.compile(
+    rf"(?:\bstk\b|\bs\.t\.k\b|\bso tai khoan|\btai khoan|\bso tk\b|\btk\b|\baccount\b|\bacc\b|\bct (?:tu|den)\b|\b(?:{_BANK_ALT})\b)"
+)
 _STK_NUM = re.compile(rf"{_NOT_NUM_HEAD}(?P<c>{_D}{{6,16}}|{_D}{{3,5}}(?: {_D}{{3,5}}){{1,4}}){_NOT_NUM_TAIL}{_NOT_MONEY}")
 _STK_WINDOW = 40
-_STK_BANK_AFTER = re.compile(rf"{_NOT_NUM_HEAD}(?P<c>{_D}{{9,19}}){_NOT_NUM_TAIL}[^0-9]{{0,15}}?\b(?P<bank>{_BANK_ALT})\b")
+_STK_BANK_AFTER = re.compile(rf"{_NOT_NUM_HEAD}(?P<c>{_D}{{9,19}}){_NOT_NUM_TAIL}[^0-9]{{0,40}}?\b(?P<bank>{_BANK_ALT})\b")
 
 # ---------------------------------------------------------------- CCCD / CMND
 _CCCD_KW = re.compile(r"(?:cccd|cmnd|\bcmt\b|can cuoc(?: cong dan)?|chung minh(?: nhan dan)?|so dinh danh)")
@@ -169,6 +171,7 @@ _LOCAL = "|".join(
         rf"0[35789]{_SEP}{_D}{{8}}",  # 09 12345678
         rf"0{_SEP}[35789](?:{_SEP}{_D}){{8}}",  # 0 9 1 2 3 4 5 6 7 8 (từng chữ số cách nhau)
         rf"0[35789](?:{_SEP}{_D}{{2}}){{4}}",  # 09-12-34-56-78
+        rf"0[35789]{_D}{{2}}{_SEP}{_D}{{2}}{_SEP}{_D}{{4}}",  # 0937 70 4636
     ]
 )
 # Sau "84" trần (không có "+") chỉ nhận các cách nhóm quen thuộc để khỏi nhầm với số khác.
@@ -185,6 +188,8 @@ _PLUS84 = rf"(?:\+\s?84|\(\+84\)|0084){_SEP}?[35789](?:{_SEP}?{_D}){{8}}"
 _PHONE = re.compile(rf"(?<![0-9])(?P<c>(?:{_LOCAL})|{_PLUS84}|84{_SEP}?(?:{_INTL})){_NOT_NUM_TAIL}")
 # Link liên hệ chứa thẳng số điện thoại ("zalo.me/0912345678"): đây là số điện thoại, không phải bằng chứng về tên miền.
 _CONTACT_LINK = re.compile(rf"\b(?:zalo\.me/|wa\.me/|t\.me/(?=\+))(?P<c>\+?{_D}{{9,12}}){_NOT_NUM_TAIL}")
+# Số quốc tế khác (+212 6 49 02 06 39): vẫn là số điện thoại của người gửi, nên che. Số tiền có dấu "+" (+50.000.000) bị loại ở _detect.
+_PHONE_INTL = re.compile(rf"(?<![0-9+])(?P<c>\+\s?(?!84)[1-9]{_D}{{0,2}}(?:{_SEP}?{_D}){{7,11}}){_NOT_NUM_TAIL}{_NOT_MONEY}")
 
 
 def _value_key(kind: str, folded_span: str) -> str:
@@ -283,6 +288,10 @@ def _detect(folded: str) -> list[_Hit]:
 
     for m in _PHONE.finditer(folded):
         hits.append(_Hit(*m.span("c"), "phone"))
+    for m in _PHONE_INTL.finditer(folded):
+        s, e = m.span("c")
+        if not _MONEY_LIKE.fullmatch(folded[s + 1 : e].strip()):
+            hits.append(_Hit(s, e, "phone"))
 
     for m in _SPOKEN.finditer(folded):
         hits.append(_Hit(m.start(), m.end(), "spoken_number"))
@@ -293,6 +302,13 @@ def _detect(folded: str) -> list[_Hit]:
 def _resolve(hits: list[_Hit], protected: list[tuple[int, int]]) -> list[_Hit]:
     """Bỏ khớp nằm trong URL (trừ email), rồi chọn không chồng lấn theo độ ưu tiên."""
     kept = [h for h in hits if h.exempt or not any(h.start < pe and ps < h.end for ps, pe in protected)]
+    # Cửa sổ OTP nhặt từng cụm số ("0912", "345 678"): nếu cả cụm là một SĐT/STK/CCCD dài hơn thì che cả số, không che từng mảnh.
+    whole = [h for h in kept if h.kind in ("phone", "stk", "cccd")]
+    kept = [
+        h
+        for h in kept
+        if h.kind != "otp" or not any(w.start <= h.start and h.end <= w.end and w.end - w.start > h.end - h.start for w in whole)
+    ]
     kept.sort(key=lambda h: (_PRIO[h.kind], h.start, h.start - h.end))
     chosen: list[_Hit] = []
     for h in kept:
@@ -302,6 +318,28 @@ def _resolve(hits: list[_Hit], protected: list[tuple[int, int]]) -> list[_Hit]:
     return chosen
 
 
+_DIGIT_RUN = re.compile(r"(?<![0-9])[0-9]{4,8}(?![0-9])")
+
+
+def _otp_echoes(folded: str, hits: list[_Hit], protected: list[tuple[int, int]]) -> list[_Hit]:
+    """Mã OTP đã nhận ra ngoài URL mà còn lặp lại trong URL (``?code=482913``) thì cũng phải che: giữ tên miền và
+    phần còn lại của URL, chỉ thay đúng dãy số đó.
+    """
+    codes = {
+        "".join(c for c in folded[h.start : h.end] if c.isdigit())
+        for h in hits
+        if h.kind == "otp" and not any(h.start < pe and ps < h.end for ps, pe in protected)
+    }
+    if not codes:
+        return []
+    return [
+        _Hit(m.start(), m.end(), "otp", exempt=True)
+        for ps, pe in protected
+        for m in _DIGIT_RUN.finditer(folded, ps, pe)
+        if m.group() in codes
+    ]
+
+
 def mask(text: str) -> MaskResult:
     """Che PII trong ``text``. Chuẩn hoá NFKC và bỏ ký tự vô hình trước, nên cũng bắt được số toàn-rộng
     (``０９１２…``) hoặc số chèn ``\\u200b`` để né regex. Văn bản trả về là bản đã chuẩn hoá (NFKC).
@@ -309,7 +347,9 @@ def mask(text: str) -> MaskResult:
     clean = unicodedata.normalize("NFKC", text.translate(_INVISIBLE))
     folded = _fold(clean)
     protected = [m.span() for m in _URL.finditer(folded)]
-    hits = _resolve(_detect(folded), protected)
+    hits = _detect(folded)
+    hits += _otp_echoes(folded, hits, protected)
+    hits = _resolve(hits, protected)
 
     index: dict[tuple[str, str], str] = {}
     counters: dict[str, int] = {}
