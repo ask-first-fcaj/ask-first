@@ -130,15 +130,28 @@ def test_realistic_scam_message_masks_everything_but_keeps_domain_and_amount() -
         ("code: 491-028, v.whatsapp.com/491028", "code: [OTP_1], v.whatsapp.com/[OTP_1]"),
         ("OTP 482913. Xem https://x.xyz/?id=48291355&t=1234", "OTP [OTP_1]. Xem https://x.xyz/?id=48291355&t=1234"),  # số khác thì giữ
         ("https://x.xyz/?code=482913 xem thêm", "https://x.xyz/?code=482913 xem thêm"),  # không có OTP ngoài URL: không đoán
+        (
+            "Xem https://x.xyz/?code=482913 nhé. Số 4829130 là mã đơn khác",
+            "Xem https://x.xyz/?code=482913 nhé. Số 4829130 là mã đơn khác",
+        ),  # "code=" trong URL không biến số sau nó thành OTP
+        ("Your code is 123456", "Your code is [OTP_1]"),
     ],
 )
 def test_otp_repeated_inside_url_is_masked_but_domain_and_rest_are_kept(text: str, expected: str) -> None:
     assert masked(text) == expected
 
 
+def test_otp_repeated_far_from_keyword_is_masked_everywhere() -> None:
+    far = "Xin chào bác. " * 30  # > 120 ký tự: lần lặp thứ hai nằm ngoài cửa sổ từ khoá
+    out = masked(f"Mã OTP 482913. {far}Đọc lại 482913 cho cháu, 4829130 là số khác, 48291 cũng vậy")
+    assert out.count("[OTP_1]") == 2
+    assert "4829130" in out and "48291 cũng" in out  # chỉ che đúng dãy số trùng mã, không cắt giữa số khác
+
+
 def test_long_inputs_are_masked_in_linear_time() -> None:
     """Một "từ" rất dài (OCR/spam) từng làm regex email/URL chạy O(n²): 20.000 ký tự mất ~2 s."""
-    for chunk in ("a", "a1-", "ab.cd", "0 ", "1.2"):
+    chunks = ("a", "a1-", "ab.cd", "0 ", "1.2", "otp ", "stk ", "otp 1234 ", "stk 123456 ", "OTP 482913 ", "0912345678 ", "a@b.c ")
+    for chunk in chunks:
         text = chunk * (20000 // len(chunk))
         start = time.perf_counter()
         masked(text)
@@ -306,8 +319,6 @@ _ALLOWED = {
     "105052632": "mã giao dịch ngân hàng 'ma GD' (oi-007)",
     "21019853875490": "mã tham chiếu FT… của ngân hàng (oi-019)",
     "6347829150": "mã vận đơn SP…VN (oi-022)",
-    "53765393422": "mã tham chiếu MBVCB.… (otp-b-028)",
-    "0000052 10000": "nội dung nạp ví: mã nhỏ + số tiền (otp-b-029)",
     "01.2026.009876": "mã hồ sơ G01.2026.009876 (bs-ai-11)",
     "1900545413": "tổng đài 1900… (oi-015)",
 }

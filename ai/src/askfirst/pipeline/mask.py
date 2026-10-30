@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from bisect import bisect_left
 from dataclasses import dataclass, field
 from functools import cache
 from typing import Literal
@@ -124,7 +125,7 @@ _EMAIL = re.compile(r"(?<![a-z0-9._%+\-])[a-z0-9._%+\-]+(?:@|\[at\]|\(at\))[a-z0
 _OTP_KW = (
     r"(?:otp|one[- ]?time|verification code|security code|login code|activation code|auth(?:entication)? code|passcode|"
     r"\bma xac (?:thuc|nhan|minh)|\bma bao mat|\bma dang nhap|\bma kich hoat|\bma (?:vua )?(?:gui|nhan)(?: ve)?|\bma id|\bma pin|"
-    r"\bpin\b|\bmat khau|\bpassword|\bcode\b)"
+    r"\bpin\b|\bmat khau|\bpassword)"
 )
 _OTP_NUM = (
     rf"{_NOT_NUM_HEAD}(?<!nam )(?<!year )(?!(?:1900|1800){_D}{{4}}(?![0-9]))"
@@ -135,12 +136,12 @@ _OTP_KW_RE = re.compile(_OTP_KW)
 _OTP_NUM_RE = re.compile(_OTP_NUM)
 _OTP_WINDOW = 120
 # Mã đứng trước từ khoá: "482913 là mã xác thực", "798272 is your Grab Activation Code".
-_OTP_BEFORE = re.compile(rf"(?P<c>{_OTP_NUM})\s+(?:la|is)\b[^0-9]{{0,40}}?{_OTP_KW}")
+_OTP_BEFORE = re.compile(rf"(?P<c>{_OTP_NUM})\s+(?:la|is)\b[^0-9]{{0,40}}?(?:{_OTP_KW}|\bcode\b)")
 # Mã kèm cụm hiệu lực: "Mã Spotify: 572408. Có hiệu lực trong 5 phút".
 _OTP_VALID = re.compile(rf"(?P<c>{_OTP_NUM})\W{{1,3}}(?:co hieu luc|hieu luc|het han|expires?|valid)")
 _OTP_USE = re.compile(rf"\b(?:su dung|use)\s+(?P<c>{_OTP_NUM})\s+(?:duoi dang|as)\b")
 # "mã 482913", "code: 4951": từ "mã" đứng sát số (không chen từ khác như "mã đơn hàng 123456").
-_OTP_ADJ = re.compile(rf"\b(?:ma|code)\b(?:\s+so\b)?\s*[:\-]?\s*(?P<c>{_OTP_NUM})")
+_OTP_ADJ = re.compile(rf"\b(?:ma|code)\b(?:\s+so\b)?(?:\s+(?:is|la)\b)?\s*[:\-]?\s*(?P<c>{_OTP_NUM})")
 
 # ---------------------------------------------------------------- STK
 _STK_KW = re.compile(
@@ -238,14 +239,19 @@ class _Hit:
     exempt: bool = False  # True: nằm trong URL vẫn phải che (email, số điện thoại trong link Zalo/WhatsApp)
 
 
+_SCAN_MARGIN = 40  # một khớp bắt đầu trong cửa sổ có thể dài thêm tới ~30 ký tự (STK/CCCD có dấu cách) sau biên cửa sổ
+
+
 def _scan_after(folded: str, kw: re.Pattern[str], num: re.Pattern[str], window: int):
-    """Với mỗi từ khoá, yield các số khớp ``num`` nằm trong ``window`` ký tự sau từ khoá.
+    """Với mỗi từ khoá, yield các số khớp ``num`` bắt đầu trong ``window`` ký tự sau từ khoá.
 
     Không dừng ở xuống dòng: text OCR ngắt dòng giữa câu ("OTP cua Quy Khach la:\\n62743042").
+    ``endpos`` chặn mỗi lần quét trong ``window`` + ``_SCAN_MARGIN`` ký tự, nên tổng chi phí tuyến tính theo số từ khoá
+    (không quét tới hết text cho từng từ khoá).
     """
     for k in kw.finditer(folded):
         limit = k.end() + window
-        for m in num.finditer(folded, k.end()):
+        for m in num.finditer(folded, k.end(), min(len(folded), limit + _SCAN_MARGIN)):
             if m.start() >= limit:
                 break
             yield k, m
@@ -299,21 +305,44 @@ def _detect(folded: str) -> list[_Hit]:
     return hits
 
 
+def _overlaps(starts: list[int], ends: list[int], s: int, e: int) -> bool:
+    """``[s, e)`` có chạm một khoảng trong danh sách khoảng rời nhau, đã sắp xếp (``starts``/``ends`` song song) không."""
+    i = bisect_left(starts, e) - 1  # khoảng cuối cùng bắt đầu trước e
+    return i >= 0 and ends[i] > s
+
+
 def _resolve(hits: list[_Hit], protected: list[tuple[int, int]]) -> list[_Hit]:
-    """Bỏ khớp nằm trong URL (trừ email), rồi chọn không chồng lấn theo độ ưu tiên."""
-    kept = [h for h in hits if h.exempt or not any(h.start < pe and ps < h.end for ps, pe in protected)]
+    """Bỏ khớp nằm trong URL (trừ email), rồi chọn không chồng lấn theo độ ưu tiên. O(n log n)."""
+    p_starts = [ps for ps, _ in protected]
+    p_ends = [pe for _, pe in protected]
+    kept = [h for h in dict.fromkeys(hits) if h.exempt or not _overlaps(p_starts, p_ends, h.start, h.end)]
+
     # Cửa sổ OTP nhặt từng cụm số ("0912", "345 678"): nếu cả cụm là một SĐT/STK/CCCD dài hơn thì che cả số, không che từng mảnh.
-    whole = [h for h in kept if h.kind in ("phone", "stk", "cccd")]
-    kept = [
-        h
-        for h in kept
-        if h.kind != "otp" or not any(w.start <= h.start and h.end <= w.end and w.end - w.start > h.end - h.start for w in whole)
-    ]
+    whole = sorted((h.start, h.end) for h in kept if h.kind in ("phone", "stk", "cccd"))
+    w_starts = [s for s, _ in whole]
+    prefix_max_end: list[int] = []  # lớn nhất của end trong whole[:i+1]
+    same_start_max: dict[int, int] = {}
+    for s, e in whole:
+        prefix_max_end.append(max(e, prefix_max_end[-1]) if prefix_max_end else e)
+        same_start_max[s] = max(e, same_start_max.get(s, e))
+
+    def inside_longer(h: _Hit) -> bool:
+        i = bisect_left(w_starts, h.start)  # whole[:i] bắt đầu trước h
+        return (i > 0 and prefix_max_end[i - 1] >= h.end) or same_start_max.get(h.start, -1) > h.end
+
+    kept = [h for h in kept if h.kind != "otp" or not inside_longer(h)]
+
     kept.sort(key=lambda h: (_PRIO[h.kind], h.start, h.start - h.end))
+    c_starts: list[int] = []  # các khớp đã chọn, rời nhau, giữ sắp xếp theo start
+    c_ends: list[int] = []
     chosen: list[_Hit] = []
     for h in kept:
-        if all(h.end <= c.start or c.end <= h.start for c in chosen):
-            chosen.append(h)
+        if _overlaps(c_starts, c_ends, h.start, h.end):
+            continue
+        i = bisect_left(c_starts, h.start)
+        c_starts.insert(i, h.start)
+        c_ends.insert(i, h.end)
+        chosen.append(h)
     chosen.sort(key=lambda h: h.start)
     return chosen
 
@@ -322,22 +351,19 @@ _DIGIT_RUN = re.compile(r"(?<![0-9])[0-9]{4,8}(?![0-9])")
 
 
 def _otp_echoes(folded: str, hits: list[_Hit], protected: list[tuple[int, int]]) -> list[_Hit]:
-    """Mã OTP đã nhận ra ngoài URL mà còn lặp lại trong URL (``?code=482913``) thì cũng phải che: giữ tên miền và
-    phần còn lại của URL, chỉ thay đúng dãy số đó.
+    """Mã OTP đã nhận ra ngoài URL mà còn lặp lại ở chỗ khác thì che mọi lần lặp, kể cả khi cách từ khoá rất xa
+    ("Mã OTP 482913 … đọc lại 482913 cho cháu") hoặc nằm trong URL (``?code=482913``: giữ tên miền và phần còn lại).
     """
+    p_starts = [ps for ps, _ in protected]
+    p_ends = [pe for _, pe in protected]
     codes = {
         "".join(c for c in folded[h.start : h.end] if c.isdigit())
         for h in hits
-        if h.kind == "otp" and not any(h.start < pe and ps < h.end for ps, pe in protected)
+        if h.kind == "otp" and not _overlaps(p_starts, p_ends, h.start, h.end)
     }
     if not codes:
         return []
-    return [
-        _Hit(m.start(), m.end(), "otp", exempt=True)
-        for ps, pe in protected
-        for m in _DIGIT_RUN.finditer(folded, ps, pe)
-        if m.group() in codes
-    ]
+    return [_Hit(m.start(), m.end(), "otp", exempt=True) for m in _DIGIT_RUN.finditer(folded) if m.group() in codes]
 
 
 def mask(text: str) -> MaskResult:
