@@ -316,7 +316,9 @@ def _url_found(target: str, hyp: str) -> bool:
     if not target:
         return False
     body = r"\s*".join(re.escape(c) for c in target)
-    left = rf"(?:(?<=://)|(?<=://\.)|(?<![{_URL_CHARS}.:]))"  # `://.` là lỗi OCR hay gặp ở đầu URL, vẫn tính là ranh giới
+    # Có `http(s)://` thì scheme đã là mốc: OCR dính chữ trước (`vaohttps://…`) không làm hỏng URL, bộ tách URL vẫn bắt được.
+    # Không có scheme thì cần ranh giới trái; `://.` là lỗi OCR hay gặp ở đầu URL, vẫn tính là ranh giới.
+    left = "" if re.match(r"https?://", target) else rf"(?:(?<=://)|(?<=://\.)|(?<![{_URL_CHARS}.:]))"
     right = rf"/?(?![{_URL_CHARS}])(?!\.[{_URL_CHARS}])(?!:\d)"
     return re.search(left + body + right, hyp) is not None
 

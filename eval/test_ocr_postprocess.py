@@ -54,6 +54,8 @@ def test_url_ok_accepts_url_wrapped_by_ocr_and_trailing_punctuation():
     assert url_ok("https://a.vn", "xem https://a.vn.")
     assert url_ok("https://a.vn/", "(https://a.vn)")
     assert url_ok("tvkqz.nmiu.online", "D'en{tvkqz.nmiu.online},To")
+    # oi-048: OCR dính chữ liền trước scheme, URL vẫn chép đúng
+    assert url_ok("https://techcombank.vn-iy.life", "Vui long vaohttps://techcombank.vn-iy.life de kiem tra")
 
 
 def test_url_ok_rejects_longer_or_different_domain():
