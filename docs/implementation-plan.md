@@ -925,7 +925,7 @@ Việc chung chạy xuyên suốt: SH-03 (mỗi người 25 mẫu eval ở W1–
 | Mã | Việc | Owner | Tuần | Cỡ | Xong khi |
 |---|---|---|---|---|---|
 | SH-01 | Kickoff: cả team đọc ARCH và §3; **AI1** copy `models.py`, `export.py` + test contract từ §3.3 và §3.9 vào `ai/`, sinh `contracts/schema/`, viết `StubPipeline` theo bảng §3.5 và ghi fixtures; **BE2** duyệt và viết `TelegramAdapter.parseUpdate` (Java) tạo đúng `InboundMessage` hợp lệ theo schema | Cả team (AI1, BE2 chính) | W1 | M | Gate G0 qua |
-| SH-02 | Hướng dẫn gán nhãn: mỗi kịch bản N0–N6 có định nghĩa, 2 ví dụ dương, 1 ví dụ dễ nhầm (`eval/LABELING.md`) | AI2 (chính), AI1 | W1 | S | 4 người gán thử cùng 10 mẫu, đồng ý ≥ 8/10 |
+| SH-02 | Hướng dẫn gán nhãn: mỗi kịch bản N0–N6 có định nghĩa, 2 ví dụ dương, 1 ví dụ dễ nhầm (`eval/LABELING.md`) | AI2 (chính), AI1 | W1 | S | AI1 duyệt guide và các mã thêm vào research-concept §2.2 (bỏ gán thử 4 người, 30/10/2026) |
 | SH-03 | Bộ eval: **v0 = 100 mẫu** (mỗi người 25 mẫu, W1–W2) → **v1 = 300 mẫu** (W5) theo cơ cấu ARCH §6.11. Mẫu lừa đảo **viết lại từ cảnh báo chính thức, kèm URL nguồn**; **không** sinh bằng LLM | Cả team | W1–W4 | M mỗi người | `python -m eval.validate` pass (đúng schema, không trùng, đủ số lượng từng split) |
 | SH-04 | Phỏng vấn người dùng: 5 người cao tuổi, 5 con cháu (câu hỏi ở research-concept §9). Ghi chú ở `research/interviews/` (đã ẩn danh) | Cả team | W1–W2 | S mỗi người | 10 bản ghi chú + 1 trang tổng hợp insight |
 | SH-05 | Xác minh hotline và kênh trình báo (113, công an xã, hotline các ngân hàng lớn, kênh tố giác VNeID…) **chỉ từ trang chính thức** | AI2 + BE2 | W2–W3 | S | Mọi mục trong `kb/hotlines.yaml` có `source_url` và `verified_at` |
