@@ -28,3 +28,8 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - Khung repo: `docs/`, `backend/`, `ai/`, `contracts/`, `infra/`.
 - Tài liệu: kiến trúc (`docs/system-architecture.md`), kế hoạch (`docs/implementation-plan.md`), hướng dẫn cho team Backend và AI.
 - `CODEOWNERS`, template PR, workflow CI khung (3 OS, job `contract`).
+
+### Fixed
+- AI-20 (#17): `eval/ocr_benchmark.py` chấm "chép đúng URL" theo **ranh giới URL** thay vì so chuỗi con sau khi xoá hết khoảng trắng. Trước đây `https://a.vn` được tính là đúng khi OCR đọc ra `https://a.vn.evil.com` hay `https://a.vn/x?id=1`; số URL cũ trong `docs/results/ocr-spike.md` có thể cao hơn thực tế. Vẫn chấp nhận URL bị ngắt dòng và dấu câu cuối câu.
+- `eval/ocr_benchmark.py`: thêm `--dataset` (chạy được bộ 16 ảnh độc lập `eval/testocr/test_images.jsonl`), báo cáo mặc định ghi ra thư mục tạm thay vì ghi đè `docs/results/ocr-spike.md` (file có phần viết tay), không lỗi khi máy không có Tesseract, biến môi trường `OCR_THREADS` đặt số luồng onnxruntime. Bỏ `eval/testocr/run_test.py` (pytest nhặt nhầm vì tên `*_test.py` và chạy OCR khi import).
+- CI: job `ai` chạy thêm test trong `eval/` (validator, chấm OCR); workflow mới `.github/workflows/ocr-bench.yml` chạy lại RapidOCR (2 cấu hình) trên cả hai bộ ảnh, khoá 2 lõi, lưu kết quả thô + báo cáo + RAM đỉnh làm artifact.
