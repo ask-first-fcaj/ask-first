@@ -1,6 +1,8 @@
 # Kết quả Spike OCR (AI-20, Gate G2)
 
 > Sinh tự động bởi `eval/ocr_benchmark.py`. Ngày chạy: 2026-10-22. Người chạy: AI2. **Bản nháp, AI1 chưa duyệt.**
+>
+> **Cập nhật 30/10/2026 (viết tay, PR #105):** mục 8 là kiểm tra độc lập 16 ảnh; **mục 9** là lượt chạy lại trên GitHub Actions sau khi sửa cách chấm URL, kèm số độ trễ và RAM đo trên 2 lõi. Từ nay script ghi báo cáo ra thư mục tạm, không ghi đè file này.
 
 ## 1. Kết luận và đề xuất
 
@@ -12,7 +14,7 @@ Việc chờ quyết định: AI1 cùng AI2 chốt ADR-003. Đọc kỹ mục 6 
 
 ### Quyết định đề xuất: ứng viên cho ADR-003
 
-**Trạng thái: ỨNG VIÊN, chưa phải ADR đã chốt.** AI2 đề xuất; AI1 chưa duyệt; **chưa có kiểm tra độc lập** (xem điều kiện bên dưới).
+**Trạng thái: ỨNG VIÊN, chưa phải ADR đã chốt.** AI2 đề xuất; AI1 chưa duyệt. Kiểm tra độc lập đã làm sau khi viết đoạn này (mục 8, chạy lại ở mục 9).
 
 **Hướng chọn:** RapidOCR (PP-OCRv6 small, ONNX, bộ đọc mặc định) + sắp dòng theo cột (`order_by_columns`) + sửa đầu URL bằng regex (`repair_urls`).
 
@@ -23,7 +25,7 @@ Việc chờ quyết định: AI1 cùng AI2 chốt ADR-003. Đọc kỹ mục 6 
 
 **Rủi ro đã biết:**
 
-- Quy tắc sắp cột, sửa URL (`repair_urls`) và sửa SĐT (`repair_phones`) đều **viết sau khi thấy lỗi, chưa kiểm tra độc lập**; số đo có thể lạc quan. Riêng `repair_phones` viết sau khi thấy lỗi `0`↔`O` ở ảnh ngoài bộ 50 (`eval/support/053.png`), nên không đổi số nào trong bảng này.
+- Quy tắc sắp cột, sửa URL (`repair_urls`) và sửa SĐT (`repair_phones`) đều **viết sau khi thấy lỗi, chưa kiểm tra độc lập**; số đo có thể lạc quan. Riêng `repair_phones` viết sau khi thấy lỗi `0`↔`O` ở một ảnh ngoài bộ 50 (ảnh đó không lưu trong repo), nên không đổi số nào trong bảng này.
 - Mức đạt phụ thuộc regex: nếu không sửa đầu URL thì RapidOCR + cột chỉ đạt 27/32 (84%, CI 68–93%), chưa qua 90%.
 - Mẫu nhỏ (32 URL), khoảng tin cậy rộng.
 
@@ -44,6 +46,8 @@ uv pip install --python .venv/Scripts/python.exe rapidocr onnxruntime paddlepadd
 # Tesseract: cài UB-Mannheim, đặt vie.traineddata (tessdata_fast) vào ~/tessdata
 .venv/Scripts/python.exe eval/ocr_benchmark.py
 ```
+
+Trên Linux/macOS thay `.venv/Scripts/python.exe` bằng `.venv/bin/python`. Chỉ chạy lại 2 cấu hình RapidOCR thì không cần cài Paddle, VietOCR hay Tesseract: chạy workflow **OCR bench** (`.github/workflows/ocr-bench.yml`, tab Actions → Run workflow), hoặc thêm `--engines rapidocr rapidocr_cols --dataset eval/testocr/test_images.jsonl` để chạy bộ độc lập. Báo cáo ra thư mục tạm (`--out` để đổi).
 
 | Mục | Giá trị |
 |---|---|
@@ -107,9 +111,13 @@ Mục tiêu p95 ≤ 3 giây (AI-26) là trên **Lambda 3–4 GB**; số trên đ
 
 | Thành phần | License | Nguồn |
 |---|---|---|
-| RapidOCR, PaddleOCR, VietOCR | Apache-2.0 | ARCH §6.3 [L4], [L5] |
+| `rapidocr` 3.10.0 (code) | Apache-2.0 | PyPI `license_expression` (https://pypi.org/project/rapidocr/3.10.0/) và GitHub API cho https://github.com/RapidAI/RapidOCR, kiểm 30/10/2026 |
+| `onnxruntime` 1.31.0 | MIT | PyPI classifier (https://pypi.org/project/onnxruntime/1.31.0/), kiểm 30/10/2026 |
+| PaddleOCR (code, nơi phát hành model PP-OCR gốc) | Apache-2.0 | GitHub API cho https://github.com/PaddlePaddle/PaddleOCR, kiểm 30/10/2026 |
+| VietOCR | Apache-2.0 | ARCH §6.3 [L5]; không dùng trong ADR-003 |
 | Tesseract | Apache-2.0 | Chưa đối chiếu lại repo gốc: **not verified** |
-| Trọng số model (PP-OCRv6, VietOCR `vgg_transformer`, `tessdata_fast`) | **not verified** | Chưa đọc license riêng của từng file trọng số |
+| File ONNX PP-OCRv6 mà RapidOCR tải về | **not verified** | Theo docs RapidOCR (https://rapidai.github.io/RapidOCRDocs/main/model_list/), RapidOCR chuyển đổi model PaddleOCR đã phát hành và để trên ModelScope (`RapidAI/RapidOCR`). Trang "giấy phép và ghi công" của model chưa đọc được (link trả 404). AI-26 ghi license, checksum vào `MODELS.md` |
+| VietOCR `vgg_transformer`, `tessdata_fast` | **not verified** | Không dùng trong ADR-003 |
 
 ## 5. Ví dụ lỗi
 
@@ -288,13 +296,13 @@ URL chép sai: 23/32 (hiện tối đa 10).
 - **Cỡ mẫu nhỏ.** 50 ảnh, trong đó chỉ có 32 URL; chênh vài URL không đủ kết luận ai hơn ai. Xem khoảng tin cậy.
 - **Vùng `[mờ]`:** 16/50 ảnh có vùng bị làm mờ trong ảnh. Đáp án đã bỏ `[mờ]`, nhưng engine đôi khi vẫn đọc ra chữ trong vùng mờ và bị tính là chèn thừa. Ảnh hưởng như nhau với mọi engine; số CER ở bảng "không `[mờ]`" sạch hơn.
 - **Thứ tự dòng:** đáp án gõ tay theo thứ tự đọc của người; engine có thể ra thứ tự khác ở ảnh nhiều khung, làm CER cao dù chữ đúng.
-- **Cách tính URL:** khớp chính xác (phân biệt hoa thường), bỏ mọi khoảng trắng và dấu `/` cuối trước khi so, để không phạt việc engine ngắt dòng giữa URL. Chỉ tính URL trong nhãn `urls`; URL bị mờ không có trong nhãn.
+- **Cách tính URL:** khớp chính xác (phân biệt hoa thường), cho phép khoảng trắng/xuống dòng chen giữa URL (engine ngắt dòng) và bỏ qua dấu `/` cuối. Từ 30/10/2026 (PR #105) hai đầu URL phải là **ranh giới URL**: `https://a.vn` không còn khớp `https://a.vn.evil.com` hay `https://a.vn/x?id=1` như bản so chuỗi con trước đó. Chấm lại kết quả thô bằng cách mới ra **cùng số** với bảng trên (mục 9). Chỉ tính URL trong nhãn `urls`; URL bị mờ không có trong nhãn.
 - **Cột "sau sửa đầu URL bằng regex" lạc quan:** hai quy tắc (`ttps:` → `https:`, bỏ dấu `.` thừa sau `://`) được viết **sau khi xem lỗi trên chính 50 ảnh này**, nên chưa phải số đo trên dữ liệu chưa thấy. Chưa thử sửa lỗi kiểu `https:/l` của Tesseract/VietOCR vì quy tắc đó dễ sửa nhầm.
 - **Nhãn `oi-015` đã đổi sau lần đo đầu:** đuôi URL sau `.xyz/` bị làm mờ nên `urls` chuyển từ 1 URL sang rỗng, theo cùng quy ước với `oi-020` và `oi-039` (URL bị mờ không dùng để đo exact-match). Việc này **đưa mẫu số từ 33 xuống 32** và làm RapidOCR, Paddle mặc định đổi từ 29/33 (88%) sang 29/32 (91%) ở cột sau regex. **Hai con tự nó qua ngưỡng 90% nhờ việc loại 1 URL, không nhờ OCR đọc tốt hơn**; số trước khi đổi nhãn là 29/33. Không có đổi nhãn nào khác.
 - **Sắp dòng theo cột áp dụng cho RapidOCR và Paddle (cùng một hàm `order_by_columns`), chưa áp dụng cho Tesseract và VietOCR:** nhiều ảnh trong bộ là ảnh ghép 2 khung chat, và thứ tự đọc là một nguồn lỗi lớn. Trên cùng 7 ảnh (`oi-006`, `014`, `022`, `023`, `034`, `046`, `049`), CER RapidOCR giảm từ 26,8% xuống 12,9% và Paddle từ 27,4% xuống 12,7%, không ảnh nào tệ đi. Số của Tesseract và VietOCR bị thiệt chưa rõ bao nhiêu nên không dùng bảng này để so chúng với hai con kia. Ngưỡng của quy tắc (dải trống ≥ 12 px trong 30–70% chiều rộng, ≥ 3 hộp mỗi bên) được chọn từ một ảnh (`oi-022`) và chưa chỉnh thêm; kết quả vẫn đo trên cùng 50 ảnh, chưa có tập kiểm tra giữ riêng.
 - **Từ có dấu đọc đúng:** so tập từ (không xét thứ tự), bỏ từ chứa số, URL, email.
 - **Độ trễ:** đo trên máy dev, một luồng chạy tuần tự, chưa đo Lambda, chưa đo cold start. Tesseract tính cả thời gian khởi động tiến trình.
-- **Dung lượng cài đặt (đo trong `.venv` trên Windows, chưa phải image Lambda):** RapidOCR gồm `rapidocr` 32 MB + `onnxruntime` 42 MB + model 31 MB; PaddleOCR gồm `paddle` 377 MB + `paddlex` 11 MB + model 133 MB, nặng gấp khoảng 3 lần. Đây là lý do thực tế để ưu tiên RapidOCR khi giới hạn image `ai` ≤ 2 GB (BE-06); chưa kiểm Paddle có chạy được trên Lambda hay không.
+- **Dung lượng cài đặt (đo trong `.venv` trên Windows, chưa phải image Lambda):** RapidOCR gồm `rapidocr` 32 MB + `onnxruntime` 42 MB + model 31 MB; PaddleOCR gồm `paddle` 377 MB + `paddlex` 11 MB + model 133 MB, tức khoảng 105 MB so với 521 MB, nặng gấp khoảng 5 lần. Đây là lý do thực tế để ưu tiên RapidOCR khi giới hạn image `ai` ≤ 2 GB (BE-06); chưa kiểm Paddle có chạy được trên Lambda hay không.
 - **Cấu hình chưa tối ưu:** mỗi engine chạy tham số mặc định (Tesseract `psm` mặc định; Paddle tắt mkldnn do lỗi oneDNN trên Windows, nên có thể chậm hơn mức thực). Đã thử phóng ×2 ảnh rộng < 800 px và bộ đọc Latinh PP-OCRv5 **chỉ với RapidOCR**: cả hai không cải thiện, nên chưa thử với Paddle (suy luận, chưa kiểm). Chưa thử tăng tương phản hay `tessdata_best`.
 - **Paddle + VietOCR là bản tự ghép:** cắt theo hộp Paddle phát hiện, ghép hộp cùng hàng bằng toạ độ. Cách ghép khác có thể cho kết quả khác.
 - **Dữ liệu:** ảnh từ báo/cảnh báo công khai, nhãn do AI1 và AI2 gõ tay, AI1 chưa review chéo nhãn của AI2.
@@ -407,3 +415,26 @@ URL chép sai: 23/32 (hiện tối đa 10).
 | oi-test-014 | 6.2% | SMS ViettelPost giao hàng |
 | oi-test-015 | 8.8% | SMS spam link (`q` -> `g`) |
 | oi-test-016 | 11.4% | SMS Viettel Tammi (2 link) |
+
+## 9. Chạy lại trên GitHub Actions (30/10/2026, viết tay)
+
+Mục 8 chạy bằng `eval/testocr/run_test.py` (đã bỏ) và không lưu kết quả thô, nên chưa ai chạy lại được. Lượt này chạy workflow `OCR bench` (`.github/workflows/ocr-bench.yml`) ở commit `ef3d477` của PR #105, run https://github.com/ask-first-fcaj/ask-first/actions/runs/40997602333. Kết quả thô và báo cáo nằm trong artifact của run (giữ 30 ngày). Rồi chấm lại kết quả thô bằng `--rescore` với hàm `url_ok` bản cuối của PR.
+
+Cấu hình: runner `ubuntu-latest` (Linux), **khoá 2 lõi** bằng `taskset -c 0,1`, `OCR_THREADS=2` (onnxruntime 2 luồng), Python 3.12, `rapidocr` 3.10.0, `onnxruntime` 1.31.0.
+
+| Bộ ảnh | Cấu hình | URL nghiêm ngặt | Sau `repair_urls` | CER | p50 / p95 (giây/ảnh) |
+|---|---|---|---|---|---|
+| 50 ảnh phát triển | RapidOCR + cột | 27/32 (84%, CI 68–93%) | 31/32 (97%, CI 84–99%) | 12.9% (CI 10.6–15.7%) | 0.77 / 1.63 |
+| 50 ảnh phát triển | RapidOCR | 25/32 (78%, CI 61–89%) | 29/32 (91%, CI 76–97%) | 26.9% | 0.73 / 1.62 |
+| 16 ảnh độc lập | RapidOCR + cột | 15/18 (83%, CI 61–94%) | **17/18 (94%, CI 74–99%)** | 7.2% (CI 6.0–8.7%) | 0.76 / 1.12 |
+| 16 ảnh độc lập | RapidOCR | 15/18 | 17/18 | 7.2% | 0.76 / 1.10 |
+
+RAM đỉnh (`/usr/bin/time -v`, một tiến trình chạy lần lượt cả 2 cấu hình): **826 MB** với bộ 50 ảnh, 575 MB với bộ 16 ảnh.
+
+Rút ra:
+
+- **Số URL và CER tái lập được** trên máy khác, hệ điều hành khác: khớp mục 3 và mục 8. Chênh nhỏ ở khoảng tin cậy CER (bootstrap) và "từ có dấu" (863 so với 862 từ ở bộ 50; 35/129 = 27% so với 28% ở mục 8).
+- **Sửa cách chấm URL không đổi số nào.** Bản chấm ranh giới đầu tiên làm `oi-048` rớt (OCR dính `vaohttps://…`, URL vẫn đúng từng ký tự) nên đã nới: URL có `http(s)://` thì không xét ranh giới trái. Ca này có test trong `eval/test_ocr_postprocess.py`.
+- **Bộ 16 ảnh độc lập không kiểm được `order_by_columns`:** có cột và không có cột ra y hệt nhau (không ảnh nào là ảnh ghép 2 khung). Quy tắc sắp cột vẫn chỉ được đo trên bộ 50 ảnh đã dùng để chỉnh nó.
+- **Độ trễ trên 2 lõi:** p95 1.63 s (bộ 50) và 1.12 s (bộ 16), dưới mục tiêu 3 s. Đây là **số đo thay thế**, không phải Lambda: CPU runner khác CPU Lambda, chưa có cold start, chưa tính tải model từ S3. p50 5,35 s ở mục 8 là do máy dev lúc chạy, không lặp lại ở đây.
+- **Từ có dấu đọc đúng chỉ 27–37%.** G2 không xét chỉ số này, nhưng nó ảnh hưởng tới đoạn chữ đưa vào Judge. Cần AI1 xem có nên đặt ngưỡng ở AI-26 không.
