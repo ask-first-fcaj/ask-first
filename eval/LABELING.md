@@ -237,7 +237,7 @@ Nguồn: research-concept §2.2 dòng N6 và danh sách 24 hình thức của C�
 | `risky_actions` | Những việc **tin nhắn đòi người nhận làm**, chọn trong `transfer_money`, `share_otp`, `share_password`, `install_app`, `share_screen`, `click_link`, `keep_secret`, `share_id_card`. Mẫu lành tính để rỗng |
 | `must_signals` | Chỉ mã tín hiệu trong ARCH §6.4 (`R_…`, `U_…`) mà **tầng luật chắc chắn phải bắt được** từ chính chữ trong mẫu (vd có `tài khoản an toàn` → `R_SAFE_ACCOUNT`; tên miền giả DVC → `U_TYPOSQUAT`). Không chắc thì để rỗng: thiếu tín hiệu chỉ được ghi vào báo cáo, không tính là sai |
 | `source_url` | Bắt buộc với `real_scam`: bài cảnh báo chính thức mà mẫu viết lại theo |
-| `provenance` | Mẫu từ đâu: `rewritten` (team viết lại từ bài cảnh báo), `ai_drafted` (AI soạn nháp từ bài cảnh báo, người duyệt từng mẫu), `constructed` (team tự dựng theo định dạng tin thật), `real_anonymized` (tin thật đã ẩn danh). Mẫu `ai_drafted` **phải có người thứ hai duyệt nhãn** trước khi dùng để chấm Gate. *Trường mới: `eval/validate.py` chỉ nhận sau PR SH-03 (#5); trước đó đừng thêm vào file JSONL.* |
+| `provenance` | Mẫu từ đâu: `rewritten` (team viết lại từ bài cảnh báo), `ai_drafted` (AI soạn nháp từ bài cảnh báo, người duyệt từng mẫu), `constructed` (team tự dựng theo định dạng tin thật), `real_anonymized` (tin thật đã ẩn danh). Mẫu `ai_drafted` **phải có người thứ hai duyệt nhãn** trước khi dùng để chấm Gate. `eval/validate.py` bắt buộc trường này với 4 split `real_scam`, `benign_suspicious`, `benign_normal`, `hard`. |
 
 **Quy tắc nguồn:** tên miền giả viết dạng `abc[.]xyz` (defang, kể cả `t[.]me/...`); số điện thoại, số tài khoản dùng dãy bịa (`0000000000`).
 

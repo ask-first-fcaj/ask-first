@@ -652,7 +652,7 @@ Mỗi dòng một mẫu:
  "input":{"text":"Quý khách có biên bản phạt nguội…","entities":[],"image":null,"audio":null,"forward_origin":"hidden_user"},
  "label":{"is_scam":true,"group":"N1","scenario":"N1.4","min_level":"SUSPICIOUS","max_level":null,
           "must_signals":["U_TYPOSQUAT"],"risky_actions":["click_link"]},
- "source_url":"https://…","author":"AI2","notes":""}
+ "source_url":"https://…","author":"AI2","notes":"","provenance":"rewritten"}
 ```
 
 | Trường | Quy ước |
@@ -663,6 +663,8 @@ Mỗi dòng một mẫu:
 | `label.min_level` | Bắt buộc khi `is_scam=true` |
 | `label.max_level` | Bắt buộc khi `is_scam=false`; thường là `"UNSURE"` |
 | `source_url` | Bắt buộc với mẫu viết lại từ cảnh báo chính thức |
+| `label.scenario` | Mã kịch bản research-concept §2.2 (`N0`, `N1.1`…`N6`, `OTHER`); `group` = phần trước dấu chấm. Cách gán: `eval/LABELING.md` |
+| `provenance` | `rewritten` \| `ai_drafted` \| `constructed` \| `real_anonymized`; bắt buộc với 4 split `real_scam`/`benign_*`/`hard`. Mẫu `ai_drafted` cần người thứ hai duyệt nhãn (`eval/LABELING.md` mục 10) |
 
 `eval/run_eval.py` đổi mỗi dòng thành `Bundle` (đọc file ảnh/voice thành bytes), gọi `pipeline.analyze()` với `Flags()` mặc định, **không cần BE**. Định nghĩa chỉ số (dùng thống nhất ở G1, M4, CI):
 

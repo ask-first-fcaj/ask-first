@@ -15,6 +15,7 @@ SCAM = {
     "source_url": "https://bocongan.gov.vn/bai-viet/x",
     "author": "AI1",
     "notes": "",
+    "provenance": "rewritten",
 }
 BENIGN = {
     "id": "bs-001",
@@ -24,6 +25,7 @@ BENIGN = {
     "source_url": None,
     "author": "AI1",
     "notes": "",
+    "provenance": "constructed",
 }
 
 
@@ -82,6 +84,33 @@ def test_group_rules(tmp_path):
 
 def test_scenario_must_match_group(tmp_path):
     assert any("scenario" in e for e in errors(tmp_path, rec(SCAM, **{"label.scenario": "N2.1"})))
+    # bản 1 ghi scenario bằng mã nhóm trơn ("N1"); bản 2 bắt buộc mã con
+    assert any("scenario" in e for e in errors(tmp_path, rec(SCAM, **{"label.scenario": "N1"})))
+
+
+def test_scenario_must_be_known_code(tmp_path):
+    assert any("mã kịch bản" in e for e in errors(tmp_path, rec(SCAM, **{"label.scenario": "N1.9"})))
+    assert errors(tmp_path, rec(SCAM, **{"label.group": "N5", "label.scenario": "N5.4"})) == []
+    assert errors(tmp_path, rec(SCAM, **{"label.group": "N6", "label.scenario": "N6"})) == []
+
+
+def test_provenance_required_for_counted_splits(tmp_path):
+    no_prov = rec(SCAM)
+    del no_prov["provenance"]
+    assert any("thiếu provenance" in e for e in errors(tmp_path, no_prov))
+    assert any("provenance=" in e for e in errors(tmp_path, rec(SCAM, provenance="llm")))
+    for p in validate.PROVENANCES:
+        assert errors(tmp_path, rec(SCAM, provenance=p)) == []
+
+
+def test_undefanged_domain_warns_only_for_scam(tmp_path):
+    def warns(r):
+        return [w for w in run(tmp_path, r).warnings if "defang" in w]
+    assert warns(rec(SCAM, **{"input.text": "Nhan viec tai t.me/viec_lam ngay"}))
+    assert warns(rec(SCAM, **{"input.text": "Nop phat tai dichvucong-phat.xyz."}))
+    assert not warns(rec(SCAM, **{"input.text": "Nhan viec tai t[.]me/viec_lam, tai file vneid.apk"}))
+    assert not warns(rec(SCAM, **{"input.text": "Gia trang https://dichvucong.gov.vn de lua"}))
+    assert not warns(rec(BENIGN, **{"input.text": "Tra cuu tai portal.congtyabc.vn"}))
 
 
 def test_split_and_is_scam_must_agree(tmp_path):
