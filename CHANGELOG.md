@@ -6,6 +6,7 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 ## [Unreleased]
 
 ### Changed
+- SH-02 (#4): `eval/LABELING.md` bản 2 gán nhãn theo **mã kịch bản** research-concept §2.2 (`N1.1`…`N6`) thay cho 7 nhóm riêng của bản 1, để khớp plan §3.8, fixtures và KB. Thêm `N1.6` (trúng thưởng/quà tri ân), `N2.3` (ghép ảnh nhạy cảm tống tiền), `N5.4` (chiếm tài khoản chat vay tiền), nới `N3.3` (gồm cả gửi quà đòi phí thông quan) vào `docs/research-concept.md` §2.2; mỗi nhóm có 2 ví dụ dương + ca dễ nhầm, 9 quy tắc phá thế hoà, hướng dẫn từng trường nhãn, trường `provenance` (cần validator SH-03), bảng đổi từ bản 1. Đề và đáp án gán thử (`eval/labeling_trial/`) đổi sang mã kịch bản; bỏ các ví dụ trong guide trùng gần nguyên văn với đề. **Chờ AI1 duyệt mã mới; chưa gán thử 4 người.**
 - Rút kế hoạch từ 12 xuống **6 tuần** (19/10–29/11/2026, v3): `docs/implementation-plan.md`, `docs/huong-dan-backend.md`, `docs/huong-dan-ai.md`, `docs/system-architecture.md`, `docs/research-concept.md`, `README.md`.
 - Backend build bằng **Maven** thay cho Gradle: lệnh `./mvnw verify`, codegen `jsonschema2pojo-maven-plugin` vào `target/generated-sources`, CI job `backend` chạy `./mvnw -B verify` khi có `backend/mvnw`; cập nhật docs, PR template, `.gitignore` (`target/`).
 - Chia lại việc AI theo độ khó (plan v3.1): AI1 nhận việc khó (OCR production AI-26, chống SSRF AI-24b), AI2 nhận việc dữ liệu/KB/test (AI-08, AI-09, AI-11); tách AI-24 thành AI-24a/AI-24b; thêm cách AI1 kèm AI2 (`docs/implementation-plan.md`, `docs/huong-dan-ai.md`).

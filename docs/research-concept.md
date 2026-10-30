@@ -92,21 +92,26 @@ Các kênh chính gồm: cuộc gọi thoại (mạo danh công an, ngân hàng,
 | N1.3 | Giả ngân hàng (lãi cao, sinh trắc học) | Gọi, SMS, tờ rơi QR | "Ưu đãi nội bộ", "cập nhật sinh trắc học" | Lãi bất thường; tên miền lạ | Đăng nhập web giả, đọc OTP/PIN | Ngân hàng không xin OTP |
 | N1.4 | Giả dịch vụ công/phạt nguội/VNeID/thuế/BHXH | SMS, mạng xã hội | "Lỗi phạt nguội 50.000 VND chưa xử lý", "xác minh cư trú" | Tên miền dichvucong-vn.com, dichvuconggov.vn, dichvuconghs.com, dichvuconghanhchinh.com, viet.lgovn.cc | Nhập thẻ, CVV, OTP; cài "app DVC" | Chỉ dùng dichvucong.gov.vn; Cổng DVC **không có app riêng** (ngoài VNeID)\[28\]\[40\]\[41\]\[42\]\[43\]\[44\] |
 | N1.5 | Giả điện lực/viễn thông | Gọi, SMS | "Thuê bao sẽ bị khoá", "nợ cước" | Doạ cắt dịch vụ | Bấm link, cài app | Gọi tổng đài chính thức |
+| N1.6 | Giả doanh nghiệp/sàn TMĐT báo trúng thưởng, quà tri ân *(bổ sung, SH-02)* | Gọi, SMS, mạng xã hội, bưu phẩm | "Chúc mừng quý khách trúng xe SH", "quà tri ân khách hàng" | Trúng giải mình không tham gia; đóng phí trước mới nhận | Chuyển phí "làm biển số", thuế, vận chuyển; quét QR | Doanh nghiệp thật không thu phí trước để trao thưởng |
 | N2.1 | Deepfake người thân/sếp | Video call | Cuộc gọi ngắn, hình mờ, vay gấp | "Mạng yếu" | Chuyển khoản | Gọi lại bằng số đã biết |
 | N2.2 | Thu mẫu giọng nói | Gọi | Cuộc gọi im lặng hoặc khảo sát | — | Nói chuyện lâu | Hạn chế nói với số lạ |
+| N2.3 | Ghép ảnh/video nhạy cảm để tống tiền *(bổ sung, SH-02)* | Tin nhắn, email, mạng xã hội | "Tôi có video nhạy cảm của anh", đòi tiền nếu không phát tán | Ảnh ghép; người lạ; đe doạ gửi cho gia đình, cơ quan | Chuyển tiền "chuộc" | Không chuyển tiền, giữ bằng chứng, trình báo công an |
 | N3.1 | Việc nhẹ lương cao/làm nhiệm vụ | Facebook, Telegram | "Like video được 20.000đ" | Đầu tiên trả thật rồi đòi nạp | Nạp tiền | Không nạp để nhận việc |
 | N3.2 | Đầu tư chứng khoán/tiền số/ngoại hối | Nhóm kín | Cam kết lợi nhuận | Sàn không phép | Nạp vào sàn | Kiểm tra giấy phép |
-| N3.3 | Lừa tình cảm (pig butchering) | Mạng xã hội | Kết bạn rồi rủ đầu tư | Chưa gặp mặt | Đầu tư | — |
+| N3.3 | Lừa tình cảm: rủ đầu tư (pig butchering) **hoặc** gửi quà rồi đòi phí thông quan *(nới, SH-02)* | Mạng xã hội | Kết bạn rồi rủ đầu tư; "anh gửi quà về cho em" rồi "hải quan" đòi phí | Chưa gặp mặt; xưng hô thân mật | Đầu tư; nộp phí nhận quà | Không chuyển tiền cho người chỉ quen qua mạng |
 | N4.1 | Biên lai giả, đặt cọc | Sàn TMĐT | "Đã chuyển thành công" | Tiền không về | Giao hàng | Kiểm tra số dư thật |
 | N4.2 | Vé concert/máy bay/tour giả | Threads, Facebook | "Pass vé giá gốc" | Chuyển khoản cá nhân | Đặt cọc | Mua kênh chính thức |
 | N4.3 | Giả shipper | Gọi, SMS | "Đơn cần thanh toán phí" | Đơn không đặt | Bấm link | — |
 | N5.1 | App giả, mã độc Android | Link, APK | "Cài ứng dụng để cập nhật" | APK ngoài CH Play; xin quyền Trợ năng | Cài, cấp quyền | Không cài theo người lạ |
 | N5.2 | Chia sẻ màn hình | Gọi kèm app | "Bật chia sẻ màn hình để hướng dẫn" | — | Mở app ngân hàng | Google Phone đã cảnh báo\[45\] |
 | N5.3 | QR độc hại | Tờ rơi, tin | QR "nhận ưu đãi" | Tên miền lạ | Quét và đăng nhập | Không quét QR lạ |
+| N5.4 | Chiếm tài khoản chat (Zalo/Facebook) rồi nhắn người quen vay tiền *(bổ sung, SH-02)* | Zalo, Messenger | "Chuyển giúp mình 5 triệu, thẻ mình bị lỗi, mai trả" | Tin từ tài khoản người quen nhưng chỉ nhắn chữ, giục gấp, tránh gọi | Chuyển khoản vào tài khoản lạ | Gọi điện trực tiếp (số đã biết) để xác minh |
 | N6 | "Lấy lại tiền bị lừa" | Quảng cáo | "Hacker/luật sư lấy lại tiền" | Đòi phí trước | Chuyển phí | Chỉ trình báo công an |
 | N0 | **Lành tính trông đáng ngờ** | — | OTP thật, biến động số dư, SMS VNeID/dichvucong.gov.vn thật | — | — | Bắt buộc có trong bộ test |
 
 *Mẫu câu tóm tắt từ các cảnh báo của công an; trong knowledge base nên lưu kèm URL nguồn của từng mẫu.*
+
+*Ba mã `N1.6`, `N2.3`, `N5.4` và phần nới `N3.3` thêm ngày 30/10/2026 (SH-02, #4) để khớp các loại team đã gán nhãn ở bản 1 của `eval/LABELING.md`; nguồn từng mã ở `eval/LABELING.md` §3–§7. **Chờ AI1 duyệt.***
 
 ### 2.3 Xuyên biên giới
 
