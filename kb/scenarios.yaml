@@ -1,0 +1,395 @@
+# kb/scenarios.yaml (AI-25): thẻ kịch bản lừa đảo. Schema: docs/implementation-plan.md §3.10.
+#
+# Mã `code` theo bảng mã hiện hành ở eval/LABELING.md §1 (AI1 duyệt 30/10/2026, nguồn gốc bảng: docs/research-concept.md §2.2):
+# N0, N1.1–N1.6, N2.1–N2.3, N3.1–N3.3, N4.1–N4.3, N5.1–N5.4, N6, OTHER. `group` là phần trước dấu chấm (N1, N2...); khóa `group` theo plan §3.10 bản mới.
+# Một thẻ cho mỗi mã; các biến thể của cùng một mã (ví dụ phạt nguội và VNeID giả đều là N1.4) gộp trong cùng thẻ.
+#
+# Nguồn gốc nội dung (đọc kỹ trước khi tin):
+#  - Ngày 2026-10-30 t đã mở từng link trong `sources` và đọc tiêu đề cùng đoạn mở đầu bài; các bài được đọc kỹ thân bài ở các thẻ
+#    N0, N1.1(một phần), N1.2, N1.4, N1.5, N2.1, N4.1, N4.3, N5.1, N6. Phần còn lại mới đọc tiêu đề và đoạn mở đầu,
+#    chi tiết thêm (số tiền, tên miền giả...) lấy từ phần tóm tắt bài trong eval/LABELING.md do team viết.
+#  - `example_phrases` chỉ gồm câu trích nguyên văn từ bài nguồn. Bài không có câu trích thì để rỗng, không bù bằng câu tự nghĩ.
+#  - `advice` là khuyến cáo chung bám theo các bài nguồn (không ghi số điện thoại, số lấy từ hotlines.yaml). AI1 duyệt từng thẻ.
+#  - `date` trong sources chỉ ghi khi bài hoặc kết quả tìm kiếm hiện ngày; không thấy ngày thì bỏ.
+#  - CHƯA CÓ thẻ cho: N2.2 (thu mẫu giọng nói) và N5.2 (dụ chia sẻ màn hình), do chưa tìm được bài cảnh báo chính thức đúng mã đó.
+
+- code: N0
+  group: N0
+  title: Tin thật của ngân hàng hoặc cơ quan (OTP, biến động số dư, nhắc cảnh giác)
+  description: >-
+    Tin chỉ thông báo: mã OTP kèm lời dặn không chia sẻ, biến động số dư, hoặc lời nhắc cảnh giác. Không đòi chuyển tiền,
+    không bảo đọc mã cho người khác, không giữ bí mật, không có link lạ. Thẻ này để bot không báo nhầm (eval/LABELING.md).
+  example_phrases: ["không cung cấp thông tin tài khoản ngân hàng, mật khẩu, mã OTP cho bất kỳ ai"]
+  red_flags: []
+  advice:
+    - Không cần làm gì thêm nếu tin chỉ thông báo
+    - Mã OTP chỉ nhập vào ứng dụng hoặc trang chính thức do chính mình mở, không đọc cho ai
+    - Nghi ngờ thì tự mở ứng dụng ngân hàng để kiểm tra, không bấm link trong tin
+  sources:
+    - {url: "https://www.bocongan.gov.vn/bai-viet/kip-thoi-ngan-chan-vu-viec-gia-danh-luc-luong-cong-an-lua-dao-chiem-doat-tai-san-1782987242", publisher: "Bộ Công an (Công an xã Chợ Rã, Thái Nguyên)", date: "2026-07-02"}
+  verified_at: 2026-10-30
+
+- code: N1.1
+  group: N1
+  title: Giả công an, Viện kiểm sát hoặc tòa án, khống chế tâm lý và bắt nạn nhân cô lập
+  description: >-
+    Kẻ gian giả danh Công an khống chế tâm lý, buộc nạn nhân (có vụ là tân sinh viên) tự cô lập, tách khỏi gia đình để chiếm đoạt tiền
+    (“bắt cóc online”). Công an TP. Hồ Chí Minh phát hiện và bảo đảm an toàn cho 2 sinh viên trong các vụ gần đây.
+  example_phrases: []
+  red_flags:
+    - Giả danh Công an
+    - Buộc nạn nhân tự cô lập, cắt liên lạc với gia đình
+    - Mục đích chiếm đoạt tiền
+  advice:
+    - Không làm theo yêu cầu cô lập hoặc giữ bí mật
+    - Liên hệ gia đình và báo công an gần nhất ngay khi nghi ngờ
+  sources:
+    - {url: "https://bocongan.gov.vn/bai-viet/canh-giac-thu-doan-bat-coc-online-gia-danh-cong-an-co-lap-sinh-vien-de-chiem-doat-tien-1791168262", publisher: "Bộ Công an (Công an TP. Hồ Chí Minh)", date: "2026-10-05"}
+  verified_at: 2026-10-30
+
+- code: N1.2
+  group: N1
+  title: Người lạ xưng công an báo người thân gặp nạn, ép chuyển tiền và giữ bí mật
+  description: >-
+    Kẻ gian gọi điện tự xưng cán bộ Công an xã, báo con trai gặp tai nạn giao thông và yêu cầu chuyển tiền gấp, liên tục giữ liên lạc
+    để tạo áp lực, hướng dẫn nạn nhân ra bưu điện rút tiền tiết kiệm chuyển vào tài khoản do chúng đưa, và dặn không nói với ai.
+    Nạn nhân chủ yếu là người cao tuổi, người ở vùng sâu, vùng xa. Vụ ở Chợ Rã (30/6/2026): nạn nhân đã rút 40 triệu đồng,
+    nhân viên bưu điện thấy bất thường và báo công an nên ngăn được.
+  example_phrases: ["yêu cầu chuyển tiền gấp", "yêu cầu không được trao đổi với bất kỳ ai"]
+  red_flags:
+    - Gọi điện tự xưng công an, Viện kiểm sát, Tòa án hoặc cơ quan nhà nước
+    - Báo người thân gặp tai nạn hoặc vi phạm pháp luật rồi đòi chuyển tiền gấp
+    - Dặn không nói chuyện với bất kỳ ai
+    - Hướng dẫn rút tiền tiết kiệm và chuyển vào tài khoản lạ
+    - Liên tục giữ liên lạc, gây áp lực
+  advice:
+    - Bình tĩnh, cúp máy
+    - Gọi lại trực tiếp cho người thân bằng số đã lưu để kiểm tra
+    - Không chuyển tiền, không đọc mã OTP, mật khẩu, số tài khoản cho ai
+    - Đến trực tiếp công an xã hoặc phường để xác minh
+  sources:
+    - {url: "https://www.bocongan.gov.vn/bai-viet/kip-thoi-ngan-chan-vu-viec-gia-danh-luc-luong-cong-an-lua-dao-chiem-doat-tai-san-1782987242", publisher: "Bộ Công an (Công an xã Chợ Rã, Thái Nguyên)", date: "2026-07-02"}
+  verified_at: 2026-10-30
+
+- code: N1.3
+  group: N1
+  title: SMS giả ngân hàng báo điểm thưởng hết hạn hoặc xác minh giao dịch, kèm link giả
+  description: >-
+    Công an tỉnh Gia Lai cảnh báo SMS mạo danh Techcombank dụ truy cập website giả để đánh cắp thông tin thẻ, mã OTP và chiếm đoạt tiền trong tài khoản.
+    Theo tóm tắt của team (eval/LABELING.md): nội dung là điểm thưởng thẻ tín dụng sắp hết hạn, ưu đãi có thời hạn, hoàn tiền, yêu cầu xác minh giao dịch;
+    link tên miền gần giống (đuôi .cfd, .lat); trang giả đòi số thẻ, CVV, mật khẩu, OTP.
+  example_phrases: []
+  red_flags:
+    - SMS mang tên ngân hàng kèm link lạ
+    - Tên miền gần giống tên ngân hàng nhưng đuôi lạ
+    - Thông báo điểm thưởng sắp hết hạn hoặc cần xác minh giao dịch gấp
+    - Trang web đòi số thẻ, CVV, mật khẩu hoặc OTP
+  advice:
+    - Không bấm link trong SMS
+    - Tự mở ứng dụng ngân hàng chính thức để kiểm tra điểm thưởng hoặc giao dịch
+    - Ngân hàng không yêu cầu nhập OTP hay CVV qua đường link gửi tin nhắn
+  sources:
+    - {url: "https://hangthat.thuonghieucongluan.com.vn/cong-an-canh-bao-chieu-gia-mao-techcombank-gui-sms-bam-nham-link-co-the-mat-sach-tien-a291635.html", publisher: "Công an tỉnh Gia Lai (đăng lại trên Thương hiệu & Công luận)", date: "2026-07-15"}
+  verified_at: 2026-10-30
+
+- code: N1.4
+  group: N1
+  title: Giả dịch vụ công (phạt nguội, VNeID, trợ cấp), dụ vào web giả hoặc cài app giả
+  description: >-
+    Ba biến thể cùng một cách dụ. (1) “Phạt nguội 50.000 VND”: SMS từ số lạ báo xe vi phạm, bảo truy cập website giả dịch vụ công
+    (ví dụ dichvucong-vn.com), trang giả hướng dẫn nộp tiền bằng cách nhập số thẻ, tên chủ thẻ, ngày hết hạn, mã CVV và OTP rồi chiếm quyền thẻ.
+    Công an khẳng định không có hình thức thông báo vi phạm giao thông qua tin nhắn hoặc điện thoại. (2) Giả cán bộ xã/phường, cảnh sát khu vực gọi điện,
+    lấy cớ sắp xếp lại đơn vị hành chính để dụ truy cập đường dẫn hoặc cài ứng dụng VNeID/dịch vụ công giả chứa mã độc (ví dụ link viet.lgovn.cc),
+    sau đó chiếm quyền điều khiển điện thoại, lấy OTP hoặc dữ liệu sinh trắc học. (3) Mạo danh cơ quan nhà nước báo “trợ cấp Tết 2026”,
+    dụ bấm link giả và nhập OTP.
+  example_phrases:
+    - "xe bạn có vi phạm"
+    - "Chúng tôi thông báo bạn đã vi phạm luật giao thông và bị phạt số tiền 50.000 VND do đỗ xe gây cản trở"
+    - "thay đổi bộ máy hành chính"
+    - "trợ cấp Tết 2026"
+  red_flags:
+    - Tin nhắn từ số lạ báo phạt nguội hoặc trợ cấp
+    - Tên miền kiểu dichvucong-vn.com hoặc viet.lgovn.cc, không phải .gov.vn
+    - Đòi nhập số thẻ, ngày hết hạn, mã CVV, OTP để nộp phạt hoặc nhận tiền
+    - Cuộc gọi yêu cầu cập nhật thông tin qua đường dẫn hoặc ứng dụng, người gọi biết sẵn thông tin cá nhân
+    - Dụ nhìn vào điện thoại hoặc đọc mã OTP
+  advice:
+    - Không bấm link trong tin nhắn, không làm theo yêu cầu qua điện thoại của người tự xưng cán bộ
+    - Công an chỉ thông báo vi phạm bằng văn bản, không qua tin nhắn hay điện thoại
+    - Muốn tra cứu vi phạm thì vào csgt.vn hoặc ứng dụng VNeTraffic; cần cập nhật thông tin thì ra trực tiếp Công an xã hoặc phường
+    - Chỉ tải VNeID từ CH Play hoặc App Store, ứng dụng có nhãn Chính phủ
+    - Nếu lỡ cài hoặc bấm link, liên hệ ngân hàng khóa tài khoản và tắt nguồn điện thoại
+  sources:
+    - {url: "https://congan.nghean.gov.vn/thong-tin-chuyen-de/canh-bao-toi-pham/202604/canh-bao-chieu-lua-phat-nguoi-50000-vnd-qua-website-gia-dich-vu-cong-1056677/", publisher: "Công an tỉnh Nghệ An", date: "2026-04-29"}
+    - {url: "https://bocongan.gov.vn/bai-viet/canh-bao-thu-doan-gia-danh-co-quan-cong-an-gui-tin-nhan-phat-nguoi-kem-duong-link-gia-mao-de-lua-dao-chiem-doat-tai-san-1788945012", publisher: "Bộ Công an", date: "2026-09-09"}
+    - {url: "https://bocongan.gov.vn/bai-viet/canh-bao-thu-doan-lua-dao-cai-ung-dung-vneid-gia-mao-d22-t45880", publisher: "Bộ Công an", date: "2025-07-05"}
+    - {url: "https://canhsatquanlyhanhchinh.gov.vn/tin-tuc/thu-doan-gia-mao-ung-dung-giao-dien-cac-website-dich-vu-cong-de-lua-dao-chiem-doat-tai-san-2658", publisher: "Cục Cảnh sát QLHC về TTXH, Bộ Công an"}
+    - {url: "https://kenh14.vn/cong-an-canh-bao-nong-thu-doan-lua-dao-moi-nham-vao-cong-nhan-va-nguoi-cao-tuoi-dip-can-tet-2026-21526012011510043.chn", publisher: "Kênh14 (dẫn cảnh báo của Công an)"}
+  verified_at: 2026-10-30
+
+- code: N1.5
+  group: N1
+  title: Giả nhân viên điện lực hoặc nhà mạng, dọa cắt điện hoặc khóa SIM
+  description: >-
+    Điện lực: cuộc gọi từ số lạ (có cả đầu số nước ngoài) tự xưng “nhân viên điện lực”, “Tổng đài ngành Điện”, báo dùng điện cao bất thường sẽ bị cắt điện,
+    bảo bấm số 9 để gặp nhân viên, hỏi tên và địa chỉ rồi báo đang nợ tiền điện và đòi chuyển tiền; Điện Biên ghi nhận 29 khách hàng phản ánh.
+    Nhà mạng: lợi dụng việc chuẩn hóa thông tin thuê bao theo Thông tư 08/2026, kẻ gian giả nhân viên Viettel, Vinaphone, MobiFone gọi báo thuê bao chưa chuẩn hóa,
+    dọa khóa SIM hoặc thu hồi số, gửi link giả qua SMS, Zalo, Messenger yêu cầu cập nhật thông tin hoặc cài “ứng dụng nhà mạng” thực chất chứa mã độc.
+  example_phrases:
+    - "Bạn đang sử dụng điện cao bất thường, chúng tôi sẽ cắt điện trong thời gian tới, vui lòng bấm số 9 để được gặp nhân viên điện lực tư vấn"
+  red_flags:
+    - Gọi từ số lạ hoặc đầu số nước ngoài, tự xưng điện lực hoặc nhà mạng
+    - Dọa cắt điện, khóa SIM, thu hồi số nếu không làm ngay
+    - Đòi chuyển tiền vào tài khoản cá nhân, gửi link hoặc ứng dụng để cập nhật thông tin
+  advice:
+    - Không cung cấp số tài khoản, mật khẩu, không thanh toán tiền điện cho người lạ, không chuyển vào tài khoản cá nhân
+    - Không bấm link hoặc cài ứng dụng theo hướng dẫn của người tự xưng nhà mạng
+    - Nghi ngờ thì tự liên hệ điện lực hoặc nhà mạng qua kênh chính thức
+  sources:
+    - {url: "https://dienbien.gov.vn/vi/bai-viet/Canh-bao-cuoc-goi-mao-danh-Cong-ty-Dien-luc-bao-khiew65j", publisher: "Cổng thông tin điện tử tỉnh Điện Biên"}
+    - {url: "https://thanhnien.vn/cong-an-canh-bao-chieu-lua-chuan-hoa-sim-chinh-chu-185260507160922091.htm", publisher: "Thanh Niên (dẫn cảnh báo của Công an)"}
+  verified_at: 2026-10-30
+
+- code: N1.6
+  group: N1
+  title: Giả doanh nghiệp báo trúng thưởng hoặc quà tri ân, bắt đóng phí trước
+  description: >-
+    Ổ nhóm lừa đảo trên không gian mạng bằng hình thức mua hàng (ví dụ quần áo) bốc thăm trúng thưởng bị Công an tỉnh Thanh Hóa triệt xóa.
+    Theo tóm tắt của team (eval/LABELING.md): báo trúng xe máy Honda SH mode, sau đó đòi 1,5 đến 7 triệu phí làm thủ tục biển số, giấy tờ,
+    rồi tiếp tục đòi tiền vận chuyển hoặc phí đổi sang tiền mặt. Phần hoàn tiền hoặc bồi thường của N1.6 chưa có bài cảnh báo chính thức riêng.
+  example_phrases: []
+  red_flags:
+    - Báo trúng thưởng giá trị lớn dù không đăng ký
+    - Đòi đóng phí trước (biển số, giấy tờ, vận chuyển)
+    - Đòi thêm nhiều lần
+  advice:
+    - Không chuyển tiền để nhận thưởng, thưởng thật không bắt đóng phí trước
+    - Không bấm link hoặc quét mã QR nhận thưởng
+  sources:
+    - {url: "https://bocongan.gov.vn/bai-viet/thanh-hoa-triet-xoa-o-nhom-lua-dao-chiem-doat-tai-san-bang-hinh-thuc-mua-hang-boc-tham-trung-thuong-d22-t45630", publisher: "Bộ Công an (Công an tỉnh Thanh Hóa)", date: "2025-06-18"}
+  verified_at: 2026-10-30
+
+- code: N2.1
+  group: N2
+  title: Giả giọng hoặc hình người thân, lãnh đạo bằng AI, tạo bối cảnh khẩn cấp để giục chuyển tiền
+  description: >-
+    Kẻ gian dùng AI giả hình ảnh, giọng nói: cuộc gọi video có hình giống người thân, hoặc đoạn ghi âm giọng giống lãnh đạo, đồng nghiệp.
+    Có thủ đoạn dùng ứng dụng giả mạo bất kỳ số điện thoại nào và giả giọng từ dữ liệu thu thập trên mạng xã hội, rồi lấy cớ gặp nạn
+    (tai nạn cấp cứu, bị bắt giữ, chuyển tiền gấp để mua hàng) hoặc giả cơ quan pháp luật để dẫn dụ chuyển tiền, đưa thông tin cá nhân hoặc mã OTP.
+  example_phrases: []
+  red_flags:
+    - Cuộc gọi hoặc ghi âm giọng rất giống người quen, số điện thoại cũng quen, nhưng đòi chuyển tiền gấp
+    - Bối cảnh khẩn cấp (cấp cứu, bị bắt, thanh toán gấp)
+    - Dụ chuyển sang nền tảng nhắn tin khác hoặc bấm link
+  advice:
+    - Không vội chuyển tiền, đưa thông tin cá nhân hay mã xác thực chỉ dựa trên hình ảnh hoặc giọng nói
+    - Kiểm tra lại bằng kênh độc lập, ví dụ gọi lại số đã lưu của người thân
+  sources:
+    - {url: "https://hvktcnan.bocongan.gov.vn/TrangChu/tin-tuc/1931-phong-chong-hoat-dong-loi-dung-cong-nghe-deepfake-lua-dao-tren-khong-gian-mang.html", publisher: "Học viện Kỹ thuật và Công nghệ an ninh, Bộ Công an", date: "2026-04-16"}
+    - {url: "https://congan.angiang.gov.vn/canh-bao-phuong-thuc-lua-dao-moi-gia-mao-so-dien-thoai-va-su-dung-giong-noi-ai", publisher: "Công an tỉnh An Giang", date: "2026-06-23"}
+  verified_at: 2026-10-30
+
+- code: N2.3
+  group: N2
+  title: Ghép ảnh hoặc video nhạy cảm để đe dọa, tống tiền
+  description: >-
+    Công an tỉnh Thanh Hóa nhận trình báo gần 20 trường hợp từ đầu tháng 10/2026 bị đe dọa, tống tiền bằng hình ảnh, video nhạy cảm bị cắt ghép; có nạn nhân bị yêu cầu chuyển tới 1,5 tỷ đồng.
+    Bộ Công an cũng cảnh báo thủ đoạn cắt ghép ảnh của người có uy tín trong xã hội rồi nhắn tin, gọi điện uy hiếp đòi chuyển tiền.
+  example_phrases: []
+  red_flags:
+    - Bị gửi ảnh hoặc video nhạy cảm của chính mình, nghi cắt ghép
+    - Dọa phát tán nếu không chuyển tiền
+    - Đòi số tiền lớn
+  advice:
+    - Không chuyển tiền, không trả lời yêu cầu của kẻ đe dọa
+    - Lưu lại bằng chứng và trình báo công an
+  sources:
+    - {url: "https://bocongan.gov.vn/bai-viet/canh-giac-voi-thu-doan-ghep-anh-tong-tien-tren-khong-gian-mang-1791190146", publisher: "Bộ Công an (Công an tỉnh Thanh Hóa)"}
+    - {url: "https://bocongan.gov.vn/bai-viet/canh-bao-tinh-trang-quay-tro-lai-thu-doan-cat-ghep-hinh-anh-nhay-cam-nham-cuong-doat-tai-san-1788770637", publisher: "Bộ Công an"}
+  verified_at: 2026-10-30
+
+- code: N3.1
+  group: N3
+  title: Tuyển dụng “việc nhẹ lương cao” trên mạng xã hội
+  description: >-
+    Tin tuyển dụng giả trên mạng xã hội (“xuất khẩu lao động đáng tin cậy”, “việc nhẹ, lương cao”, thu nhập hàng chục triệu đồng mỗi tháng) dụ nạn nhân đi theo.
+    Theo tóm tắt của team (eval/LABELING.md): quảng cáo Facebook lương 500 nghìn đồng mỗi ngày, bao chỗ ở, không đóng phí, hẹn xe đón rồi đưa sang tổ chức lừa đảo trực tuyến ở nước ngoài, cưỡng ép lao động.
+  example_phrases: ["việc nhẹ, lương cao", "xuất khẩu lao động đáng tin cậy"]
+  red_flags:
+    - Lương cao bất thường, không cần kinh nghiệm
+    - Tuyển qua mạng xã hội, kéo sang kênh nhắn tin khác
+    - Bao chỗ ở, có người đón, đưa đi nước ngoài
+  advice:
+    - Cảnh giác với tin tuyển dụng lương cao, việc nhẹ trên mạng xã hội
+    - Không chuyển tiền, không đi theo người lạ để nhận việc
+    - Tìm hiểu kỹ đơn vị tuyển dụng qua kênh chính thức
+  sources:
+    - {url: "https://bocongan.gov.vn/bai-viet/cong-an-tinh-vinh-long-canh-giac-voi-bay-viec-nhe-luong-cao-1780907526", publisher: "Bộ Công an (Công an tỉnh Vĩnh Long)", date: "2026-06-08"}
+  verified_at: 2026-10-30
+
+- code: N3.2
+  group: N3
+  title: Tiền ảo đa cấp đội lốt “việc nhẹ lương cao”, dụ người trẻ xuống tiền đầu tư
+  description: >-
+    Từ chiêu tuyển dụng “việc nhẹ, lương cao”, đường dây tiền ảo đa cấp dụ nhiều người trẻ xuống tiền đầu tư. Công an TP. Đà Nẵng khởi tố 2 người cầm đầu,
+    bước đầu xác định chiếm đoạt hơn 11 tỉ đồng.
+  example_phrases: ["việc nhẹ, lương cao"]
+  red_flags:
+    - Lời mời đầu tư tiền ảo, đa cấp đi kèm việc làm
+    - Hứa lãi cao, yêu cầu nạp tiền vào sàn
+  advice:
+    - Không nạp tiền vào sàn tiền ảo hoặc nhóm đầu tư do người lạ mời
+    - Kiểm tra giấy phép hoạt động trước khi đầu tư
+  sources:
+    - {url: "https://thanhnien.vn/cong-an-da-nang-khoi-to-vu-lua-dao-tien-ao-da-cap-viec-nhe-luong-cao-185260709121531318.htm", publisher: "Thanh Niên (dẫn Công an TP. Đà Nẵng)"}
+  verified_at: 2026-10-30
+
+- code: N3.3
+  group: N3
+  title: Làm quen mạng rồi báo gửi quà từ nước ngoài, “hải quan” đòi phí thông quan
+  description: >-
+    Công an xã Bát Xát (Lào Cai) ngăn một vụ lừa đảo dưới hình thức “gửi quà từ nước ngoài”, giúp người dân tránh mất 140 triệu đồng.
+    Theo tóm tắt của team (eval/LABELING.md): tài khoản Facebook giả kết bạn tạo tình cảm lâu ngày, báo gửi quà ngoại quốc,
+    sau đó đồng bọn xưng Hải quan hoặc An ninh hàng không đòi tiền thông quan và thúc giục đi vay tiền chuyển khoản.
+  example_phrases: ["gửi quà từ nước ngoài"]
+  red_flags:
+    - Người quen qua mạng chưa gặp mặt báo gửi quà giá trị lớn
+    - Người tự xưng hải quan, bưu điện đòi nộp phí thông quan
+    - Thúc giục vay tiền để chuyển
+  advice:
+    - Không chuyển tiền cho quà của người chưa gặp mặt
+    - Hải quan không đòi tiền qua tin nhắn hay tài khoản cá nhân, nên hỏi lại cơ quan chức năng
+  sources:
+    - {url: "https://www.bocongan.gov.vn/bai-viet/cong-an-xa-bat-xat-kip-thoi-ngan-chan-vu-lua-dao-qua-tang-quoc-te-giup-nguoi-dan-tranh-mat-140-trieu-dong-1783613735", publisher: "Bộ Công an (Công an xã Bát Xát, Lào Cai)", date: "2026-07-09"}
+  verified_at: 2026-10-30
+
+- code: N4.1
+  group: N4
+  title: Ảnh biên lai “chuyển khoản thành công” giả khi mua hàng
+  description: >-
+    Kẻ gian mua hàng (có vụ là hàng số lượng lớn, hoặc dây điện giá trị cao ở cửa hàng thiết bị điện), đề nghị chuyển khoản qua Internet Banking rồi đưa ảnh giao dịch giả
+    thể hiện thanh toán thành công để lấy hàng, trong khi tiền không về tài khoản người bán. Công an xã Quảng Phú (Đắk Lắk) bắt giữ nhóm quét mã QR thanh toán của cửa hàng
+    rồi tạo ảnh giao dịch giả.
+  example_phrases: []
+  red_flags:
+    - Khách chỉ đưa ảnh chụp màn hình “chuyển khoản thành công”
+    - Mua hàng số lượng lớn rồi đề nghị chuyển khoản ngay tại chỗ
+  advice:
+    - Kiểm tra tiền đã về tài khoản thật bằng ứng dụng ngân hàng của mình trước khi giao hàng
+    - Không tin ảnh chụp màn hình giao dịch
+  sources:
+    - {url: "https://canhsatquanlyhanhchinh.gov.vn/tin-tuc/canh-giac-lua-dao-gia-mao-bien-lai-chuyen-tien-thanh-cong-2649", publisher: "Cục Cảnh sát QLHC về TTXH, Bộ Công an"}
+    - {url: "https://congan.daklak.gov.vn/an-toan-giao-thong/cong-an-xa-quang-phu-bat-giu-doi-tuong-tao-bien-lai-chuyen-khoan-gia-de-lua-dao-13977.html", publisher: "Công an tỉnh Đắk Lắk", date: "2026-09-30"}
+  verified_at: 2026-10-30
+
+- code: N4.2
+  group: N4
+  title: Tour du lịch, vé, phòng nghỉ giá rẻ giả trên mạng
+  description: >-
+    Công an tỉnh Đắk Lắk khuyến cáo cảnh giác khi đặt tour du lịch, phòng nghỉ, vé phương tiện hoặc dịch vụ làm visa trên mạng mùa hè 2026.
+    Kẻ gian lợi dụng tâm lý muốn đi du lịch tiết kiệm, dựng dịch vụ du lịch trực tuyến giả: tour giá rẻ, combo nghỉ dưỡng ưu đãi, vé máy bay, phòng khách sạn “siêu hời”.
+  example_phrases: []
+  red_flags:
+    - Giá thấp hơn nhiều so với thị trường
+    - Chuyển khoản vào tài khoản cá nhân để đặt cọc
+  advice:
+    - Đặt tour, vé, phòng qua kênh chính thức của hãng hoặc nơi lưu trú
+    - Tránh chuyển khoản trước cho tài khoản cá nhân
+  sources:
+    - {url: "https://congan.daklak.gov.vn/tin-moi/canh-giac-voi-cac-chieu-tro-lua-dao-dat-tour-phong-nghi-dip-du-lich-he-2026-11749.html", publisher: "Công an tỉnh Đắk Lắk"}
+    - {url: "https://congan.hungyen.gov.vn/canh-giac-voi-chieu-tro-lua-dao-du-lich-dip-nghi-le-304-015-tren-khong-gian-mang-c235094.html", publisher: "Công an tỉnh Hưng Yên", date: "2026-04-15"}
+  verified_at: 2026-10-30
+
+- code: N4.3
+  group: N4
+  title: Giả shipper hoặc nhân viên bưu điện, đòi chuyển khoản trước hoặc gửi link
+  description: >-
+    Kẻ gian gọi điện tự xưng nhân viên bưu điện, đơn vị giao hàng hoặc công ty chuyển phát (ví dụ Viettel Post, Giao hàng nhanh, J&T), yêu cầu chuyển khoản trước để nhận hàng
+    hoặc “giải quyết kiện hàng bị giữ”. Công an cũng cảnh báo thủ đoạn gửi đường link giả qua tin nhắn mạo danh shipper.
+  example_phrases: ["giải quyết kiện hàng bị giữ"]
+  red_flags:
+    - Người gọi nói có đơn hàng mình không đặt hoặc không nhớ
+    - Đòi chuyển khoản trước hoặc bấm link để nhận hàng
+  advice:
+    - Không chuyển khoản hoặc bấm link theo yêu cầu của người tự xưng shipper
+    - Tự kiểm tra đơn hàng trong ứng dụng của sàn hoặc đơn vị vận chuyển
+  sources:
+    - {url: "https://congan.quangngai.gov.vn/danh-muc-san-pham/-tin-tuc-su-kien/canh-bao-thu-doan-gia-danh-nhan-vien-buu-dien-de-lua-chuyen-khoan.html", publisher: "Công an tỉnh Quảng Ngãi", date: "2025-07-23"}
+    - {url: "https://congan.ninhbinh.gov.vn/luc-luong-cong-an-canh-bao-thu-doan-gia-danh-shipper-de-lua-dao-chiem-doat-tai-san", publisher: "Công an tỉnh Ninh Bình", date: "2026-06-10"}
+    - {url: "https://congan.khanhhoa.gov.vn/vi/canh-bao-thu-doan-lua-dao-khi-truy-cap-vao-duong-link-do-shipper-gui", publisher: "Công an tỉnh Khánh Hòa"}
+  verified_at: 2026-10-30
+
+- code: N5.1
+  group: N5
+  title: App giả, mã độc hoặc phần mềm điều khiển từ xa, không gắn với bên bị mạo danh cụ thể
+  description: >-
+    Nhóm 5 trong 25 kịch bản Bộ Công an cảnh báo (đánh cắp dữ liệu, chiếm quyền điều khiển thiết bị): kẻ gian phát tán đường link giả mạo, mã QR độc hại,
+    ứng dụng chứa mã độc hoặc phần mềm điều khiển từ xa để chiếm tài khoản mạng xã hội, tài khoản ngân hàng và thu thập thông tin cá nhân.
+  example_phrases: []
+  red_flags:
+    - Được hướng dẫn cài ứng dụng ngoài kho ứng dụng chính thức
+    - Ứng dụng xin quyền lạ hoặc quyền điều khiển từ xa
+  advice:
+    - Không cài đặt ứng dụng theo hướng dẫn của người lạ
+    - Không truy cập link lạ
+    - Không chuyển tiền khi chưa xác minh chính xác danh tính người nhận
+  sources:
+    - {url: "https://www.bocongan.gov.vn/bai-viet/nang-cao-canh-giac-truoc-25-kich-ban-lua-dao-tren-khong-gian-mang-nam-2026-1788865614", publisher: "Bộ Công an", date: "2026-09-08"}
+  verified_at: 2026-10-30
+
+- code: N5.3
+  group: N5
+  title: Mã QR độc hại, bưu phẩm “tri ân” kèm QR, không gắn với bên bị mạo danh cụ thể
+  description: >-
+    Kẻ gian gửi bưu phẩm “tri ân” chứa mã QR, thao túng tâm lý để người nhận quét mã rồi chiếm đoạt tài sản; nhiều nạn nhân mất tiền và khó trình báo vì kẻ gian xóa dấu vết.
+    Bộ Công an cũng nêu mã QR độc hại trong nhóm đánh cắp dữ liệu, chiếm quyền điều khiển thiết bị.
+  example_phrases: ["bưu phẩm tri ân"]
+  red_flags:
+    - Nhận quà hoặc bưu phẩm không đặt kèm mã QR
+    - Được hướng dẫn quét mã để xác nhận hoặc nhận hàng
+  advice:
+    - Không quét mã QR không rõ nguồn gốc, trên bưu phẩm hay tờ rơi
+    - Hỏi lại đơn vị bưu chính qua kênh chính thức
+  sources:
+    - {url: "https://genk.vn/mat-tien-vi-quet-ma-qr-buu-pham-tri-an-nhan-dien-toi-pham-de-phong-ngua-165260926134051255.chn", publisher: "GenK"}
+    - {url: "https://www.bocongan.gov.vn/bai-viet/nang-cao-canh-giac-truoc-25-kich-ban-lua-dao-tren-khong-gian-mang-nam-2026-1788865614", publisher: "Bộ Công an", date: "2026-09-08"}
+  verified_at: 2026-10-30
+
+- code: N5.4
+  group: N5
+  title: Chiếm quyền Zalo hoặc Facebook rồi nhắn người quen vay tiền
+  description: >-
+    Chỉ với một đường link lạ hoặc một cuộc gọi mạo danh, kẻ gian chiếm tài khoản Zalo rồi nhắn cho người quen để mượn tiền. Một số trường hợp dùng AI giả giọng nói.
+    Ca nhắn bằng chữ, không có video deepfake và không mạo danh tổ chức thì thuộc N5.4 theo eval/LABELING.md.
+  example_phrases: []
+  red_flags:
+    - Người quen bỗng nhắn mượn tiền gấp, nói không gọi được
+    - Tin đến từ tài khoản người quen nhưng chỉ nhắn chữ, tránh gọi điện
+  advice:
+    - Gọi lại trực tiếp cho người quen bằng số điện thoại để xác nhận trước khi chuyển tiền
+    - Không bấm link lạ, không đọc mã xác thực cho ai
+  sources:
+    - {url: "https://cafef.vn/cong-an-canh-bao-chieu-chiem-quyen-tai-khoan-zalo-ma-nguoi-dan-can-canh-giac-188260521103656632.chn", publisher: "CafeF (dẫn cảnh báo của Công an)"}
+  verified_at: 2026-10-30
+
+- code: N6
+  group: N6
+  title: “Hỗ trợ lấy lại tiền bị lừa”, đòi phí trước
+  description: >-
+    Lợi dụng tâm lý hoang mang và mong lấy lại tiền của người từng bị lừa, kẻ gian giả danh cơ quan chức năng, luật sư, chuyên gia công nghệ hoặc tổ chức hỗ trợ thu hồi tiền,
+    gây thiệt hại kép. Chúng tìm bài đăng, video cầu cứu của nạn nhân trên mạng xã hội để chủ động liên hệ, nói đã xác minh được đối tượng lừa đảo,
+    đang phong tỏa tài khoản và có thể hỗ trợ lấy lại tiền. Có trang web hoặc fanpage giả Công an (dùng logo, quốc huy, ảnh sĩ quan) hoặc “Công ty Luật Quốc tế…”,
+    cam kết “giúp thu hồi tiền bị lừa đảo”.
+  example_phrases: ["giúp thu hồi tiền bị lừa đảo"]
+  red_flags:
+    - Có người chủ động liên hệ khi mình vừa bị lừa, hứa lấy lại tiền
+    - Đòi chuyển phí trước để “xử lý hồ sơ”
+    - Trang web hoặc fanpage giả Công an, luật sư
+  advice:
+    - Không trả phí trước cho bất kỳ ai hứa lấy lại tiền
+    - Chỉ trình báo trực tiếp với cơ quan công an
+  sources:
+    - {url: "https://congan.hungyen.gov.vn/canh-bao-thu-doan-lua-dao-ho-tro-lay-lai-tien-bi-lua-dao-tren-khong-gian-mang-c235424.html", publisher: "Công an tỉnh Hưng Yên"}
+    - {url: "https://congan.khanhhoa.gov.vn/vi/thu-doan-gia-mao-trang-cong-an-luat-su-thu-hoi-tien-lua-dao-de-chiem-doat-tai-san", publisher: "Công an tỉnh Khánh Hòa", date: "2025-09-15"}
+    - {url: "https://bocongan.gov.vn/bai-viet/canh-giac-voi-thu-doan-ho-tro-lay-lai-tien-bi-lua-dao-1758700973", publisher: "Bộ Công an (Công an tỉnh Lâm Đồng)"}
+  verified_at: 2026-10-30
