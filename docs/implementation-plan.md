@@ -879,7 +879,7 @@ Chỉ viết khi quyết định làm Mini App. Đủ các endpoint ở ARCH §1
 |---|---|---|---|
 | **G0: Contracts** | W1 (23/10) | `ai/src/askfirst/domain/models.py` + `export.py` (§3.3), `contracts/schema/*.json` đã sinh, `ai/tests/contract/test_models.py` (§3.9), `StubPipeline` + fixtures trong `contracts/fixtures/` (§3.5), `ai/config/models.yaml` và `ai/config/artifacts.yaml` khung (§3.5) đã merge vào `main` | Job `contract` trong CI xanh: `uv run pytest tests/contract` (Python) **và** `./mvnw test -Dtest='**/contract/*'` (Java đọc fixtures, validate schema); 1 BE + 1 AI đã duyệt; AI chạy được `build_pipeline("stub", …)` từ máy dev. Codegen Java (jsonschema2pojo) có thể xong muộn hơn ở BE-05b, không chặn G0 |
 | **G1: Chốt LLM** | W2 (30/10) | Xác nhận Qwen3 32B (ARCH §6.9) | Trên 100 mẫu với prompt v0: JSON hợp lệ ≥ 98%, p95 ≤ 5 giây, recall sơ bộ ≥ 85%, biết cách tắt thinking. Không đạt thì làm theo phương án dự phòng ở §9 |
-| **G2: Chốt OCR** | W2 (30/10) | Chọn stack OCR (ARCH §6.0, §6.3). Phần ASR ⏸ hoãn cùng AI-21 | OCR: chép đúng URL ≥ 90%, CER ≤ 5% trên 50 ảnh |
+| **G2: Chốt OCR** | W2 (30/10) | Chọn stack OCR (ARCH §6.0, §6.3). Phần ASR ⏸ hoãn cùng AI-21 | OCR: chép đúng URL ≥ 90%, CER ≤ 10% trên tập ảnh độc lập (hạ từ 5%, ADR-003) |
 | **M1: Text E2E** | W3 (06/11) | Chuyển tiếp tin "phạt nguội" có link giả → bot trả kết luận thật (luật + Qwen3) | Demo trên bot `dev`; 20 mẫu văn bản đúng ≥ 85% |
 | **M2: Ảnh + người thân** | W4 (13/11) | Ảnh chụp màn hình → OCR local → kết luận; điện thoại của "con" nhận cảnh báo | p95 ảnh ≤ 15 giây (warm); luồng double opt-in chạy đủ |
 | **M3: RAG** | W5 (20/11) | RAG: kết luận kèm trích nguồn cảnh báo (voice ⏸ hoãn) | Recall@4 scenario card ≥ 90% trên `real_scam`; truy vấn < 100 ms |

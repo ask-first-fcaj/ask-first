@@ -73,6 +73,11 @@ jobs:
           uv sync
           uv run ruff check .
           uv run pytest
+      - name: Test eval/ (validator, chấm OCR)
+        if: steps.has.outputs.found == 'true'
+        working-directory: ai
+        shell: bash
+        run: uv run --with numpy pytest ../eval
 
   contract:
     name: contract

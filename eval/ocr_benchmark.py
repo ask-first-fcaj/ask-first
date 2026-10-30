@@ -5,8 +5,11 @@ là hỏng), độ trễ CPU. Chạy:
 
     .venv/Scripts/python.exe eval/ocr_benchmark.py            # chạy OCR rồi chấm
     .venv/Scripts/python.exe eval/ocr_benchmark.py --rescore  # chỉ chấm lại từ kết quả đã lưu
+    python eval/ocr_benchmark.py --engines rapidocr rapidocr_cols --dataset eval/testocr/test_images.jsonl
 
-Kết quả thô của từng engine lưu ở --raw-dir (mặc định thư mục tạm, KHÔNG vào repo).
+Kết quả thô của từng engine lưu ở --raw-dir, báo cáo sinh ra ở --out (cả hai mặc định thư mục tạm,
+KHÔNG vào repo). Trên Linux/macOS thay `.venv/Scripts/python.exe` bằng `.venv/bin/python`.
+Workflow `.github/workflows/ocr-bench.yml` chạy lại hai cấu hình RapidOCR trên cả hai bộ và lưu kết quả thô.
 """
 
 from __future__ import annotations
@@ -71,7 +74,10 @@ class RapidOCREngine:
     def load(self):
         from rapidocr import RapidOCR
 
-        self.eng = RapidOCR(params=self._params())
+        params = self._params()
+        if os.environ.get("OCR_THREADS"):  # giả lập Lambda ít lõi: để onnxruntime tự chọn luồng thì chậm hơn nhiều
+            params["EngineConfig.onnxruntime.intra_op_num_threads"] = int(os.environ["OCR_THREADS"])
+        self.eng = RapidOCR(params=params)
 
     def read(self, path: str) -> str:
         res = self.eng(upscale_if_small(path) if self.upscale else path)
@@ -299,16 +305,31 @@ def phone_ok(phone: str, hyp: str) -> bool:
     return phone in digits or (phone.startswith("84") and "0" + phone[2:] in digits)
 
 
+_URL_CHARS = r"A-Za-z0-9\-_~%/?#=&+@"
+
+
+def _url_found(target: str, hyp: str) -> bool:
+    """`target` xuất hiện trong `hyp` như một URL trọn vẹn: cho phép khoảng trắng/xuống dòng chen giữa (OCR ngắt dòng),
+    nhưng hai đầu phải là ranh giới URL. Vì vậy `a.vn` KHÔNG khớp `a.vn.evil.com`, `xa.vn`, `a.vnx` hay `a.vn:8080`;
+    dấu câu cuối câu (`a.vn.`) và dấu `/` cuối vẫn được chấp nhận."""
+    target = re.sub(r"\s+", "", target).rstrip("/")
+    if not target:
+        return False
+    body = r"\s*".join(re.escape(c) for c in target)
+    # Có `http(s)://` thì scheme đã là mốc: OCR dính chữ trước (`vaohttps://…`) không làm hỏng URL, bộ tách URL vẫn bắt được.
+    # Không có scheme thì cần ranh giới trái; `://.` là lỗi OCR hay gặp ở đầu URL, vẫn tính là ranh giới.
+    left = "" if re.match(r"https?://", target) else rf"(?:(?<=://)|(?<=://\.)|(?<![{_URL_CHARS}.:]))"
+    right = rf"/?(?![{_URL_CHARS}])(?!\.[{_URL_CHARS}])(?!:\d)"
+    return re.search(left + body + right, hyp) is not None
+
+
 def url_ok(url: str, hyp: str) -> bool:
-    flat = re.sub(r"\s+", "", hyp)
-    return re.sub(r"\s+", "", url).rstrip("/") in flat
+    return _url_found(url, hyp)
 
 
 def url_host_ok(url: str, hyp: str) -> bool:
     """Phụ: chỉ xét tên miền + đường dẫn, bỏ `http(s)://` (không thay ngưỡng chính)."""
-    flat = re.sub(r"\s+", "", hyp)
-    core = re.sub(r"^https?://", "", re.sub(r"\s+", "", url)).rstrip("/")
-    return core in flat
+    return _url_found(re.sub(r"^https?://", "", re.sub(r"\s+", "", url)), hyp)
 
 
 def repair_urls(text: str) -> str:
@@ -391,8 +412,8 @@ def score(rows: list[dict], raw: dict[str, dict]) -> dict:
 
 
 # ----------------------------------------------------------------------------- run
-def load_rows() -> list[dict]:
-    return [json.loads(l) for l in DATASET.read_text(encoding="utf-8").splitlines() if l.strip()]
+def load_rows(dataset: Path = DATASET) -> list[dict]:
+    return [json.loads(l) for l in dataset.read_text(encoding="utf-8").splitlines() if l.strip()]
 
 
 def run_engine(name: str, rows: list[dict], raw_dir: Path) -> dict:
@@ -502,6 +523,9 @@ def write_report(path: Path, S: dict[str, dict], meta: dict, rows: list[dict], r
     L: list[str] = []
     L += ["# Kết quả Spike OCR (AI-20, Gate G2)", "",
           f"> Sinh tự động bởi `eval/ocr_benchmark.py`. Ngày chạy: {meta['date']}. Người chạy: AI2. **Bản nháp, AI1 chưa duyệt.**", "",
+          *([(f"> **Bộ dữ liệu `{meta['dataset']}`, không phải bộ 50 ảnh phát triển:** chỉ đọc bảng số đo (mục 3–5) và bảng từng ảnh; "
+              "các câu viết sẵn về \"50 ảnh\" ở phần kết luận, đề xuất và hạn chế là của bộ phát triển."), ""]
+            if meta["dataset"] != DATASET.relative_to(ROOT).as_posix() else []),
           "## 1. Kết luận và đề xuất", "", concl, "", advice, "",
           "Việc chờ quyết định: AI1 cùng AI2 chốt ADR-003. Đọc kỹ mục 6 trước khi tin số liệu.", "",
           *adr_candidate(S),
@@ -511,7 +535,7 @@ def write_report(path: Path, S: dict[str, dict], meta: dict, rows: list[dict], r
           ".venv/Scripts/python.exe eval/ocr_benchmark.py", "```", "",
           "| Mục | Giá trị |", "|---|---|",
           f"| Commit code | `{meta['commit']}` {meta['dirty']} |",
-          f"| Bộ dữ liệu | `eval/datasets/ocr_images.jsonl`, {len(rows)} dòng, sha256 `{meta['sha']}` |",
+          f"| Bộ dữ liệu | `{meta['dataset']}`, {len(rows)} dòng, sha256 `{meta['sha']}` |",
           f"| Python | {meta['py']} |", f"| Hệ điều hành | {meta['os']} |", f"| CPU | {meta['cpu']} |",
           f"| Phiên bản | {meta['libs']} |", "",
           "## 3. Bảng số đo", "",
@@ -583,8 +607,11 @@ def lib_versions() -> str:
             out.append(f"{p} {version(p)}")
         except PackageNotFoundError:
             pass
-    tv = subprocess.run([TESSERACT_EXE, "--version"], capture_output=True, text=True).stdout.splitlines()
-    out.append(tv[0] if tv else "tesseract ?")
+    try:  # chỉ máy có cài tesseract mới đọc được phiên bản; thiếu thì bỏ qua, không làm hỏng báo cáo
+        tv = subprocess.run([TESSERACT_EXE, "--version"], capture_output=True, text=True, check=False).stdout.splitlines()
+        out.append(tv[0] if tv else "tesseract ?")
+    except OSError:
+        pass
     return ", ".join(out)
 
 
@@ -594,16 +621,22 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=0, help="chỉ chạy N ảnh đầu (thử nhanh)")
     ap.add_argument("--rescore", action="store_true", help="không chạy OCR, chấm lại từ --raw-dir")
     ap.add_argument("--raw-dir", type=Path, default=None, help="nơi lưu kết quả thô (mặc định: thư mục tạm)")
-    ap.add_argument("--out", type=Path, default=None, help="file báo cáo (mặc định: docs/results/ocr-spike.md)")
+    ap.add_argument("--dataset", type=Path, default=DATASET,
+                    help="file JSONL, đường dẫn ảnh tính từ eval/ (mặc định: eval/datasets/ocr_images.jsonl; "
+                         "tập độc lập: eval/testocr/test_images.jsonl)")
+    ap.add_argument("--out", type=Path, default=None,
+                    help="file báo cáo sinh ra (mặc định: thư mục tạm; KHÔNG ghi đè docs/results/ocr-spike.md "
+                         "vì file đó có phần viết tay)")
     a = ap.parse_args()
-    full_raw = Path(tempfile.gettempdir()) / "ask_first_ocr_raw"
+    a.dataset = a.dataset.resolve()
+    full_raw = Path(tempfile.gettempdir()) / f"ask_first_ocr_raw_{a.dataset.stem}"
     if a.limit:  # chạy thử một phần: mặc định KHÔNG ghi đè kết quả đầy đủ hay báo cáo chính
-        a.raw_dir = a.raw_dir or full_raw.with_name("ask_first_ocr_raw_limit")
-        a.out = a.out or full_raw.with_name("ocr_limit_test.md")
+        a.raw_dir = a.raw_dir or full_raw.with_name(full_raw.name + "_limit")
+        a.out = a.out or full_raw.with_name(f"ocr_limit_{a.dataset.stem}.md")
     a.raw_dir = (a.raw_dir or full_raw).resolve()  # tuyệt đối trước khi đổi thư mục làm việc
-    a.out = (a.out or ROOT / "docs" / "results" / "ocr-spike.md").resolve()
+    a.out = (a.out or full_raw.with_name(f"ocr_report_{a.dataset.stem}.md")).resolve()
     os.chdir(ROOT)  # các engine nhận đường dẫn ảnh tương đối từ gốc repo; chạy ở đâu cũng phải đúng
-    rows = load_rows()
+    rows = load_rows(a.dataset)
     if a.limit:
         rows = rows[: a.limit]
     a.raw_dir.mkdir(parents=True, exist_ok=True)
@@ -626,7 +659,8 @@ def main() -> int:
     meta = {
         "date": date.today().isoformat(), "commit": git("rev-parse", "--short", "HEAD"),
         "dirty": "(+ thay đổi chưa commit)" if git("status", "--porcelain") else "",
-        "sha": hashlib.sha256(DATASET.read_bytes()).hexdigest()[:16], "py": sys.version.split()[0],
+        "dataset": a.dataset.relative_to(ROOT).as_posix() if a.dataset.is_relative_to(ROOT) else str(a.dataset),
+        "sha": hashlib.sha256(a.dataset.read_bytes()).hexdigest()[:16], "py": sys.version.split()[0],
         "os": platform.platform(), "cpu": f"{platform.processor()} ({os.cpu_count()} luồng)",
         "libs": lib_versions(), "load": load,
     }
