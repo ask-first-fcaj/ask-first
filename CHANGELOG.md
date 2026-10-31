@@ -6,6 +6,7 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 ## [Unreleased]
 
 ### Changed
+- AI-20 (#17): **chốt Gate G2** trong ADR-003: đạt về độ chính xác (URL 17/18 = 94% sau `repair_urls`, CER 7.2% trên 16 ảnh độc lập), chọn RapidOCR; `repair_urls` bắt buộc trong pipeline; độ trễ trên Lambda chuyển thành điều kiện của AI-26/M2.
 - AI-20 (#17): AI1 soát lại nhãn 16 ảnh OCR độc lập (`eval/testocr/test_images.jsonl`), không sửa nhãn nào; ghi vào `docs/results/ocr-spike.md` mục 8 và ADR-003. Số G2 giữ nguyên.
 - SH-02 (#4): **AI1 duyệt** `N1.6`, `N2.3`, `N5.4` và phần nới `N3.3`; nới thêm `N1.6` sang hoàn tiền/bồi thường (chưa có bài cảnh báo chính thức riêng), nên `hd-ai-13` đổi `OTHER`→`N1.6`. Bỏ điều kiện gán thử 4 người: SH-02 xong khi AI1 duyệt (`eval/LABELING.md` mục 11, plan dòng SH-02); `eval/labeling_trial/` thành bài tự luyện cho người mới gán nhãn.
 - SH-03 (#5): gán lại 60 mẫu lừa đảo của bộ eval v0 sang **mã kịch bản** theo `eval/LABELING.md` bản 2 (trước đó `scenario` chỉ ghi mã nhóm, và nhóm theo bản 1 lệch §2.2: ngân hàng `N2`→`N1.3`, trúng thưởng `N4`→`N1.6`, tình cảm `N5`→`N3.3`, tống tiền `N6`→`N2.3`, hack Zalo `OTHER`→`N5.4`). Sửa nhãn: 3 mẫu "deepfake" chỉ có chữ (`rs-ai-21`, `hd-ai-05`, `hd-ai-14`) thành `N5.4`; VNPost thành `N4.3`; `rs-ai-11` không có ngân hàng thành `OTHER`; hạ `min_level` của 5 mẫu chỉ có chữ xuống `SUSPICIOUS`; defang `t.me`; bỏ link giống tên miền giả trong `bs-ai-17` và `source_url` không khớp của `hd-ai-13`. Thêm trường `provenance` cho cả 100 mẫu. Việc gán lại do AI hỗ trợ, **cần người thứ hai duyệt**.

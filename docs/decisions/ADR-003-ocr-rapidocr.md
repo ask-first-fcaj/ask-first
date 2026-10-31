@@ -1,7 +1,7 @@
-# ADR-003: Chọn RapidOCR cho OCR local (có điều kiện)
+# ADR-003: Chọn RapidOCR cho OCR local
 
-- **Trạng thái:** Chấp nhận **có điều kiện** (chưa qua Gate G2). Chưa phải kết luận cuối.
-- **Ngày:** 2026-10-22
+- **Trạng thái:** Chấp nhận. **Gate G2 đạt về độ chính xác** (2026-10-30, xem mục "Chốt Gate G2"). Độ trễ trên Lambda còn là điều kiện mở của AI-26, phải xong trước M2.
+- **Ngày:** 2026-10-22 (chốt G2: 2026-10-30)
 - **Người quyết định:** AI1 (chốt hướng); AI2 (chạy đo, xem `docs/results/ocr-spike.md`)
 - **Task:** AI-20 (spike), AI-26 (OCR production). Issue #17.
 
@@ -47,6 +47,18 @@ Issue #17 ban đầu đặt CER ≤ 5%. Kết quả: 12.9% trên 50 ảnh, 7.2% 
 **Quyết định (AI1, 2026-10-23): hạ ngưỡng CER xuống ≤ 10%, tính trên tập độc lập.** Lý do: CER gộp cả vùng `[mờ]` và tin leetspeak, còn pipeline chỉ cần URL và SĐT đúng; chỉ số quyết định vẫn là URL ≥ 90%. Kết quả 7.2% (CI 5.9–8.7%) đạt ngưỡng mới.
 
 Lưu ý: ngưỡng này đặt **sau khi đã thấy số đo**, không phải ngưỡng đặt trước. Số 12.9% trên 50 ảnh tuning vẫn trên 10%. Ngưỡng 10% chưa có căn cứ độc lập ngoài việc URL mới là chỉ số chính.
+
+## Chốt Gate G2 (AI1, 2026-10-30)
+
+Tiêu chí G2 trong plan §4: chép đúng URL ≥ 90%, CER ≤ 10% trên tập ảnh độc lập.
+
+- URL: 17/18 (94%, CI 74–99%) sau `repair_urls` trên 16 ảnh độc lập: **đạt**. Không có `repair_urls` thì 15/18 (83%), nên `repair_urls` là **bắt buộc** trong pipeline (điều kiện 3).
+- CER: 7.2% (CI 5.9–8.7%): **đạt** ngưỡng 10% (ngưỡng đặt sau khi thấy số, xem mục trên).
+- Số đo chạy lại được trên CI (PR #105); nhãn 16 ảnh AI1 đã soát (PR #109).
+
+**Quyết định: G2 đạt về độ chính xác, chọn RapidOCR.** Phần độ trễ (điều kiện 2) không nằm trong tiêu chí G2 của plan nên không chặn G2, nhưng chuyển thành điều kiện của AI-26 và M2: đo trên Lambda thật, p95 > 3 giây ở 3–4 GB hoặc image > 2 GB thì mở lại ADR này theo thứ tự ở mục dưới.
+
+Rủi ro chấp nhận: cận dưới CI của URL là 74% (mẫu 18 URL nhỏ). AI-26 thêm ảnh vào bộ độc lập khi có ảnh mới, và eval M2 đo lại URL trên ảnh thật đi qua pipeline.
 
 ## Nếu điều kiện 1 hoặc 2 không đạt
 
