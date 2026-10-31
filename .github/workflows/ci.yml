@@ -78,6 +78,13 @@ jobs:
         working-directory: ai
         shell: bash
         run: uv run --with numpy pytest ../eval
+      - name: Kiểm kb/ (test validator và validate dữ liệu)
+        if: steps.has.outputs.found == 'true'
+        working-directory: ai
+        shell: bash
+        run: |
+          uv run pytest ../scripts
+          uv run python ../scripts/validate_kb.py --skip-age
 
   contract:
     name: contract

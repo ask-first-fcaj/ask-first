@@ -1,0 +1,51 @@
+# kb/brands.yaml (AI-25): thương hiệu hay bị mạo danh, dùng cho typosquat và U_TEXT_LINK_MISMATCH. Schema: docs/implementation-plan.md §3.10.
+#
+# Quy ước:
+#  - `tokens`: chữ thường, KHÔNG dấu, không khoảng trắng.
+#  - `official_domains`: mỗi tên miền phải nằm trong kb/allowlist.yaml (scripts/validate_kb.py kiểm tra chéo).
+#  - Token rất ngắn hoặc là từ thông dụng (mb, vib, acb, ocb, msb, tcb, vcb, dvc, thue) dễ khớp nhầm khi so Levenshtein: AI-24a nên bắt buộc khớp nguyên token hoặc đặt độ dài tối thiểu.
+#  - Viettel Post: SMS thật dùng domain vtp.vn nhưng máy kiểm chưa mở được (HTTP 503) nên chưa vào allowlist; vì vậy chưa đặt token `vtp`, tránh báo nhầm SMS thật là typosquat. Thêm lại cả hai khi đã xác minh vtp.vn.
+#  - Danh sách là điểm khởi đầu từ các thương hiệu xuất hiện trong bài cảnh báo (Cổng dịch vụ công, VNeID, CSGT, Techcombank, Vietcombank, Viettel Post...)
+#    và nhóm cơ quan/ngân hàng/ví/sàn lớn. Chưa phủ hết.
+
+# Cơ quan nhà nước
+- {name: "Cổng Dịch vụ công quốc gia", tokens: [dichvucong, dvc], official_domains: [dichvucong.gov.vn]}
+- {name: "VNeID", tokens: [vneid], official_domains: [vneid.gov.vn]}
+- {name: "Bộ Công an", tokens: [bocongan], official_domains: [bocongan.gov.vn]}
+- {name: "Cảnh sát giao thông", tokens: [csgt, canhsatgiaothong], official_domains: [csgt.bocongan.gov.vn, csgt.vn]}
+- {name: "Cục Cảnh sát QLHC về TTXH", tokens: [canhsatquanlyhanhchinh], official_domains: [canhsatquanlyhanhchinh.gov.vn]}
+- {name: "Bảo hiểm xã hội", tokens: [baohiemxahoi, bhxh], official_domains: [baohiemxahoi.gov.vn]}
+- {name: "Thuế", tokens: [thue, thuedientu, gdt], official_domains: [gdt.gov.vn, thuedientu.gdt.gov.vn]}
+# Ngân hàng
+- {name: "Vietcombank", tokens: [vietcombank, vcb], official_domains: [vietcombank.com.vn]}
+- {name: "BIDV", tokens: [bidv], official_domains: [bidv.com.vn]}
+- {name: "Agribank", tokens: [agribank], official_domains: [agribank.com.vn]}
+- {name: "VietinBank", tokens: [vietinbank], official_domains: [vietinbank.vn]}
+- {name: "Techcombank", tokens: [techcombank, tcb], official_domains: [techcombank.com]}
+- {name: "MB", tokens: [mbbank, mb], official_domains: [mbbank.com.vn]}
+- {name: "VPBank", tokens: [vpbank], official_domains: [vpbank.com.vn]}
+- {name: "ACB", tokens: [acb], official_domains: [acb.com.vn]}
+- {name: "Sacombank", tokens: [sacombank], official_domains: [sacombank.com.vn]}
+- {name: "TPBank", tokens: [tpbank, tpb], official_domains: [tpb.vn]}
+- {name: "VIB", tokens: [vib], official_domains: [vib.com.vn]}
+- {name: "HDBank", tokens: [hdbank], official_domains: [hdbank.com.vn]}
+- {name: "OCB", tokens: [ocb], official_domains: [ocb.com.vn]}
+- {name: "MSB", tokens: [msb], official_domains: [msb.com.vn]}
+# Ví điện tử
+- {name: "MoMo", tokens: [momo], official_domains: [momo.vn]}
+- {name: "ZaloPay", tokens: [zalopay], official_domains: [zalopay.vn]}
+# Viễn thông, điện lực
+- {name: "Viettel", tokens: [viettel], official_domains: [viettel.com.vn]}
+- {name: "VNPT / VinaPhone", tokens: [vnpt, vinaphone], official_domains: [vnpt.vn, vinaphone.com.vn]}
+- {name: "MobiFone", tokens: [mobifone], official_domains: [mobifone.vn]}
+- {name: "Điện lực EVN", tokens: [evn, dienluc], official_domains: [evn.com.vn]}
+# Sàn thương mại điện tử
+- {name: "Shopee", tokens: [shopee], official_domains: [shopee.vn]}
+- {name: "Lazada", tokens: [lazada], official_domains: [lazada.vn]}
+- {name: "Tiki", tokens: [tiki], official_domains: [tiki.vn]}
+# Giao nhận, bưu chính
+- {name: "Giao Hàng Nhanh", tokens: [ghn, giaohangnhanh], official_domains: [ghn.vn]}
+- {name: "Giao Hàng Tiết Kiệm", tokens: [ghtk, giaohangtietkiem], official_domains: [ghtk.vn]}
+- {name: "Viettel Post", tokens: [viettelpost], official_domains: [viettelpost.com.vn, viettelpost.vn]}
+- {name: "Bưu điện Việt Nam", tokens: [vnpost, buudien], official_domains: [vnpost.vn]}
+- {name: "SPX Express", tokens: [spx], official_domains: [spx.vn]}
