@@ -16,7 +16,7 @@
 /contracts/                         @ask-first-fcaj/backend @ask-first-fcaj/ai
 /ai/src/askfirst/domain/            @ask-first-fcaj/backend @ask-first-fcaj/ai
 /ai/tests/contract/                 @ask-first-fcaj/backend @ask-first-fcaj/ai
-/backend/src/test/java/**/contract/ @ask-first-fcaj/backend @ask-first-fcaj/ai
+/backend/ScamProtection/**/contract/ @ask-first-fcaj/backend @ask-first-fcaj/ai
 
 # CI/CD và quy trình
 /.github/                           @ask-first-fcaj/backend @ask-first-fcaj/ai

@@ -105,6 +105,22 @@ jobs:
         if: steps.has.outputs.found == 'true'
         working-directory: ai
         run: uv run pytest tests/contract
+      # G0 (plan §4): phía Java phải có test trong package `contract` đọc contracts/fixtures/ và validate contracts/schema/.
+      # Đỏ cho tới khi backend có ít nhất một test như vậy.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Test contract phía Java
+        working-directory: backend/ScamProtection
+        shell: bash
+        run: |
+          ./mvnw -B test -Dtest='**/contract/*' -Dsurefire.failIfNoSpecifiedTests=false
+          if ! find . -path '*/surefire-reports/TEST-*.contract.*.xml' | grep -q .; then
+            echo "::error::Chưa có test contract phía Java (package *.contract.*), G0 chưa đạt"
+            exit 1
+          fi
 
   # Check bắt buộc duy nhất của branch protection: gom kết quả mọi job ở trên.
   ci-ok:
