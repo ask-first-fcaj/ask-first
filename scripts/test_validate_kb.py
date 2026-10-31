@@ -185,3 +185,11 @@ def test_checklist_steps_not_list_or_non_dict_step():
 def test_hotline_age_check_can_be_skipped_but_empty_date_still_fails():
     assert v.v_hotlines([with_(HOTLINE, verified_at=OLD)], ALLOW, None) == []
     assert has(v.v_hotlines([with_(HOTLINE, verified_at=None)], ALLOW, None), "để trống")
+
+
+def test_hotline_without_allowlist_is_error_not_skipped():
+    assert has(v.v_hotlines([HOTLINE], None), "không thuộc allowlist")
+
+
+def test_checklist_ref_with_no_known_hotlines_is_error_not_skipped():
+    assert has(v.v_checklist([CHECKLIST], set()), "không có trong hotlines.yaml")

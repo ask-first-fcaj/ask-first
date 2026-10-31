@@ -1,6 +1,6 @@
 # kb/allowlist.yaml (AI-25): tên miền chính thức, so khớp eTLD+1 hoặc hậu tố. Schema: docs/implementation-plan.md §3.10.
 #
-# Ý nghĩa của `verified_at: 2026-10-30`: ngày t gọi HTTPS tới đúng tên miền đó và nhận HTTP 200
+# Ý nghĩa của `verified_at: 2026-10-30`: ngày AI2 gọi HTTPS tới đúng tên miền đó và nhận HTTP 200
 # (hoặc redirect về cùng tổ chức), `source_url` là địa chỉ cuối cùng nhận được.
 # CHƯA làm: đối chiếu với danh sách do NHNN / Cục ATTT công bố, nên người review phải mở từng link xem trang đúng tổ chức.
 #

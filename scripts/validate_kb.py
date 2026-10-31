@@ -10,7 +10,8 @@ mục trong hotlines có verified_at cũ hơn 30 ngày hoặc để trống bị
 
 Script KIỂM: cấu trúc, mã kịch bản (lấy từ eval/validate.py), ID trùng, `official_domains` có trong allowlist,
 `kind` và `value` của hotline, host của `source_url` hotline thuộc allowlist hoặc .gov.vn, số điện thoại lọt vào
-advice/checklist, nguồn `docs/...` có tồn tại, hạn `verified_at`.
+advice/checklist, `hotline_ref` trỏ đúng, nguồn `docs/...` có tồn tại, `verified_at` có mặt và đúng định dạng.
+Hạn 30 ngày của `verified_at` hotline chỉ kiểm khi KHÔNG có cờ --skip-age (job định kỳ kb-freshness.yml chạy như vậy).
 Script KHÔNG kiểm (không gọi mạng): link còn mở được không, số hotline có đúng trên trang nguồn không,
 `example_phrases` có nằm trong nguồn không. Những việc này người xác minh làm tay và ghi `verified_at`.
 """
@@ -217,7 +218,7 @@ def v_hotlines(data, allow=None, max_age: int | None = 30):
         if url:
             if not str(url).startswith("https://"):
                 e.append(f"{lab}: source_url phải https://")
-            elif allow is not None and not host_allowed(str(url), allow):
+            elif not host_allowed(str(url), allow):
                 e.append(f"{lab}: source_url {url} không thuộc allowlist.yaml hoặc .gov.vn (chỉ lấy hotline từ trang chính thức)")
         check_verified(lab, h.get("verified_at"), e, max_age=max_age)
     return e
@@ -245,7 +246,7 @@ def v_checklist(data, hotline_ids):
                 if has_phone(str(s.get(k, ""))):
                     e.append(f"{lab}: '{k}' không được ghi số điện thoại, dùng hotline_ref")
             ref = s.get("hotline_ref")
-            if ref and ref != "bank_of_victim" and hotline_ids and ref not in hotline_ids:
+            if ref and ref != "bank_of_victim" and ref not in hotline_ids:
                 e.append(f"{lab}: hotline_ref {ref!r} không có trong hotlines.yaml")
             check_sources(lab, s.get("sources"), e)
             check_verified(lab, s.get("verified_at"), e)
@@ -274,7 +275,9 @@ def main() -> int:
     }
     failed = 0
     for n in want:
-        errs = load_err[n] or runners[n]()
+        deps = {"brands": ["allowlist"], "hotlines": ["allowlist"], "checklist": ["hotlines"]}.get(n, [])
+        dep_errs = [f"không đọc được kb/{d}.yaml nên không kiểm chéo được" for d in deps if load_err[d] or data[d] is None]
+        errs = load_err[n] or dep_errs or runners[n]()
         count = len(data[n].get("domains", [])) if isinstance(data[n], dict) else len(data[n] or [])
         print(f"[{'ĐẠT' if not errs else 'LỖI'}] kb/{n}.yaml ({count} mục)")
         for m in errs:

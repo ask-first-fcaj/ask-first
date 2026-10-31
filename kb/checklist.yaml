@@ -1,5 +1,5 @@
 # kb/checklist.yaml (AI-25): các việc cần làm ngay khi nghi bị lừa, cho lệnh /bilua ("30 phút đầu").
-# Plan §3.10 chưa quy định schema cho file này; t đặt theo cùng phong cách các file KB khác, AI1 duyệt lại khi cần.
+# Plan §3.10 chưa quy định schema cho file này; AI2 đặt theo cùng phong cách các file KB khác, AI1 duyệt lại khi cần.
 #
 # Quy ước:
 #  - KHÔNG ghi số điện thoại ở đây. Bước cần gọi thì dùng `hotline_ref`, số lấy từ kb/hotlines.yaml (chỉ mục đã xác minh).

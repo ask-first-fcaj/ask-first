@@ -11,7 +11,8 @@
 #  - `example_phrases` chỉ gồm câu trích nguyên văn từ bài nguồn. Bài không có câu trích thì để rỗng, không bù bằng câu tự nghĩ.
 #  - `advice` là khuyến cáo chung bám theo các bài nguồn (không ghi số điện thoại, số lấy từ hotlines.yaml). AI1 duyệt từng thẻ.
 #  - `date` trong sources chỉ ghi khi bài hoặc kết quả tìm kiếm hiện ngày; không thấy ngày thì bỏ.
-#  - Nguồn có `tier: media` là báo thương mại dẫn lại cảnh báo của công an, không phải cổng của cơ quan nhà nước; các nguồn còn lại là cổng của cơ quan công an.
+#  - Nguồn có `tier: media` là báo thương mại dẫn lại cảnh báo của công an, không phải cổng của cơ quan nhà nước. Các nguồn còn lại là cổng của cơ quan nhà nước
+#    (Bộ Công an, công an các tỉnh, cổng tỉnh như dienbien.gov.vn) hoặc báo của ngành công an (cadn.com.vn của Công an TP. Đà Nẵng).
 #  - CHƯA CÓ thẻ cho: N2.2 (thu mẫu giọng nói) và N5.2 (dụ chia sẻ màn hình), do chưa tìm được bài cảnh báo chính thức đúng mã đó.
 
 - code: N0
@@ -116,7 +117,7 @@
     - Dụ nhìn vào điện thoại hoặc đọc mã OTP
   advice:
     - Không bấm link trong tin nhắn, không làm theo yêu cầu qua điện thoại của người tự xưng cán bộ
-    - Công an không thông báo vi phạm giao thông qua tin nhắn hay điện thoại
+    - Công an không yêu cầu nộp phạt hay đưa tài khoản, mật khẩu, mã OTP qua đường link trong tin nhắn
     - Muốn tra cứu vi phạm thì vào csgt.vn hoặc ứng dụng VNeTraffic; cần cập nhật thông tin thì ra trực tiếp Công an xã hoặc phường
     - Chỉ tải VNeID từ CH Play hoặc App Store, ứng dụng có nhãn Chính phủ
     - Nếu lỡ cài hoặc bấm link, liên hệ ngân hàng khóa tài khoản và tắt nguồn điện thoại
