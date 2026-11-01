@@ -117,7 +117,13 @@ Sau khi hoàn tất, SAM sẽ in ra các giá trị **Outputs** (bao gồm `Webh
 
 ## 4. Kiểm Tra Nghiệm Thu ("Xong Khi")
 
-Chạy các lệnh sau để xác nhận 100% tài nguyên đã hoạt động đúng:
+> [!TIP]
+> **Script kiểm tra tự động 1 lệnh:**
+> Repo đã chuẩn bị sẵn 2 script kiểm tra toàn diện 5 tiêu chí nghiệm thu bên dưới:
+> - **Trên Windows (PowerShell):** `.\infra\verify-dev.ps1`
+> - **Trên Linux / macOS (Bash):** `./infra/verify-dev.sh`
+
+Chạy các lệnh thủ công hoặc script tự động để xác nhận 100% tài nguyên đã hoạt động đúng:
 
 ### 1. Kiểm tra Function URL của Webhook (HTTP 200)
 
@@ -251,3 +257,26 @@ Xác nhận `y` khi SAM hỏi xác nhận xoá stack và S3 bucket.
 
 > [!NOTE]
 > Luôn theo dõi cảnh báo **AWS Budgets** (ngưỡng 10$, 25$, 50$) đã thiết lập ở task BE-01 để đảm bảo tài khoản dev luôn nằm trong hạn mức an toàn.
+
+---
+
+## 8. Rủi Ro Cần Lưu Ý & Ghi Chú Kỹ Thuật (Risk Notes)
+
+### 1. Chi phí AWS & Ngưỡng AWS Budgets (BE-01):
+- Giữ chi phí môi trường `dev` nghiêm ngặt trong ngưỡng AWS Budgets (10 USD cảnh báo sớm, 25 USD cảnh báo vừa, 50 USD ngưỡng khẩn cấp) đã thiết lập ở task BE-01.
+- Không bật NAT Gateway hay VPC cho Lambda webhook ở giai đoạn dev để tránh chi phí cố định ~32 USD/tháng (Quy tắc thiết kế mạng & chi phí D1).
+- Luôn dọn dẹp (xoá) tài nguyên thử nghiệm hoặc chạy `sam delete` khi kết thúc đợt test kéo dài.
+
+### 2. IAM Permissions & Vướng mắc phân quyền lần đầu deploy:
+Trong lần triển khai đầu tiên, người dùng IAM hoặc Role deploy thường bị từ chối quyền (`AccessDenied`) tại các khâu CloudFormation tạo IAM Role hoặc gắn Policy. Để deploy thành công, IAM Principal cần có các nhóm quyền tối thiểu sau:
+- **CloudFormation:** `cloudformation:*` trên stack `askfirst-dev`.
+- **Lambda:** `lambda:CreateFunction`, `lambda:DeleteFunction`, `lambda:UpdateFunction*`, `lambda:AddPermission`, `lambda:CreateFunctionUrlConfig`, `lambda:GetFunctionUrlConfig`.
+- **IAM:** `iam:CreateRole`, `iam:DeleteRole`, `iam:GetRole`, `iam:AttachRolePolicy`, `iam:DetachRolePolicy`, `iam:PutRolePolicy`, `iam:DeleteRolePolicy`, `iam:PassRole` (PassRole vào role thực thi của Lambda `WebhookFunctionRole`).
+- **DynamoDB:** `dynamodb:CreateTable`, `dynamodb:DeleteTable`, `dynamodb:DescribeTable`, `dynamodb:UpdateTimeTimeToLive`, `dynamodb:UpdateContinuousBackups`.
+- **SQS:** `sqs:CreateQueue`, `sqs:DeleteQueue`, `sqs:GetQueueAttributes`, `sqs:SetQueueAttributes`.
+- **S3:** `s3:CreateBucket`, `s3:DeleteBucket`, `s3:PutBucketPublicAccessBlock`, `s3:PutEncryptionConfiguration`, `s3:PutLifecycleConfiguration`, `s3:PutObject`, `s3:DeleteObject`.
+- **SSM:** `ssm:PutParameter`, `ssm:DeleteParameter`, `ssm:GetParameter*`.
+
+### 3. Trạng thái kiểm nghiệm SnapStart (Java 21):
+- `not verified: hành vi SAM + Java 21 SnapStart trên cả 3 OS dev (Windows, macOS, Linux)`
+  - *Giải thích:* Theo implementation plan, SnapStart cho Java 21 trên Lambda (Singapore `ap-southeast-1`) được lên kế hoạch đo lường và khảo sát chuyên sâu tại spike **BE-14** (W1) và hoàn thiện đường ống tại **BE-07** (W2–W3). Bản hello-world Webhook hiện tại tập trung thông suốt luồng build/deploy/Function URL công khai không bật SnapStart để giữ độ đơn giản tối đa và đảm bảo tương thích đa hệ điều hành dev.
