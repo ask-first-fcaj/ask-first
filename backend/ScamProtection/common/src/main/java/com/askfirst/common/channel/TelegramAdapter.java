@@ -3,6 +3,7 @@ package com.askfirst.common.channel;
 import com.askfirst.common.channel.model.EntityRef;
 import com.askfirst.common.channel.model.InboundMessage;
 import com.askfirst.common.channel.model.MediaRef;
+import com.askfirst.common.channel.model.TelegramCallbackQuery;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.time.Instant;
@@ -24,7 +25,7 @@ public class TelegramAdapter {
     /**
      * Parses a Telegram update JSON.
      * Returns Optional.empty() if the update is not a user message (e.g., bot
-     * sender, callback query, unsupported media).
+     * sender, unsupported media, or empty).
      */
     public Optional<InboundMessage> parseUpdate(JsonNode update) {
         if (update == null || !update.has("message")) {
@@ -59,15 +60,13 @@ public class TelegramAdapter {
             text = rawText.length() > MAX_TEXT_LENGTH ? rawText.substring(0, MAX_TEXT_LENGTH) : rawText;
         }
 
-        // 2. Identify kind and media reference (Java NEVER downloads media bytes: plan
-        // §3.6)
+        // 2. Identify kind and media reference (Java NEVER downloads media bytes: plan §3.6)
         String kind = "text";
         MediaRef media = null;
 
         if (msg.has("photo") && msg.path("photo").isArray() && !msg.path("photo").isEmpty()) {
             kind = "photo";
-            // In Telegram, photo array contains multiple sizes; pick the largest one (plan
-            // §3.6)
+            // In Telegram, photo array contains multiple sizes; pick the largest one (plan §3.6)
             JsonNode largestPhoto = null;
             for (JsonNode p : msg.path("photo")) {
                 if (largestPhoto == null || p.path("file_size").asLong(0) >= largestPhoto.path("file_size").asLong(0)) {
@@ -131,8 +130,7 @@ public class TelegramAdapter {
             }
         }
 
-        // 4. Forward origin: support Telegram Bot API 7.0+ forward_origin or legacy
-        // forward fields
+        // 4. Forward origin: support Telegram Bot API 7.0+ forward_origin or legacy forward fields
         String forwardOrigin = null;
         if (msg.has("forward_origin") && msg.path("forward_origin").isObject()) {
             forwardOrigin = msg.path("forward_origin").path("type").asText(null);
@@ -159,5 +157,40 @@ public class TelegramAdapter {
                 forwardOrigin,
                 mediaGroupId,
                 receivedAt));
+    }
+
+    /**
+     * Parses an inline keyboard button callback query (Fast Path).
+     */
+    public Optional<TelegramCallbackQuery> parseCallbackQuery(JsonNode update) {
+        if (update == null || !update.has("callback_query")) {
+            return Optional.empty();
+        }
+        JsonNode cb = update.path("callback_query");
+        String updateId = update.path("update_id").asText("");
+        String queryId = cb.path("id").asText("");
+        String fromId = cb.path("from").path("id").asText("");
+        String chatId = cb.path("message").path("chat").path("id").asText("");
+        String messageId = cb.path("message").path("message_id").asText("");
+        String data = cb.path("data").asText("");
+
+        if (queryId.isBlank() || chatId.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(new TelegramCallbackQuery(
+                updateId,
+                queryId,
+                "tg:" + fromId,
+                chatId,
+                messageId,
+                data
+        ));
+    }
+
+    /**
+     * Helper to check if an inbound message is a bot command (e.g., /start, /huongdan).
+     */
+    public static boolean isCommand(InboundMessage message) {
+        return message != null && message.text() != null && message.text().startsWith("/");
     }
 }

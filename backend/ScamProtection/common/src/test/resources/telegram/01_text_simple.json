@@ -1,0 +1,11 @@
+{
+  "update_id": 10001,
+  "message": {
+    "message_id": 101,
+    "from": { "id": 111111, "is_bot": false, "first_name": "Nguyen", "last_name": "An" },
+    "chat": { "id": 222222, "type": "private" },
+    "date": 1729000000,
+    "text": "Chào bạn, cho mình hỏi số tài khoản này có an toàn không?"
+  }
+}
+

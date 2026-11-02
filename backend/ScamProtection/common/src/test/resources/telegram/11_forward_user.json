@@ -1,0 +1,20 @@
+{
+  "update_id": 10011,
+  "message": {
+    "message_id": 111,
+    "from": { "id": 111111, "is_bot": false, "first_name": "Nguyen" },
+    "chat": { "id": 222222, "type": "private" },
+    "date": 1729000000,
+    "text": "Alo bác chuyển cho cháu 5 triệu vào tài khoản này nhé",
+    "forward_origin": {
+      "type": "user",
+      "date": 1728995000,
+      "sender_user": {
+        "id": 333333,
+        "is_bot": false,
+        "first_name": "Người Gửi Giả Mạo"
+      }
+    }
+  }
+}
+

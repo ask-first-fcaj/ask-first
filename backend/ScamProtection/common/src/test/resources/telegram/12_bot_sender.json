@@ -1,0 +1,11 @@
+{
+  "update_id": 10012,
+  "message": {
+    "message_id": 112,
+    "from": { "id": 444444, "is_bot": true, "first_name": "SpamBot" },
+    "chat": { "id": 222222, "type": "private" },
+    "date": 1729000000,
+    "text": "Tin nhắn tự động từ tài khoản bot"
+  }
+}
+
