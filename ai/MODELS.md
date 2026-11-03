@@ -37,8 +37,8 @@ cần quyền AWS, **chưa làm**.
 ### int8
 
 Plan ghi ONNX int8. `fetch_ocr_models.py --int8` lượng tử hoá động (`quantize_dynamic`, trọng số `QUInt8`) để workflow
-`OCR bench` so với fp32 trên cùng ảnh. Production dùng fp32 cho tới khi bản int8 giữ được mức chép đúng URL; kết quả đo ở
-`docs/results/ocr-spike.md` mục 10.
+`OCR bench` so với fp32 trên cùng ảnh. Kết quả (2026-11-03, `docs/results/ocr-spike.md` mục 10): int8 chép đúng URL
+15/32 và 9/18, so với 31/32 và 17/18 của fp32, và còn chậm hơn. **Production dùng fp32** (ADR-003); `--int8` giữ lại chỉ để đo.
 
 ## `embedder`, `kb_index`
 
