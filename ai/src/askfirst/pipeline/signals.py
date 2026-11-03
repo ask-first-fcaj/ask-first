@@ -18,12 +18,15 @@ from askfirst.pipeline.normalize import fold
 
 MAX_EVIDENCE = 120
 NEG_WINDOW = 60
-# Từ phủ định đứng trước động từ trong cùng câu, cách tối đa 6 từ: "không bao giờ yêu cầu quý khách cung cấp mã OTP".
-# Không tính câu trấn an hay doạ ("không sao đâu, cứ đọc mã", "đừng lo", "nếu không đọc mã thì…", "không phải xếp
-# hàng", "cảm ơn"), và không tính khi giữa phủ định và động từ có lời bảo làm ("không hợp lệ, vui lòng đọc mã").
+# Phủ định chỉ tính khi đứng SÁT động từ của đoạn khớp: "tuyệt đối không cung cấp mã OTP", "không bao giờ yêu cầu
+# quý khách cung cấp mã OTP", "không đọc mã OTP cho nhân viên". Giữa phủ định và đoạn khớp chỉ được có trạng từ
+# (bao giờ, được, nên…), một lời yêu cầu kèm ≤ 3 từ đối tượng, và động từ cho/đọc mã. Câu trấn an hay doạ có chữ
+# "không" ở xa ("Không ai biết đâu, đọc mã OTP đi", "nếu không đọc mã thì…") vì thế không tính là phủ định.
 NEGATION = re.compile(
-    r"(?<!neu )\b(?:khong(?! (?:sao|can lo|phai|lo|van de))|dung(?! (?:lo|ngai|so|hoang))|nghiem cam|cam(?! on))"
-    r"(?: (?!vui\b|hay\b|xin\b|de\b|thi\b|nhung\b)[^ .]+){0,6} $")
+    r"(?<!neu )\b(?:khong|dung|nghiem cam|cam)"
+    r"(?: (?:bao gio|duoc|nen|can|he|tung|the|tu y|hoan toan)){0,2}"
+    r"(?: (?:yeu cau|de nghi|doi hoi|nho|bat)(?: [^ .]+){0,3})?"
+    r"(?: (?:cung cap|chia se|tiet lo|doc|doc lai|gui|dua|bao|nhan tin|soan|chup|nhap)(?: (?:ma|lai|giup))?)? $")
 _KEYS = {"code", "weight", "hard", "patterns", "requires", "unless", "negatable", "url", "unless_codes"}
 _URL_MODES = {None, "required", "forbidden", "hard"}
 

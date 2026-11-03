@@ -76,7 +76,9 @@ rules:
     weight: 35
     hard: false
     patterns:
-      - '\b(?:khong|dung|cam|tuyet doi khong|khong duoc)(?: duoc)? (?:noi|ke|tiet lo|trao doi|bao|thong bao|cho biet|lam lo|tiet lo)(?: (?!ma\b|otp\b|mat\b|pin\b|\[otp)[^ .]+){0,4} (?:voi |cho )?(?:ai|bat ky ai|bat ki ai|nguoi than|gia dinh|nguoi nha|vo|chong|con|con chau|hang xom|ngan hang|nguoi khac)\b'
+      # Không tính lời khuyên giữ kín thông tin, mã, mật khẩu ("không tiết lộ thông tin cá nhân cho người khác"):
+      # kiểu lừa là giấu chính cuộc gọi với người nhà ("không được nói với ai").
+      - '\b(?:khong|dung|cam|tuyet doi khong|khong duoc)(?: duoc)? (?:noi|ke|tiet lo|trao doi|bao|thong bao|cho biet|lam lo|tiet lo)(?: (?!ma\b|otp\b|mat\b|pin\b|thong\b|\[otp)[^ .]+){0,4} (?:voi |cho )?(?:ai|bat ky ai|bat ki ai|nguoi than|gia dinh|nguoi nha|vo|chong|con|con chau|hang xom|ngan hang|nguoi khac)\b'
       - '\bgiu (?:kin |tuyet doi )?bi mat\b'
       - '\bbi mat (?:dieu tra|nha nuoc|quoc gia|tuyet doi|vu an)\b'
 

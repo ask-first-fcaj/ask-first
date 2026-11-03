@@ -36,7 +36,11 @@ CASES: dict[str, tuple[list[str], list[str]]] = {
          "De huy giao dich khong hop le, vui long doc ma OTP cho chuyen vien",
          "Đọc m.ã 0TP giúp em với",
          "Anh đọc giúp em mã 6 số trên màn hình với ạ",
-         "Đăng nhập tài khoản ngân hàng và nhập mã OTP tại dichvucong-phat.xyz để nộp phạt"],
+         "Đăng nhập tài khoản ngân hàng và nhập mã OTP tại dichvucong-phat.xyz để nộp phạt",
+         # câu trấn an có chữ "không" ở xa động từ: không phải phủ định
+         "Không ai biết đâu, đọc mã OTP đi.",
+         "Không có gì nguy hiểm đâu, bác đọc mã OTP.",
+         "Không mất phí đâu ạ, anh đọc mã xác thực giúp em để hoàn tất."],
         ["Mã OTP của bạn là 482913. Tuyệt đối không cung cấp mã cho bất kỳ ai.",
          "Ngân hàng không bao giờ yêu cầu quý khách cung cấp mã OTP qua điện thoại",
          "Co.opmart gửi mã xác thực của bạn là 482913",
@@ -62,7 +66,8 @@ CASES: dict[str, tuple[list[str], list[str]]] = {
     "R_SECRECY": (
         ["Bà không được nói với người thân vì đây là bí mật điều tra",
          "Anh phải giữ bí mật, không kể cho ai biết"],
-        ["Tuyệt đối không tiết lộ mã OTP cho bất kỳ ai"]),
+        ["Tuyệt đối không tiết lộ mã OTP cho bất kỳ ai",
+         "Công an TP khuyến cáo người dân không tiết lộ thông tin cá nhân cho người khác qua điện thoại."]),
     "R_AUTHORITY": (
         ["Tôi là thiếu tá Nguyễn Văn A, công an quận 1",
          "Viện kiểm sát nhân dân thông báo ông liên quan vụ án"],
@@ -138,6 +143,12 @@ def test_combo_signals_reach_fast_path_floor() -> None:
     sig = signals("Tôi là cán bộ công an. Bà phải chuyển tiền vào tài khoản an toàn và không được nói với ai.")
     assert {"R_AUTHORITY", "R_SAFE_ACCOUNT", "R_SECRECY"} <= {s.code for s in sig}
     assert fuse.is_fast_path(sig)
+
+
+def test_police_advice_is_not_fast_path() -> None:
+    """Tin khuyến cáo của công an người lớn tuổi hay forward: không được tự kết luận lừa đảo mà không qua LLM."""
+    from askfirst.pipeline import fuse
+    assert not fuse.is_fast_path(signals("Công an TP khuyến cáo người dân không tiết lộ thông tin cá nhân cho người khác qua điện thoại."))
 
 
 def test_signal_codes_have_explanation_text() -> None:
