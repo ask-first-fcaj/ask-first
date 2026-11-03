@@ -1,0 +1,70 @@
+# kb/allowlist.yaml (AI-25): tên miền chính thức, so khớp eTLD+1 hoặc hậu tố. Schema: docs/implementation-plan.md §3.10.
+#
+# Ý nghĩa của `verified_at: 2026-10-30`: ngày AI2 gọi HTTPS tới đúng tên miền đó và nhận HTTP 200
+# (hoặc redirect về cùng tổ chức), `source_url` là địa chỉ cuối cùng nhận được.
+# CHƯA làm: đối chiếu với danh sách do NHNN / Cục ATTT công bố, nên người review phải mở từng link xem trang đúng tổ chức.
+#
+# Chưa đưa vào (kèm lý do, xem cuối file).
+#
+# CẢNH BÁO khi dùng `suffixes: [gov.vn]`: phải khớp theo ranh giới nhãn (".gov.vn"), không khớp chuỗi con.
+# Tên miền giả trong các bài cảnh báo: dichvucong-vn.com, dichvuconggov.vn, dichvuconghs.com, viet.lgovn.cc (kết thúc .com / .vn / .cc, không phải .gov.vn).
+# `evidence` (tùy chọn): `redirect` nếu chỉ có bằng chứng là tên miền chuyển hướng về trang chính thức. Mục không có `evidence` là trang chính thức tự khai tên miền của mình.
+# Các mục subdomain .gov.vn vẫn liệt kê dù `suffixes` đã bao, để brands.yaml kiểm chéo `official_domains` được.
+
+domains:
+  # Cơ quan nhà nước
+  - {domain: dichvucong.gov.vn, owner: "Cổng Dịch vụ công quốc gia", source_url: "https://dichvucong.gov.vn/", verified_at: 2026-10-30}
+  - {domain: vneid.gov.vn, owner: "Ứng dụng định danh điện tử VNeID (Bộ Công an)", source_url: "https://vneid.gov.vn/", verified_at: 2026-10-30}
+  - {domain: bocongan.gov.vn, owner: "Bộ Công an", source_url: "https://bocongan.gov.vn/", verified_at: 2026-10-30}
+  - {domain: csgt.bocongan.gov.vn, owner: "Cục Cảnh sát giao thông, Bộ Công an", source_url: "https://csgt.bocongan.gov.vn/", verified_at: 2026-10-30}
+  - {domain: csgt.vn, owner: "Cục Cảnh sát giao thông (chuyển hướng về csgt.bocongan.gov.vn; Công an Nghệ An nêu đây là trang tra cứu vi phạm chính thức)", source_url: "https://csgt.bocongan.gov.vn/", evidence: redirect, verified_at: 2026-10-30}
+  - {domain: canhsatquanlyhanhchinh.gov.vn, owner: "Cục Cảnh sát QLHC về TTXH, Bộ Công an", source_url: "https://canhsatquanlyhanhchinh.gov.vn/", verified_at: 2026-10-30}
+  - {domain: baohiemxahoi.gov.vn, owner: "Bảo hiểm xã hội Việt Nam", source_url: "https://baohiemxahoi.gov.vn/Pages/default.aspx", verified_at: 2026-10-30}
+  - {domain: gdt.gov.vn, owner: "Cục Thuế", source_url: "https://gdt.gov.vn/", verified_at: 2026-10-30}
+  - {domain: thuedientu.gdt.gov.vn, owner: "Thuế điện tử (Cục Thuế)", source_url: "https://thuedientu.gdt.gov.vn/", verified_at: 2026-10-30}
+  # Ngân hàng
+  - {domain: vietcombank.com.vn, owner: "Vietcombank", source_url: "https://vietcombank.com.vn/", verified_at: 2026-10-30}
+  - {domain: bidv.com.vn, owner: "BIDV", source_url: "https://bidv.com.vn/", verified_at: 2026-10-30}
+  - {domain: agribank.com.vn, owner: "Agribank", source_url: "https://www.agribank.com.vn/", verified_at: 2026-10-30}
+  - {domain: vietinbank.vn, owner: "VietinBank", source_url: "https://www.vietinbank.vn/", verified_at: 2026-10-30}
+  - {domain: techcombank.com, owner: "Techcombank", source_url: "https://techcombank.com/", verified_at: 2026-10-30}
+  - {domain: mbbank.com.vn, owner: "MB (Ngân hàng Quân đội)", source_url: "https://mbbank.com.vn/", verified_at: 2026-10-30}
+  - {domain: vpbank.com.vn, owner: "VPBank", source_url: "https://www.vpbank.com.vn/", verified_at: 2026-10-30}
+  - {domain: acb.com.vn, owner: "ACB", source_url: "https://acb.com.vn/", verified_at: 2026-10-30}
+  - {domain: sacombank.com.vn, owner: "Sacombank", source_url: "https://www.sacombank.com.vn/ca-nhan.html", verified_at: 2026-10-30}
+  - {domain: tpb.vn, owner: "TPBank", source_url: "https://tpb.vn/", verified_at: 2026-10-30}
+  - {domain: vib.com.vn, owner: "VIB", source_url: "https://www.vib.com.vn/", verified_at: 2026-10-30}
+  - {domain: hdbank.com.vn, owner: "HDBank", source_url: "https://hdbank.com.vn/", verified_at: 2026-10-30}
+  - {domain: ocb.com.vn, owner: "OCB", source_url: "https://ocb.com.vn/vi/ca-nhan", verified_at: 2026-10-30}
+  - {domain: msb.com.vn, owner: "MSB", source_url: "https://www.msb.com.vn/", verified_at: 2026-10-30}
+  # Ví điện tử
+  - {domain: momo.vn, owner: "MoMo", source_url: "https://www.momo.vn/", verified_at: 2026-10-30}
+  - {domain: zalopay.vn, owner: "ZaloPay", source_url: "https://zalopay.vn/", verified_at: 2026-10-30}
+  # Viễn thông, điện lực
+  - {domain: viettel.com.vn, owner: "Viettel", source_url: "https://viettel.com.vn/", verified_at: 2026-10-30}
+  - {domain: vnpt.vn, owner: "VNPT (VinaPhone)", source_url: "https://vnpt.vn/", verified_at: 2026-10-30}
+  - {domain: vinaphone.com.vn, owner: "VinaPhone (chuyển hướng về vnpt.vn)", source_url: "https://vnpt.vn/", evidence: redirect, verified_at: 2026-10-30}
+  - {domain: mobifone.vn, owner: "MobiFone", source_url: "https://www.mobifone.vn/", verified_at: 2026-10-30}
+  - {domain: evn.com.vn, owner: "Tập đoàn Điện lực Việt Nam (EVN)", source_url: "https://evn.com.vn/", verified_at: 2026-10-30}
+  # Sàn thương mại điện tử
+  - {domain: shopee.vn, owner: "Shopee Việt Nam", source_url: "https://shopee.vn/", verified_at: 2026-10-30}
+  - {domain: lazada.vn, owner: "Lazada Việt Nam", source_url: "https://www.lazada.vn/", verified_at: 2026-10-30}
+  - {domain: tiki.vn, owner: "Tiki", source_url: "https://tiki.vn/", verified_at: 2026-10-30}
+  # Giao nhận, bưu chính
+  - {domain: ghn.vn, owner: "Giao Hàng Nhanh", source_url: "https://ghn.vn/", verified_at: 2026-10-30}
+  - {domain: ghtk.vn, owner: "Giao Hàng Tiết Kiệm", source_url: "https://ghtk.vn/", verified_at: 2026-10-30}
+  - {domain: viettelpost.com.vn, owner: "Viettel Post", source_url: "https://viettelpost.com.vn/", verified_at: 2026-10-30}
+  - {domain: viettelpost.vn, owner: "Viettel Post (tên miền thứ hai)", source_url: "https://viettelpost.vn/", verified_at: 2026-10-30}
+  - {domain: vnpost.vn, owner: "Bưu điện Việt Nam", source_url: "https://vnpost.vn/vi", verified_at: 2026-10-30}
+  - {domain: spx.vn, owner: "SPX Express", source_url: "https://spx.vn/vi", verified_at: 2026-10-30}
+
+suffixes: [gov.vn]
+
+# ---------------------------------------------------------------------------------------------------------
+# CHƯA xác minh, KHÔNG được thêm vào `domains` cho tới khi người review mở được và đối chiếu:
+#  - vtp.vn: Viettel Post dùng làm link rút gọn trong SMS thật (ảnh test OCR có vtp.vn/app, yk.vtp.vn/...).
+#    Ngày 2026-10-30 trang chủ trả HTTP 503 nên chưa xác nhận. Nếu không có trong allowlist, SMS giao hàng thật dễ bị báo nhầm.
+#  - khonggianmang.vn: máy kiểm không kết nối được (HTTP 000). Cẩn thận: có trang giả mạo website này, chỉ lấy link từ trang .gov.vn.
+#  - shb.com.vn: máy kiểm không kết nối được (HTTP 000).
+#  - tinnhiemmang.vn: trả 200 nhưng chưa đối chiếu chủ sở hữu.
+#  - Link rút gọn / tên miền phụ của ngân hàng, ví, sàn (ví dụ link trong SMS brandname): chưa khảo sát.

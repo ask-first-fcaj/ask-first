@@ -1,0 +1,53 @@
+# kb/checklist.yaml (AI-25): các việc cần làm ngay khi nghi bị lừa, cho lệnh /bilua ("30 phút đầu").
+# Plan §3.10 chưa quy định schema cho file này; AI2 đặt theo cùng phong cách các file KB khác, AI1 duyệt lại khi cần.
+#
+# Quy ước:
+#  - KHÔNG ghi số điện thoại ở đây. Bước cần gọi thì dùng `hotline_ref`, số lấy từ kb/hotlines.yaml (chỉ mục đã xác minh).
+#  - Phần "bước nào làm trong khung phút nào" (0-5, 5-15, 15-30) là thiết kế của team ở docs/research-concept.md §3.3,
+#    CHƯA có nguồn bên ngoài quy định khung phút. Nội dung từng bước nào có nguồn công an thì ghi ở `sources`.
+#  - Bước nào chỉ dựa vào research-concept thì `sources` trỏ về chính file đó (publisher ghi rõ là nội bộ).
+
+- id: bilua_30p
+  title: Nghi mình vừa bị lừa, làm gì trong 30 phút đầu
+  steps:
+    - id: khoa_tai_khoan
+      phase: "0-5 phút"
+      action: Liên hệ ngân hàng của mình để khóa tài khoản hoặc thẻ
+      detail: Gọi tổng đài ngân hàng, nói rõ nghi bị lừa, yêu cầu khóa tài khoản hoặc thẻ và tra soát. Đừng chờ chắc chắn bị lừa mới gọi.
+      hotline_ref: bank_of_victim
+      sources:
+        - {url: "https://bocongan.gov.vn/bai-viet/canh-bao-thu-doan-lua-dao-cai-ung-dung-vneid-gia-mao-d22-t45880", publisher: "Bộ Công an", date: "2025-07-05"}
+      verified_at: 2026-10-30
+    - id: tat_nguon
+      phase: "0-5 phút"
+      action: Nếu đã bấm link lạ hoặc cài ứng dụng lạ, tắt nguồn điện thoại
+      detail: Tắt nguồn để kẻ gian không còn cơ hội lấy mã OTP ngân hàng hoặc dữ liệu sinh trắc học.
+      hotline_ref: null
+      sources:
+        - {url: "https://bocongan.gov.vn/bai-viet/canh-bao-thu-doan-lua-dao-cai-ung-dung-vneid-gia-mao-d22-t45880", publisher: "Bộ Công an", date: "2025-07-05"}
+      verified_at: 2026-10-30
+    - id: go_app_doi_mat_khau
+      phase: "5-15 phút"
+      action: Gỡ ứng dụng lạ và đổi mật khẩu từ một thiết bị khác
+      detail: Dùng thiết bị an toàn để đổi mật khẩu ngân hàng, ví, mạng xã hội. Gỡ ứng dụng vừa cài theo yêu cầu của người lạ.
+      hotline_ref: null
+      sources:
+        - {url: "docs/research-concept.md", publisher: "Nhóm dự án (research-concept §3.3), chưa có nguồn bên ngoài"}
+      verified_at: 2026-10-30
+    - id: trinh_bao_cong_an
+      phase: "15-30 phút"
+      action: Đến hoặc gọi công an xã, phường gần nhất để trình báo
+      detail: Mang ảnh chụp tin nhắn, số điện thoại của kẻ gian, số tài khoản nhận tiền, biên lai chuyển tiền.
+      hotline_ref: police_113
+      sources:
+        - {url: "https://bocongan.gov.vn/bai-viet/canh-bao-thu-doan-lua-dao-cai-ung-dung-vneid-gia-mao-d22-t45880", publisher: "Bộ Công an", date: "2025-07-05"}
+        - {url: "docs/research-concept.md", publisher: "Nhóm dự án (research-concept §3.3), danh sách bằng chứng"}
+      verified_at: 2026-10-30
+    - id: bao_nguoi_than
+      phase: "sau đó"
+      action: Báo cho người thân tin cậy
+      detail: Nói với con cháu hoặc người thân để cùng xử lý và để cảnh giác nếu kẻ gian liên hệ lại.
+      hotline_ref: null
+      sources:
+        - {url: "docs/research-concept.md", publisher: "Nhóm dự án (research-concept §3.3), chưa có nguồn bên ngoài"}
+      verified_at: 2026-10-30

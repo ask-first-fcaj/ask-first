@@ -22,3 +22,5 @@ node_modules/
 .vscode/
 # local research (không push)
 thien/
+# eval: báo cáo run_eval.py
+eval/out/

@@ -148,6 +148,30 @@ def test_otp_repeated_far_from_keyword_is_masked_everywhere() -> None:
     assert "4829130" in out and "48291 cũng" in out  # chỉ che đúng dãy số trùng mã, không cắt giữa số khác
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Code của bạn là 482913, không chia sẻ cho ai", "Code của bạn là [OTP_1], không chia sẻ cho ai"),
+        ("Code cua ban la: 4829", "Code cua ban la: [OTP_1]"),
+        ("Enter this code in the app: 553201", "Enter this code in the app: [OTP_1]"),
+    ],
+)
+def test_bare_code_keyword_outside_url_still_masks_otp(text: str, expected: str) -> None:
+    assert masked(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Mã OTP 5000. Chuyển 5000 đồng phí", "Mã OTP [OTP_1]. Chuyển 5000 đồng phí"),
+        ("OTP 2024. Năm 2024", "OTP [OTP_1]. Năm 2024"),
+        ("Mã OTP 482913. Chuyển 482913 đồng", "Mã OTP [OTP_1]. Chuyển 482913 đồng"),
+    ],
+)
+def test_otp_echo_keeps_amounts_and_years_that_equal_the_code(text: str, expected: str) -> None:
+    assert masked(text) == expected
+
+
 def test_long_inputs_are_masked_in_linear_time() -> None:
     """Một "từ" rất dài (OCR/spam) từng làm regex email/URL chạy O(n²): 20.000 ký tự mất ~2 s."""
     chunks = ("a", "a1-", "ab.cd", "0 ", "1.2", "otp ", "stk ", "otp 1234 ", "stk 123456 ", "OTP 482913 ", "0912345678 ", "a@b.c ")

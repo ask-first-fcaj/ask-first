@@ -823,7 +823,7 @@ def test_callback_data_fits_telegram_limit() -> None:  # callback_data ≤ 64 by
 
 ### 3.10 Schema KB: `kb/*.yaml` (owner AI2)
 
-Mỗi mục có nguồn thì có `source_url` và `verified_at` (`YYYY-MM-DD`). CI báo đỏ nếu một mục trong `hotlines.yaml` có `verified_at` cũ hơn 30 ngày.
+Mỗi mục có nguồn thì có `source_url` và `verified_at` (`YYYY-MM-DD`). CI của PR báo đỏ nếu `verified_at` trống hoặc sai định dạng. Job định kỳ `kb-freshness.yml` (hằng tuần) báo đỏ nếu một mục trong `hotlines.yaml` có `verified_at` cũ hơn 30 ngày, để hotline hết hạn không chặn các PR không liên quan.
 
 ```yaml
 # kb/scenarios.yaml: scenario card (ARCH §6.5)
@@ -862,6 +862,13 @@ suffixes: [gov.vn]
 # kb/hotlines.yaml: chỉ mục đã xác minh mới được đưa ra người dùng
 - {id: police_113, name: "Công an (khẩn cấp)", kind: phone, value: "113", source_url: "https://…", verified_at: 2026-10-14}
 ```
+
+**Mở rộng so với ví dụ trên (đã có trong `kb/`, kiểm bằng `scripts/validate_kb.py`):**
+
+- `hotlines.yaml`: `kind` ∈ {`phone`, `app`}. Với `phone`, `value` chỉ gồm chữ số, không khoảng trắng (code BE đọc số để hiện nút gọi). Với `app` (ví dụ `vneid_report`), `value` là văn bản hướng dẫn tự do, **không** phải số điện thoại: code BE phải rẽ nhánh theo `kind`, không giả định mọi mục là `phone`. Host của `source_url` phải thuộc `allowlist.yaml` hoặc `.gov.vn`.
+- `scenarios.yaml`: `code` phải nằm trong bảng mã `eval/validate.py` (`SCENARIOS`). Mỗi nguồn trong `sources` có thể có `tier: media` (báo thương mại dẫn lại cảnh báo của công an). Nguồn nội bộ dạng `docs/...` phải là file tồn tại.
+- `allowlist.yaml`: mục có thể có `evidence: redirect` khi chỉ có bằng chứng là tên miền chuyển hướng về trang chính thức.
+- `checklist.yaml`: danh sách `{id, title, steps[]}`; mỗi bước có `id`, `phase`, `action`, `detail`, `sources`, `verified_at`, và `hotline_ref`: `id` trong `hotlines.yaml`, `null` (bước không cần gọi), hoặc giá trị đặc biệt `bank_of_victim` (ngân hàng của nạn nhân, không có số cố định; cách hiển thị do SH-08 quyết). `action` và `detail` không được chứa số điện thoại.
 
 > Pattern trong `rules.yaml` ở trên chỉ là **ví dụ về định dạng**; AI2 viết pattern thật ở AI-23 và mỗi luật phải có test dương và test âm.
 

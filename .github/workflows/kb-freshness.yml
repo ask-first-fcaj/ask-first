@@ -1,0 +1,25 @@
+name: KB freshness
+
+# Kiểm hạn `verified_at` (tối đa 30 ngày) của kb/hotlines.yaml. PR thường chạy validator với --skip-age
+# (xem ci.yml, job ai) để hotline hết hạn không làm đỏ các PR không liên quan.
+# Job đỏ nghĩa là cần người mở lại từng source_url, đối chiếu số rồi cập nhật `verified_at`.
+# Người theo dõi job này: AI2 (owner `kb/`). GitHub chỉ gửi mail báo đỏ cho người sửa file workflow lần cuối, nên khi job đỏ
+# hãy kiểm tab Actions; hotline xác minh ngày 2026-10-30 sẽ hết hạn từ khoảng 2026-11-29.
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'   # thứ Hai hằng tuần, 02:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hotline-age:
+    name: hotline verified_at còn hạn
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Kiểm kb/ (có kiểm hạn 30 ngày)
+        run: uv run --with pyyaml python scripts/validate_kb.py

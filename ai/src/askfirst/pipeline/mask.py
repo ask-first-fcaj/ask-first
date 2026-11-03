@@ -125,7 +125,7 @@ _EMAIL = re.compile(r"(?<![a-z0-9._%+\-])[a-z0-9._%+\-]+(?:@|\[at\]|\(at\))[a-z0
 _OTP_KW = (
     r"(?:otp|one[- ]?time|verification code|security code|login code|activation code|auth(?:entication)? code|passcode|"
     r"\bma xac (?:thuc|nhan|minh)|\bma bao mat|\bma dang nhap|\bma kich hoat|\bma (?:vua )?(?:gui|nhan)(?: ve)?|\bma id|\bma pin|"
-    r"\bpin\b|\bmat khau|\bpassword)"
+    r"\bpin\b|\bmat khau|\bpassword|\bcode\b)"
 )
 _OTP_NUM = (
     rf"{_NOT_NUM_HEAD}(?<!nam )(?<!year )(?!(?:1900|1800){_D}{{4}}(?![0-9]))"
@@ -136,7 +136,7 @@ _OTP_KW_RE = re.compile(_OTP_KW)
 _OTP_NUM_RE = re.compile(_OTP_NUM)
 _OTP_WINDOW = 120
 # Mã đứng trước từ khoá: "482913 là mã xác thực", "798272 is your Grab Activation Code".
-_OTP_BEFORE = re.compile(rf"(?P<c>{_OTP_NUM})\s+(?:la|is)\b[^0-9]{{0,40}}?(?:{_OTP_KW}|\bcode\b)")
+_OTP_BEFORE = re.compile(rf"(?P<c>{_OTP_NUM})\s+(?:la|is)\b[^0-9]{{0,40}}?{_OTP_KW}")
 # Mã kèm cụm hiệu lực: "Mã Spotify: 572408. Có hiệu lực trong 5 phút".
 _OTP_VALID = re.compile(rf"(?P<c>{_OTP_NUM})\W{{1,3}}(?:co hieu luc|hieu luc|het han|expires?|valid)")
 _OTP_USE = re.compile(rf"\b(?:su dung|use)\s+(?P<c>{_OTP_NUM})\s+(?:duoi dang|as)\b")
@@ -257,7 +257,9 @@ def _scan_after(folded: str, kw: re.Pattern[str], num: re.Pattern[str], window: 
             yield k, m
 
 
-def _detect(folded: str) -> list[_Hit]:
+def _detect(folded: str, protected: list[tuple[int, int]]) -> list[_Hit]:
+    p_starts = [ps for ps, _ in protected]
+    p_ends = [pe for _, pe in protected]
     hits: list[_Hit] = []
 
     for m in _EMAIL.finditer(folded):
@@ -265,8 +267,11 @@ def _detect(folded: str) -> list[_Hit]:
     for m in _CONTACT_LINK.finditer(folded):
         hits.append(_Hit(*m.span("c"), "phone", exempt=True))
 
-    for _, m in _scan_after(folded, _OTP_KW_RE, _OTP_NUM_RE, _OTP_WINDOW):
-        hits.append(_Hit(m.start(), m.end(), "otp"))
+    for k, m in _scan_after(folded, _OTP_KW_RE, _OTP_NUM_RE, _OTP_WINDOW):
+        # "code" trần trong URL ("?code=") là tên tham số, không phải lời nhắc mã: số sau URL không bị coi là OTP.
+        # Từ khoá rõ nghĩa hơn ("/otp/") vẫn tính, vì che thừa an toàn hơn che sót.
+        if k.group() != "code" or not _overlaps(p_starts, p_ends, k.start(), k.end()):
+            hits.append(_Hit(m.start(), m.end(), "otp"))
     for rx in (_OTP_BEFORE, _OTP_VALID, _OTP_USE, _OTP_ADJ):
         for m in rx.finditer(folded):
             s, e = m.span("c")
@@ -348,11 +353,13 @@ def _resolve(hits: list[_Hit], protected: list[tuple[int, int]]) -> list[_Hit]:
 
 
 _DIGIT_RUN = re.compile(r"(?<![0-9])[0-9]{4,8}(?![0-9])")
+# Lần lặp ngoài URL chỉ che khi mã ≥ 6 chữ số và không kèm đơn vị tiền: mã 4 chữ số hay trùng số tiền, năm ("5000 đồng", "năm 2024").
+_ECHO_OUTSIDE_URL = re.compile(rf"[0-9]{{6,8}}(?![0-9]){_NOT_MONEY}")
 
 
 def _otp_echoes(folded: str, hits: list[_Hit], protected: list[tuple[int, int]]) -> list[_Hit]:
-    """Mã OTP đã nhận ra ngoài URL mà còn lặp lại ở chỗ khác thì che mọi lần lặp, kể cả khi cách từ khoá rất xa
-    ("Mã OTP 482913 … đọc lại 482913 cho cháu") hoặc nằm trong URL (``?code=482913``: giữ tên miền và phần còn lại).
+    """Mã OTP đã nhận ra ngoài URL mà còn lặp lại ở chỗ khác thì che lần lặp: trong URL (``?code=482913``: giữ tên miền
+    và phần còn lại) với mọi độ dài, ngoài URL (kể cả cách từ khoá rất xa) khi qua ``_ECHO_OUTSIDE_URL``.
     """
     p_starts = [ps for ps, _ in protected]
     p_ends = [pe for _, pe in protected]
@@ -363,7 +370,11 @@ def _otp_echoes(folded: str, hits: list[_Hit], protected: list[tuple[int, int]])
     }
     if not codes:
         return []
-    return [_Hit(m.start(), m.end(), "otp", exempt=True) for m in _DIGIT_RUN.finditer(folded) if m.group() in codes]
+    return [
+        _Hit(m.start(), m.end(), "otp", exempt=True)
+        for m in _DIGIT_RUN.finditer(folded)
+        if m.group() in codes and (_overlaps(p_starts, p_ends, m.start(), m.end()) or _ECHO_OUTSIDE_URL.match(folded, m.start()))
+    ]
 
 
 def mask(text: str) -> MaskResult:
@@ -373,7 +384,7 @@ def mask(text: str) -> MaskResult:
     clean = unicodedata.normalize("NFKC", text.translate(_INVISIBLE))
     folded = _fold(clean)
     protected = [m.span() for m in _URL.finditer(folded)]
-    hits = _detect(folded)
+    hits = _detect(folded, protected)
     hits += _otp_echoes(folded, hits, protected)
     hits = _resolve(hits, protected)
 
