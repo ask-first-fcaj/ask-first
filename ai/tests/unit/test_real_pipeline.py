@@ -15,6 +15,7 @@ from botocore.exceptions import ClientError
 from askfirst import handler as h
 from askfirst.domain import models as m
 from askfirst.llm.bedrock import BedrockClient
+from askfirst.local_models.ocr import ExtractedText
 from askfirst.pipeline import build_pipeline
 from askfirst.pipeline import real as P
 from askfirst.pipeline.judge import PROMPT_VERSION
@@ -232,3 +233,89 @@ def test_guardian_alert_renders():
     out = pipe().render_guardian_alert(v, m.GuardianAlertContext(alert_id="01J1", elder_name="Bà Tư", share_level=2,
                                                                    at=datetime(2026, 11, 3, tzinfo=UTC)))
     assert "Bà Tư" in out.text_html
+
+
+# ---------------------------------------------------------------- ảnh (AI-26)
+
+class Ocr:
+    """OCR giả: mỗi ảnh trả một trang theo thứ tự; ``Exception`` trong danh sách thì raise."""
+    version = "ocr-test"
+
+    def __init__(self, *pages):
+        self.pages, self.calls = list(pages), 0
+
+    def read(self, data: bytes) -> ExtractedText:
+        self.calls += 1
+        p = self.pages.pop(0)
+        if isinstance(p, Exception):
+            raise p
+        return p
+
+
+def photo(uid: str = "f1") -> m.ImageInput:
+    return m.ImageInput(data=b"jpeg", file_unique_id=uid, mime="image/jpeg")
+
+
+def ocr_pipe(ocr: Ocr, judge: Boto | None = None, rules=P.no_rules) -> P.RealPipeline:
+    p = pipe(judge, rules=rules)
+    p.ocr = ocr
+    return p
+
+
+def page(raw: str, text: str | None = None, qr: list[str] | None = None) -> ExtractedText:
+    return ExtractedText(raw_text=raw, text=raw if text is None else text, mean_conf=0.9, qr=qr or [])
+
+
+def test_photo_only_is_read_and_judged_as_screenshot():
+    judge, rules = Boto(answer()), Rules()
+    v = ocr_pipe(Ocr(page(SCAM)), judge, rules).analyze(m.Bundle(images=[photo()]), ctx())
+    assert (v.outcome, v.path, v.level) == ("verdict", "llm", "DANGEROUS")
+    prompt = judge.requests[0]["messages"][0]["content"][0]["text"]
+    assert 'nguon="anh_chup"' in prompt and "0912" not in prompt and "0912" not in v.masked_text
+    assert v.versions["local_models"] == "ocr:ocr-test" and {"ocr", "rules", "judge", "total"} <= v.latency_ms.keys()
+
+
+def test_caption_and_photo_text_are_joined():
+    rules = Rules(COMBO)
+    ocr_pipe(Ocr(page("chuyển tiền vào tài khoản an toàn")), rules=rules).analyze(bundle("Bác xem giúp", images=[photo()]), ctx())
+    assert rules.seen[0][0].splitlines() == ["Bác xem giúp", "chuyển tiền vào tài khoản an toàn"]
+
+
+def test_urls_from_raw_and_repaired_ocr_and_qr():
+    rules = Rules(COMBO)
+    pg = page("vào ttps://vcb-xacthuc.top/a ngay", "vào https://vcb-xacthuc.top/a ngay",
+              qr=["https://qr-lua.top/x", "00020101021238570010A000000727"])
+    ocr_pipe(Ocr(pg), rules=rules).analyze(m.Bundle(images=[photo()]), ctx())
+    masked, urls = rules.seen[0]
+    assert urls == ["https://vcb-xacthuc.top/a", "https://qr-lua.top/x", "vcb-xacthuc.top/a"]
+    # QR không phải URL (VietQR có số tài khoản) không đi vào chữ gửi LLM, chỉ có dòng đánh dấu.
+    assert "Mã QR: https://qr-lua.top/x" in masked and P.QR_NOT_URL in masked and "0002010102" not in masked
+
+
+@pytest.mark.parametrize("ocr", [Ocr(page("")), Ocr(RuntimeError("model hỏng"))])
+def test_photo_without_readable_text_is_unreadable(ocr, caplog):
+    v = ocr_pipe(ocr).analyze(m.Bundle(images=[photo()]), ctx())
+    assert (v.outcome, v.level) == ("unreadable", "UNSURE") and ocr.calls == 1
+    assert "model hỏng" not in caplog.text   # chỉ log tên lỗi, không log message
+
+
+def test_one_broken_photo_does_not_drop_the_others():
+    rules = Rules(COMBO)
+    v = ocr_pipe(Ocr(ValueError("x"), page(SCAM)), rules=rules).analyze(m.Bundle(images=[photo("a"), photo("b")]), ctx())
+    assert v.outcome == "verdict" and "tài khoản an toàn" in rules.seen[0][0]
+
+
+def test_feature_image_off_skips_ocr():
+    ocr = Ocr(page(SCAM))
+    c = m.AnalyzeContext(check_id="01J0", user_id="tg:42", flags=m.Flags(feature_image=False), deadline_s=85.0)
+    v = ocr_pipe(ocr).analyze(m.Bundle(images=[photo()]), c)
+    assert v.outcome == "unreadable" and ocr.calls == 0 and "local_models" not in v.versions
+
+
+def test_factory_wires_lazy_ocr_from_artifacts():
+    class Store:
+        def path(self, name):   # không được gọi lúc dựng pipeline: model nạp lười ở ảnh đầu tiên
+            raise AssertionError(name)
+
+    p = build_pipeline("real", CONFIG_DIR, Store(), None)
+    assert p.ocr.version == "ppocrv6-small-rapidocr3.10.0" and p.ocr._engine is None
