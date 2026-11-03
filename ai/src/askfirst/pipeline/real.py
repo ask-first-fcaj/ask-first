@@ -1,11 +1,9 @@
 """``RealPipeline`` cho văn bản (INT-01, ARCH §6.2): normalize → mask → signals → fast path → judge → fuse; render qua Respond.
 
-Ghép các stage đã có (mask AI-22, judge AI-04/AI-07, fuse AI-05, respond AI-06). Hai stage còn chờ việc khác nên được
-truyền vào, có bản mặc định tạm:
-
-* ``normalize``: mặc định ``basic_normalize`` (NFC, bỏ ký tự zero-width). AI-23 thay bằng bản đầy đủ.
-* ``rules(masked_text, urls) -> list[Signal]``: mặc định ``no_rules`` (không tín hiệu nào). AI-23 (rules engine trên
-  ``kb/rules.yaml``) và AI-24a (URL intel) cắm vào đây; ``rules_version`` ghi vào ``Verdict.versions["rules"]``.
+Ghép các stage đã có (normalize/signals AI-23, mask AI-22, judge AI-04/AI-07, fuse AI-05, respond AI-06).
+``rules(masked_text, urls) -> list[Signal]`` truyền vào (``build_pipeline`` dùng ``signals.RuleEngine`` trên
+``kb/rules.yaml``; test truyền ``no_rules``); AI-24a (URL intel) cắm thêm vào đây. ``rules_version`` ghi vào
+``Verdict.versions["rules"]``.
 
 Ảnh (AI-26, khi ``flags.feature_image`` bật và có ``ocr``): chữ đọc được (bản đã sửa URL/SĐT) và URL trong mã QR được ghép
 sau chữ của tin rồi đi chung các stage trên với nguồn ``anh_chup``. URL lấy từ cả bản OCR gốc lẫn bản đã sửa (ARCH §6.3).
@@ -22,9 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import re
 import time
-import unicodedata
 from collections.abc import Callable
 from typing import Protocol
 
@@ -33,9 +29,9 @@ from askfirst.pipeline import fuse as F
 from askfirst.pipeline import judge as J
 from askfirst.pipeline import respond as R
 from askfirst.pipeline.mask import mask
+from askfirst.pipeline.normalize import normalize as default_normalize
 
 SMALLTALK = {"cảm ơn", "cám ơn", "alo", "ok", "chào bot"}
-_ZERO_WIDTH = re.compile("[​-‍⁠﻿]")
 _TRIM = " \t\n.!?…"
 _URL_TAIL = ".,;:!?)]…"
 
@@ -70,10 +66,6 @@ class Ocr(Protocol):
     def read(self, data: bytes) -> Page: ...
 
 
-def basic_normalize(text: str) -> str:
-    return _ZERO_WIDTH.sub("", unicodedata.normalize("NFC", text)).strip()
-
-
 def no_rules(masked_text: str, urls: list[str]) -> list[m.Signal]:
     return []
 
@@ -99,7 +91,7 @@ def _is_url(s: str) -> bool:
     return R.URL_RE.fullmatch(s.strip()) is not None
 
 
-def image_text(pages: list[Page], normalize: Callable[[str], str] = basic_normalize) -> str:
+def image_text(pages: list[Page], normalize: Callable[[str], str] = default_normalize) -> str:
     """Chữ của các ảnh đưa vào phân tích: bản đã sửa, thêm một dòng cho mỗi mã QR."""
     lines = []
     for p in pages:
@@ -124,7 +116,7 @@ def _ms(start: float) -> int:
 
 
 class RealPipeline:
-    def __init__(self, llm: JudgeLLM, system_prompt: str, *, normalize: Callable[[str], str] = basic_normalize,
+    def __init__(self, llm: JudgeLLM, system_prompt: str, *, normalize: Callable[[str], str] = default_normalize,
                  rules: Rules = no_rules, rules_version: str = "none", roles: tuple[str, str] = ("judge", "backup"),
                  thresholds: F.Thresholds = F.DEFAULT_THRESHOLDS, ocr: Ocr | None = None) -> None:
         self.llm = llm

@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 import re
 import time
-import unicodedata
 from pathlib import Path
 
 import pytest
@@ -268,38 +267,6 @@ def test_masking_is_idempotent() -> None:
 def test_handles_long_input_without_blowing_up() -> None:
     text = "Xin chào, đây là tin nhắn bình thường. " * 500 + "OTP 482913"
     assert masked(text).endswith("OTP [OTP_1]")
-
-
-# ------------------------------------------------------------------ luật R_OTP_* chạy trên văn bản đã mask (ARCH §9.2)
-
-
-def _rule_text(text: str) -> str:
-    """Chuẩn hoá như plan §3.10 nói với luật: chữ thường, KHÔNG dấu (AI-23 sẽ viết ``normalize_text.py`` thật)."""
-    folded = unicodedata.normalize("NFD", text.lower().replace("đ", "d"))
-    return "".join(c for c in folded if unicodedata.category(c) != "Mn")
-
-
-# Pattern ví dụ của R_OTP_REQUEST trong plan §3.10 (`kb/rules.yaml` chưa tồn tại; AI-23 sẽ viết bản thật).
-_R_OTP_REQUEST = re.compile(r"(cung cap|doc|gui|nhap)\W+(\w+\W+){0,3}(ma )?(otp|xac thuc|xac nhan|\[otp_\d+\])")
-# Bản phác theo mô tả ở docs/ai-viec-nghien-cuu-phu.md việc A: tin có mã kèm câu "không cung cấp mã cho bất kỳ ai".
-_R_OTP_GENUINE = re.compile(r"\[otp_\d+\].*(khong|tuyet doi khong)\W+(\w+\W+){0,3}(cung cap|chia se)\W+(\w+\W+){0,4}(bat ky|ai)")
-
-
-def test_r_otp_request_matches_on_token_not_on_digits() -> None:
-    scam = "Bác đọc mã 482913 cho cháu"
-    assert _R_OTP_REQUEST.search(_rule_text(scam)) is None  # trên chữ số gốc thì luật không thấy gì
-    assert _R_OTP_REQUEST.search(_rule_text(masked(scam))) is not None  # trên token thì khớp
-
-
-def test_r_otp_genuine_sees_token_next_to_the_warning_sentence() -> None:
-    sms = "Mã OTP của bạn là 482913. Tuyệt đối không chia sẻ mã này cho bất kỳ ai."
-    out = _rule_text(masked(sms))
-    assert "[otp_1]" in out
-    assert _R_OTP_GENUINE.search(out) is not None
-
-
-def test_r_otp_genuine_does_not_fire_on_plain_text_without_a_code() -> None:
-    assert _R_OTP_GENUINE.search(_rule_text(masked("Không chia sẻ mã này cho bất kỳ ai"))) is None
 
 
 # ------------------------------------------------------------------ không mẫu nào trong bộ eval lọt số điện thoại / CCCD

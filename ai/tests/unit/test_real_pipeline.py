@@ -138,8 +138,15 @@ def test_empty_model_ids_from_repo_config_gives_rules_only():
     """Cấu hình thật của repo chưa có model ID (chờ AI-02): pipeline vẫn trả Verdict, không raise."""
     p = build_pipeline("real", CONFIG_DIR, None, None)
     assert isinstance(p, P.RealPipeline)
-    v = p.analyze(bundle(SCAM), ctx())
+    v = p.analyze(bundle("Chúc mừng bác trúng thưởng, bấm vào link để nhận quà"), ctx())
     assert v.path == "rules_only" and v.outcome == "verdict"
+
+
+def test_factory_loads_kb_rules():
+    """``build_pipeline("real")`` nạp ``kb/rules.yaml``: tổ hợp công an + tài khoản an toàn đi fast path, không gọi LLM."""
+    v = build_pipeline("real", CONFIG_DIR, None, None).analyze(bundle(SCAM), ctx())
+    assert v.path == "fast" and v.level == "DANGEROUS" and v.versions["rules"].startswith("rules-")
+    assert {"R_AUTHORITY", "R_SAFE_ACCOUNT"} <= {s.code for s in v.signals}
 
 
 # ---------------------------------------------------------------- nhánh xã giao / không đọc được

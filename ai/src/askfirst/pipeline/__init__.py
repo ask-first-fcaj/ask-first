@@ -25,6 +25,10 @@ def build_pipeline(impl: str, config_dir: pathlib.Path, artifacts: ArtifactStore
         from askfirst.local_models.ocr import RapidOcr
         from askfirst.pipeline.judge import load_system_prompt
         from askfirst.pipeline.real import RealPipeline
+        from askfirst.pipeline.respond import KB_DIR
+        from askfirst.pipeline.signals import RuleEngine
         ocr = RapidOcr(artifacts, version=artifact_version(config_dir / "artifacts.yaml", "ocr"))
-        return RealPipeline(BedrockClient.from_file(config_dir / "models.yaml"), load_system_prompt(), ocr=ocr)
+        rules = RuleEngine.from_file(KB_DIR / "rules.yaml")
+        return RealPipeline(BedrockClient.from_file(config_dir / "models.yaml"), load_system_prompt(),
+                            rules=rules, rules_version=rules.version, ocr=ocr)
     raise ValueError(f"unknown PIPELINE_IMPL: {impl!r}")

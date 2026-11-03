@@ -69,5 +69,16 @@ def test_unknown_or_unconfigured_artifact(tmp_path) -> None:
     st = S3ArtifactStore("bkt", CONFIG, tmp_path, FakeS3({}))     # embedder còn là khung G0: version/files rỗng
     with pytest.raises(ArtifactError):
         st.path("embedder")
-    with pytest.raises(KeyError):
+    with pytest.raises(ArtifactError):
         st.path("khong_co")
+
+
+def test_failed_download_leaves_no_part_file(tmp_path) -> None:
+    class DropS3(FakeS3):
+        def download_file(self, bucket: str, key: str, filename: str) -> None:
+            pathlib.Path(filename).write_bytes(b"de")         # tải dở rồi đứt mạng
+            raise ConnectionError("reset")
+
+    with pytest.raises(ConnectionError):
+        store(tmp_path, DropS3(BLOBS)).path("ocr")
+    assert list((tmp_path / "tmp" / "ocr" / "v1").iterdir()) == []
