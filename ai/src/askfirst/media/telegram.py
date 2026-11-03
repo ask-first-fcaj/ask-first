@@ -2,8 +2,8 @@
 
 * Ảnh (`photo`, `document` có mime `image/*`) và voice/audio được tải bằng `getFile` + `/file/bot<token>/…`,
   song song tối đa 4 file, chỉ giữ `bytes` trong RAM: không ghi đĩa, không ghi S3.
-* Giới hạn **tổng thời gian**: mỗi file (getFile + tải) ≤ 10 giây, cả `build_bundle` ≤ `budget_s` (mặc định 20 giây,
-  INT-01 truyền theo `deadline_s`). Hết giờ thì dừng đọc giữa chừng. Có thể vượt mốc vài giây: mỗi lần chờ socket tối
+* Giới hạn **tổng thời gian**: mỗi file (getFile + tải) ≤ 10 giây, cả `build_bundle` ≤ `budget_s`. Handler truyền
+  `min(TOTAL_S, ctx.deadline_s - PIPELINE_RESERVE_S)` để chừa giờ cho OCR và LLM. Hết giờ thì dừng đọc giữa chừng. Có thể vượt mốc vài giây: mỗi lần chờ socket tối
   đa 3 giây, riêng bước mở kết nối (DNS, TLS) không bị cắt giữa chừng (đo thật: hạn 0,5 giây, dừng sau 1,9 giây).
 * URL của Bot API chứa bot token: **không** log, không đưa vào message của exception. Mọi lỗi tải (mạng, HTTP,
   `ok=false`, file > 20 MB, hết giờ, đọc token lỗi) đều thành `MediaDownloadError` chỉ ghi tên lớp lỗi; handler trả
@@ -28,7 +28,7 @@ from askfirst.domain import models as m
 API = "https://api.telegram.org"
 MAX_PARALLEL = 4
 TIMEOUT_S = 10                      # tổng thời gian cho một file: getFile + tải
-TOTAL_S = 20                        # tổng thời gian cho cả build_bundle khi không truyền budget_s
+TOTAL_S = 20                        # trần tổng thời gian cho cả build_bundle (handler cũng lấy làm trần)
 SOCKET_TIMEOUT_S = 3                # tối đa một lần chờ socket, để kiểm hạn tổng sau mỗi chunk
 CHUNK = 256 * 1024
 MAX_BYTES = 20 * 1024 * 1024        # Bot API getFile không cho tải file > 20 MB
