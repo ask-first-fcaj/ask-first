@@ -169,12 +169,11 @@ def test_render_error_is_fatal(monkeypatch: pytest.MonkeyPatch, op: str, case: s
     assert err(h.lambda_handler(req, None, runtime=rt(pipe))) == ("fatal", "render_failed")
 
 
-@pytest.mark.parametrize("impl,kind", [("real", "fatal"), ("bogus", "fatal")])
-def test_init_errors(monkeypatch: pytest.MonkeyPatch, impl: str, kind: str) -> None:
-    monkeypatch.setenv("PIPELINE_IMPL", impl)
+def test_unknown_impl_is_fatal_init_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PIPELINE_IMPL", "bogus")
     monkeypatch.setattr(h, "_RUNTIME", None)
     req, _ = fixture("analyze", "default")
-    assert err(h.lambda_handler(req)) == (kind, "init")
+    assert err(h.lambda_handler(req)) == ("fatal", "init")
 
 
 def test_transient_init_error_is_retryable(monkeypatch: pytest.MonkeyPatch) -> None:

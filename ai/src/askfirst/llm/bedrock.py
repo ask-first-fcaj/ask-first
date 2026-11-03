@@ -58,6 +58,9 @@ class BedrockClient:
             self.clients[role] = boto3.client("bedrock-runtime", config=cfg)
         return self.clients[role]
 
+    def model_id(self, role: str) -> str:
+        return self.config[role].get("model_id") or ""
+
     def max_attempts(self, role: str) -> int:
         return int(self.config[role].get("max_attempts", MAX_ATTEMPTS))
 
