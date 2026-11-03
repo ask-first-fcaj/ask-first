@@ -29,6 +29,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from askfirst.domain import models as m
+from askfirst.media.telegram import MediaDownloadError
 from askfirst.pipeline import build_pipeline
 from askfirst.pipeline.stub import bundle_from_items
 
@@ -39,10 +40,6 @@ OPS = ("analyze", "render_guardian_alerts", "render")
 CACHE_TTL_S = 24 * 3600
 
 BundleBuilder = Callable[[list[m.InboundMessage], m.SessionContext | None, m.Flags], m.Bundle]
-
-
-class MediaDownloadError(Exception):
-    """`media/telegram.py` (AI2) raise lỗi này khi getFile/tải file lỗi. Message KHÔNG được chứa URL hay token."""
 
 
 class _Fail(Exception):
@@ -81,8 +78,9 @@ def init_runtime(env: Mapping[str, str] = os.environ) -> Runtime:
     config_dir = pathlib.Path(env.get("CONFIG_DIR", "/var/task/config"))
     if impl == "stub":
         return Runtime(build_pipeline("stub", config_dir, _NoArtifacts(), _NoKV()), _stub_bundle, None)
-    # INT-01: RealPipeline cần media/telegram.build_bundle + S3ArtifactStore (AI2) và bảng DynamoDB (BE-03):
-    # build_pipeline("real", config_dir, S3ArtifactStore(...), DynamoKV(table, "URL#", "INTEL")),
+    # INT-01: RealPipeline cần bảng DynamoDB (BE-03):
+    # build_pipeline("real", config_dir, S3ArtifactStore(env["ARTIFACT_BUCKET"], config_dir / "artifacts.yaml"),
+    #                DynamoKV(table, "URL#", "INTEL")), TelegramMedia(ssm_token(env["BOT_TOKEN_PARAM"])).build_bundle,
     # cache=DynamoKV(table, "CACHE#", "VERDICT").
     return Runtime(build_pipeline(impl, config_dir, _NoArtifacts(), _NoKV()), _stub_bundle, None)
 

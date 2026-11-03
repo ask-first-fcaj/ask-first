@@ -1,0 +1,2 @@
+--- message 0 (silent=False) [ack: ✅ Tôi đã liên hệ]
+⚠️ <b>Lan</b> vừa hỏi Bot về một tin có nguy cơ lừa đảo (mức <b>NGHI NGỜ</b>) lúc 14:05 ngày 03/11. Hãy gọi cho Lan ngay.
