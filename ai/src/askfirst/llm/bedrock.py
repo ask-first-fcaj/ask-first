@@ -58,6 +58,15 @@ class BedrockClient:
             self.clients[role] = boto3.client("bedrock-runtime", config=cfg)
         return self.clients[role]
 
+    def max_attempts(self, role: str) -> int:
+        return int(self.config[role].get("max_attempts", MAX_ATTEMPTS))
+
+    def budget_s(self, role: str) -> float:
+        """Worst-case seconds one `converse(role)` can take: every attempt times out, plus the longest backoff between them.
+        Approximate (connect and read share `timeout_s`); the pipeline uses it to skip a model it has no time left for."""
+        n = self.max_attempts(role)
+        return self.config[role]["timeout_s"] * n + sum(min(BACKOFF_CAP_S, BACKOFF_BASE_S * 2**a) for a in range(1, n))
+
     def cost_usd(self, model_id: str, input_tokens: int, output_tokens: int) -> float:
         price = (self.config.get("pricing_usd_per_1m") or {}).get(model_id)
         if not price:
@@ -79,8 +88,9 @@ class BedrockClient:
         if extra_fields:
             req["additionalModelRequestFields"] = extra_fields
         client = self._client(role)
+        attempts = self.max_attempts(role)
         started = time.perf_counter()
-        for attempt in range(1, MAX_ATTEMPTS + 1):
+        for attempt in range(1, attempts + 1):
             try:
                 resp = client.converse(**req)
                 break
@@ -90,7 +100,7 @@ class BedrockClient:
                 code = e.response.get("Error", {}).get("Code", "Unknown")
                 if code not in RETRYABLE_CODES:
                     raise LLMError(code, retryable=False) from e
-            if attempt == MAX_ATTEMPTS:
+            if attempt == attempts:
                 raise LLMError(code, retryable=True)
             self.sleep(self.rand() * min(BACKOFF_CAP_S, BACKOFF_BASE_S * 2**attempt))  # full jitter
         latency_ms = int((time.perf_counter() - started) * 1000)
