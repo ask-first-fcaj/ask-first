@@ -2,7 +2,8 @@
 
 `path(name)` tải **lười** ở lần gọi đầu: `s3://<bucket>/<s3_prefix><file>` về `/tmp/artifacts/<name>/<version>/`, kiểm
 sha256 từng file, sai checksum thì xoá file và raise `ArtifactError`. File đã có sẵn và đúng checksum (container còn
-ấm) thì không tải lại. Mục chưa có `version`/`files` trong `artifacts.yaml` (khung G0) cũng raise `ArtifactError`.
+ấm) thì không tải lại. Tên không có trong `artifacts.yaml`, hoặc mục chưa có `version`/`files` (khung G0) cũng raise
+`ArtifactError`. File `.part` tải dở luôn bị xoá, kể cả khi `download_file` lỗi giữa chừng.
 """
 
 from __future__ import annotations
@@ -33,7 +34,9 @@ class S3ArtifactStore:
     def path(self, name: str) -> Path:
         if name in self._ready:
             return self._ready[name]
-        e = self.entries[name]
+        e = self.entries.get(name)
+        if e is None:
+            raise ArtifactError(f"{name}: không có trong artifacts.yaml")
         if not e.get("version") or not e.get("files"):
             raise ArtifactError(f"{name}: artifacts.yaml chưa có version/files")
         d = self.root / name / e["version"]
@@ -46,10 +49,12 @@ class S3ArtifactStore:
             if f.exists() and _sha256(f) == sha.lower():
                 continue
             part = f.with_name(f.name + ".part")
-            self._s3.download_file(self.bucket, e["s3_prefix"] + fname, str(part))
-            if _sha256(part) != sha.lower():
-                part.unlink()
-                raise ArtifactError(f"{name}/{fname}: sai sha256")
-            part.replace(f)
+            try:
+                self._s3.download_file(self.bucket, e["s3_prefix"] + fname, str(part))
+                if _sha256(part) != sha.lower():
+                    raise ArtifactError(f"{name}/{fname}: sai sha256")
+                part.replace(f)
+            finally:
+                part.unlink(missing_ok=True)
         self._ready[name] = d
         return d
