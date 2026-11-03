@@ -16,7 +16,7 @@ def artifact_version(manifest: pathlib.Path, name: str) -> str:
 def build_pipeline(impl: str, config_dir: pathlib.Path, artifacts: ArtifactStore, url_cache: KVCache) -> Pipeline:
     """impl = "stub" | "real". Called ONCE at cold start; the object is reused across invocations.
 
-    `artifacts` feeds the OCR model (AI-26, loaded lazily on the first image); `url_cache` (URL intel, AI-24a) is not used yet."""
+    `artifacts` feeds the OCR model (AI-26, loaded lazily on the first image); `url_cache` (AI-24b, network URL intel) is not used yet."""
     if impl == "stub":
         return StubPipeline()
     if impl == "real":
@@ -25,10 +25,10 @@ def build_pipeline(impl: str, config_dir: pathlib.Path, artifacts: ArtifactStore
         from askfirst.local_models.ocr import RapidOcr
         from askfirst.pipeline.judge import load_system_prompt
         from askfirst.pipeline.real import RealPipeline
-        from askfirst.pipeline.respond import KB_DIR
+        from askfirst.pipeline.respond import KB_DIR, url_intel
         from askfirst.pipeline.signals import RuleEngine
         ocr = RapidOcr(artifacts, version=artifact_version(config_dir / "artifacts.yaml", "ocr"))
         rules = RuleEngine.from_file(KB_DIR / "rules.yaml")
         return RealPipeline(BedrockClient.from_file(config_dir / "models.yaml"), load_system_prompt(),
-                            rules=rules, rules_version=rules.version, ocr=ocr)
+                            rules=rules, rules_version=rules.version, url_intel=url_intel(), ocr=ocr)
     raise ValueError(f"unknown PIPELINE_IMPL: {impl!r}")

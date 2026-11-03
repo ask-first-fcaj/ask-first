@@ -19,6 +19,7 @@ dependencies = [
     { name = "boto3" },
     { name = "jinja2" },
     { name = "onnxruntime" },
+    { name = "publicsuffixlist" },
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "rapidocr" },
@@ -35,6 +36,7 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.43.118" },
     { name = "jinja2", specifier = ">=3.1" },
     { name = "onnxruntime", specifier = "==1.31.0" },
+    { name = "publicsuffixlist", specifier = ">=1.0.2" },
     { name = "pydantic", specifier = ">=2.11" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "rapidocr", specifier = "==3.10.0" },
@@ -638,6 +640,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/fc/1b/dcc64f358fcb51811b58ae40b3d28f820725f116d86487cc20bd4b130701/protobuf-7.36.2-cp310-abi3-win32.whl", hash = "sha256:912c1221170e16c08d1f086762f563dd61ff83c18b5fa6652952dfaded66f728", size = 442998, upload-time = "2026-09-17T20:07:55.826Z" },
     { url = "https://files.pythonhosted.org/packages/8a/55/b77bda4e5e5f5971fb51b07663694690e9afdb9402136c16a522bd621cad/protobuf-7.36.2-cp310-abi3-win_amd64.whl", hash = "sha256:a300819d441e078a5608c0d3c709796bb548136058fda017ae51d425b44fd353", size = 456514, upload-time = "2026-09-17T20:07:57.188Z" },
     { url = "https://files.pythonhosted.org/packages/e4/04/d52c7016b04b6c5108f26691f9d33ec82a9b65d041f1a9c771137693d618/protobuf-7.36.2-py3-none-any.whl", hash = "sha256:bdb3a345d48db958e6ce1f18e508beb0cc981d64f24088427549c866cd039f1e", size = 179806, upload-time = "2026-09-17T20:07:58.211Z" },
+]
+
+[[package]]
+name = "publicsuffixlist"
+version = "1.1.2.20261101"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/68/0d29fc72696e19bcfc8be2f13e0f44ec125751f4324900c499d058f07ba1/publicsuffixlist-1.1.2.20261101.tar.gz", hash = "sha256:1ff49a8d6fae759a90cda23eb2e972d6f28f378049f9d1e51df8ffc3cabfed87", size = 106527, upload-time = "2026-11-01T10:20:28.129Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/36/b7/de6244c5941d8364f55d7f5af7e779fd10e6e737be27116fd78dfaa87c85/publicsuffixlist-1.1.2.20261101-py3-none-any.whl", hash = "sha256:46fe6b57d992baad7b1914f21e886fe36a2ffd95d84500bfdebc95ca4371eb39", size = 109279, upload-time = "2026-11-01T10:20:26.723Z" },
 ]
 
 [[package]]

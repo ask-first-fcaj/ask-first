@@ -28,6 +28,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from markupsafe import Markup
 
 from askfirst.domain import models as m
+from askfirst.pipeline.url_intel import UrlIntel
 
 KB_DIR = Path(os.environ.get("ASKFIRST_KB_DIR") or Path(__file__).resolve().parents[4] / "kb")
 
@@ -99,9 +100,9 @@ def _scenarios() -> dict[str, dict]:
 
 
 @cache
-def _official() -> tuple[str, ...]:
-    allow = _yaml("allowlist.yaml")
-    return tuple([d["domain"] for d in allow["domains"]] + list(allow.get("suffixes") or []))
+def url_intel() -> UrlIntel:
+    """Một nơi duy nhất đọc allowlist/brands: ``is_official`` ở đây và URL intel của pipeline dùng chung."""
+    return UrlIntel.from_kb(KB_DIR)
 
 
 @cache
@@ -111,10 +112,15 @@ def signal_texts() -> dict[str, str]:
 
 
 def is_official(url: str) -> bool:
-    """URL ``https`` có host thuộc allowlist (đúng tên miền hoặc subdomain của nó, so theo ranh giới nhãn)."""
-    parts = urlsplit(url)
-    host = (parts.hostname or "").lower()
-    return parts.scheme == "https" and any(host == d or host.endswith("." + d) for d in _official())
+    """URL ``https`` có host chính thức theo ``UrlIntel.official_host`` (allowlist, subdomain của nó, ``.gov.vn``).
+
+    Đòi ``https`` vì dùng để hạ điểm (fuse) và hiện ``<a href>``; tín hiệu ``U_OFFICIAL`` thì chỉ xét host."""
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname or ""
+    except ValueError:   # URL đã defang ("v-acb[.]com") hoặc IPv6 hỏng: urlsplit raise "Invalid IPv6 URL"
+        return False
+    return parts.scheme == "https" and bool(host) and url_intel().official_host(host)
 
 
 def visible_len(text_html: str) -> int:

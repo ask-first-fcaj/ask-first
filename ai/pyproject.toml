@@ -7,6 +7,7 @@ dependencies = [
     "boto3>=1.43.118",
     "jinja2>=3.1",
     "onnxruntime==1.31.0",   # OCR (AI-26): pin đúng bản đã đo ở ADR-003
+    "publicsuffixlist>=1.0.2",
     "pydantic>=2.11",
     "pyyaml>=6.0.3",
     "rapidocr==3.10.0",
