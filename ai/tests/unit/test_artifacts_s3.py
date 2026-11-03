@@ -66,9 +66,9 @@ def test_corrupt_local_file_is_replaced(tmp_path) -> None:
 
 
 def test_unknown_or_unconfigured_artifact(tmp_path) -> None:
-    st = S3ArtifactStore("bkt", CONFIG, tmp_path, FakeS3({}))     # khung G0: version/files còn rỗng
+    st = S3ArtifactStore("bkt", CONFIG, tmp_path, FakeS3({}))     # embedder còn là khung G0: version/files rỗng
     with pytest.raises(ArtifactError):
-        st.path("ocr")
+        st.path("embedder")
     with pytest.raises(ArtifactError):
         st.path("khong_co")
 
