@@ -1,0 +1,28 @@
+{#- Câu giải thích theo mã dấu hiệu (ARCH §6.4, §6.8). Dùng cho fast path, verdict lấy từ cache (explanation rỗng)
+    và mức chia sẻ 2 của cảnh báo người thân. Bản nháp của AI1, câu chữ chốt theo SH-08.
+    Không ghi tên miền hay số điện thoại ở đây; mã không có trong bảng thì Respond bỏ qua. -#}
+{% set SIGNALS = {
+  "R_OTP_REQUEST": "Tin đòi đọc hoặc gửi mã OTP. Ngân hàng và công an không bao giờ hỏi mã này.",
+  "R_SAFE_ACCOUNT": "Tin bảo chuyển tiền vào \"tài khoản an toàn\" hoặc để \"chứng minh tài chính\". Không có cơ quan nào làm vậy.",
+  "R_SCREEN_SHARE": "Tin bảo chia sẻ màn hình hoặc cài phần mềm điều khiển từ xa. Kẻ gian sẽ thấy hết mọi thứ trên máy.",
+  "R_INSTALL_APP": "Tin bảo cài ứng dụng theo hướng dẫn. Ứng dụng lạ có thể chiếm điện thoại và tài khoản ngân hàng.",
+  "R_SECRECY": "Tin dặn giữ bí mật, không kể với người nhà. Đây là dấu hiệu lừa đảo rất thường gặp.",
+  "R_AUTHORITY": "Người nhắn xưng là công an, viện kiểm sát hoặc tòa án. Các cơ quan này không làm việc qua điện thoại hay tin nhắn.",
+  "R_MONEY_TRANSFER": "Tin đòi chuyển khoản hoặc nạp tiền.",
+  "R_URGENCY": "Tin hối thúc làm ngay, dọa khóa tài khoản hoặc phạt.",
+  "R_TRAFFIC_FINE": "Tin báo phạt nguội kèm link. Phạt nguội thật không gửi link nộp tiền qua tin nhắn.",
+  "R_PRIZE": "Tin báo trúng thưởng hoặc quà tri ân bất ngờ.",
+  "R_TASK_JOB": "Tin mời làm nhiệm vụ hoặc việc nhẹ lương cao.",
+  "R_RECOVERY": "Tin hứa lấy lại tiền đã bị lừa. Đây thường là lừa lần hai.",
+  "R_AI_INSTRUCTION": "Tin có câu lệnh nhằm đánh lừa Bot.",
+  "G_PROMPT_ATTACK": "Tin có câu lệnh nhằm đánh lừa Bot.",
+  "U_TYPOSQUAT": "Link giả tên trang chính thức, chỉ khác vài chữ.",
+  "U_TEXT_LINK_MISMATCH": "Chữ hiện ra trong tin khác với trang mà link thật sự mở.",
+  "U_PUNYCODE": "Link dùng chữ trông giống chữ thường để giả trang thật.",
+  "U_SHORTENER": "Link bị rút gọn nên không thấy trang thật phía sau.",
+  "U_NEW_DOMAIN": "Trang web mới được tạo gần đây.",
+  "U_IP_URL": "Link là một dãy số, không phải tên trang web đàng hoàng.",
+  "U_APK_LINK": "Link tải thẳng tệp cài ứng dụng (.apk).",
+  "U_SAFEBROWSING_HIT": "Link nằm trong danh sách trang nguy hiểm.",
+  "U_GOV_CLAIM_MISMATCH": "Tin nhắc tới cơ quan nhà nước hoặc ngân hàng nhưng không có link chính thức nào.",
+} %}
