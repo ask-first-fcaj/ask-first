@@ -155,6 +155,15 @@ def _card(verdict: m.Verdict) -> dict | None:
     return None if verdict.group in ("N0", "OTHER") else _scenarios().get(verdict.scenario)
 
 
+def scenario_citations(group: str, scenario: str) -> list[m.Citation]:
+    """Nguồn cảnh báo của thẻ kịch bản (``kb/scenarios.yaml``) thành ``Verdict.citations``; N0/OTHER không có nguồn."""
+    if group in ("N0", "OTHER"):
+        return []
+    card = _scenarios().get(scenario) or {}
+    return [m.Citation(title=card["title"], url=s["url"], publisher=s.get("publisher", ""), date=str(s.get("date") or ""))
+            for s in card.get("sources") or []]
+
+
 def _reasons(signals: list[m.Signal]) -> list[dict]:
     """Dấu hiệu có câu giải thích, mạnh trước (luật cứng, trọng số cao), mỗi mã một lần."""
     texts = signal_texts()
