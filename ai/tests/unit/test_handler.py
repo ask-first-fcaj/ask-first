@@ -1,6 +1,7 @@
 import json
 import logging
 import pathlib
+import time
 
 import pytest
 
@@ -60,7 +61,7 @@ class Pipe(StubPipeline):
                             | self.update)
 
 
-def stub_bundle(items, session, flags):
+def stub_bundle(items, session, flags, budget_s):
     return bundle_from_items(items, session)
 
 
@@ -136,17 +137,38 @@ def test_render_guardian_alerts_needs_a_guardian() -> None:
 # ---------- media / pipeline errors ----------
 
 def test_media_download_error_is_retryable() -> None:
-    def build(items, session, flags):
+    def build(items, session, flags, budget_s):
         raise h.MediaDownloadError("getFile failed")
     req, _ = fixture("analyze", "photo")
     assert err(h.lambda_handler(req, None, runtime=rt(build=build))) == ("retryable", "telegram_download")
 
 
 def test_other_bundle_error_is_fatal_internal() -> None:
-    def build(items, session, flags):
+    def build(items, session, flags, budget_s):
         raise KeyError("bug")
     req, _ = fixture("analyze", "photo")
     assert err(h.lambda_handler(req, None, runtime=rt(build=build))) == ("fatal", "internal")
+
+
+@pytest.mark.parametrize(("deadline_s", "budget"), [(85, 20), (45, 10), (20, 0)])
+def test_media_budget_leaves_time_for_pipeline(deadline_s: float, budget: float) -> None:
+    seen: dict[str, float] = {}
+
+    def build(items, session, flags, budget_s):
+        seen["budget"] = budget_s
+        time.sleep(0.05)
+        return bundle_from_items(items, session)
+
+    class SeeDeadline(Pipe):
+        def analyze(self, bundle: m.Bundle, ctx: m.AnalyzeContext) -> m.Verdict:
+            seen["deadline"] = ctx.deadline_s
+            return super().analyze(bundle, ctx)
+
+    req, _ = fixture("analyze", "photo")
+    req["ctx"]["deadline_s"] = deadline_s
+    assert h.lambda_handler(req, None, runtime=rt(SeeDeadline(), build=build))["error"] is None
+    assert seen["budget"] == budget
+    assert seen["deadline"] <= deadline_s - 0.03   # đã trừ thời gian tải media (~0,05 s; đồng hồ Windows thô ~16 ms)
 
 
 def test_retryable_llm_error_is_retryable() -> None:
@@ -278,7 +300,7 @@ def test_turn1_followup_is_kept() -> None:
 # ---------- logs ----------
 
 def test_log_has_no_content_or_url(caplog: pytest.LogCaptureFixture) -> None:
-    def build(items, session, flags):
+    def build(items, session, flags, budget_s):
         raise h.MediaDownloadError(TG_URL)          # kể cả khi AI2 lỡ nhét URL vào message
     req, _ = fixture("analyze", "otp")
     with caplog.at_level(logging.INFO, logger="askfirst.handler"):
