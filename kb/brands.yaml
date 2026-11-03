@@ -4,7 +4,8 @@
 #  - `tokens`: chữ thường, KHÔNG dấu, không khoảng trắng.
 #  - `official_domains`: mỗi tên miền phải nằm trong kb/allowlist.yaml (scripts/validate_kb.py kiểm tra chéo).
 #  - Cách AI-24a (ai/src/askfirst/pipeline/url_intel.py) dùng token: token < 5 ký tự (mb, vib, acb, ocb, msb, tcb, vcb, dvc, evn…) chỉ khớp khi bằng đúng
-#    một phần của host ("mb-bank.top"); token ≥ 5 ký tự khớp khi host chứa nó; token ≥ 6 ký tự còn so Levenshtein ≤ 1–2.
+#    một phần của nhãn ("mb-bank.top"); token ≥ 5 ký tự khớp khi nhãn chứa nó; token ≥ 6 ký tự còn so Levenshtein ≤ 1–2. Khớp kèm dấu hiệu giả
+#    (gạch nối, subdomain của tên miền lạ, viết gần đúng, TLD rẻ…) ra U_TYPOSQUAT; khớp đúng tên mà tên miền chưa có trong allowlist chỉ ra U_BRAND_UNVERIFIED.
 #    Không đặt token là từ thông dụng: đã bỏ `thue` ("thuê xe", "thuế") vì `thue-xe-tu-lai.vn` bị báo nhầm là giả trang Thuế.
 #  - Viettel Post: SMS thật dùng domain vtp.vn nhưng máy kiểm chưa mở được (HTTP 503) nên chưa vào allowlist; vì vậy chưa đặt token `vtp`, tránh báo nhầm SMS thật là typosquat. Thêm lại cả hai khi đã xác minh vtp.vn.
 #  - Danh sách là điểm khởi đầu từ các thương hiệu xuất hiện trong bài cảnh báo (Cổng dịch vụ công, VNeID, CSGT, Techcombank, Vietcombank, Viettel Post...)

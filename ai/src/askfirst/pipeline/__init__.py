@@ -16,10 +16,9 @@ def build_pipeline(impl: str, config_dir: pathlib.Path, artifacts: ArtifactStore
         from askfirst.llm.bedrock import BedrockClient
         from askfirst.pipeline.judge import load_system_prompt
         from askfirst.pipeline.real import RealPipeline
-        from askfirst.pipeline.respond import KB_DIR
+        from askfirst.pipeline.respond import KB_DIR, url_intel
         from askfirst.pipeline.signals import RuleEngine
-        from askfirst.pipeline.url_intel import UrlIntel
         rules = RuleEngine.from_file(KB_DIR / "rules.yaml")
         return RealPipeline(BedrockClient.from_file(config_dir / "models.yaml"), load_system_prompt(),
-                            rules=rules, rules_version=rules.version, url_intel=UrlIntel.from_kb(KB_DIR))
+                            rules=rules, rules_version=rules.version, url_intel=url_intel())
     raise ValueError(f"unknown PIPELINE_IMPL: {impl!r}")
