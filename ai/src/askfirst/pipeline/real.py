@@ -2,8 +2,9 @@
 
 Ghép các stage đã có (normalize/signals AI-23, mask AI-22, judge AI-04/AI-07, fuse AI-05, respond AI-06).
 ``rules(masked_text, urls) -> list[Signal]`` truyền vào (``build_pipeline`` dùng ``signals.RuleEngine`` trên
-``kb/rules.yaml``; test truyền ``no_rules``); AI-24a (URL intel) cắm thêm vào đây. ``rules_version`` ghi vào
-``Verdict.versions["rules"]``.
+``kb/rules.yaml``; test truyền ``no_rules``); ``rules_version`` ghi vào ``Verdict.versions["rules"]``.
+``url_intel(urls, links) -> list[Signal]`` (AI-24a, ``url_intel.UrlIntel``) chấm URL gốc (không mask) và các
+``text_link`` (chữ hiển thị, URL thật); mặc định ``no_url_intel``.
 
 Chưa có: OCR/ASR (AI-26, ảnh/voice không kèm chữ trả ``unreadable``), Retrieve (AI-24b), Guard (AI-08), ghép câu trả lời
 lượt hỏi thêm vào prompt (AI-12, hoãn; lượt 2 chỉ chặn hỏi tiếp).
@@ -31,6 +32,7 @@ _TRIM = " \t\n.!?…"
 _URL_TAIL = ".,;:!?)]…"
 
 Rules = Callable[[str, list[str]], list[m.Signal]]
+UrlSignals = Callable[[list[str], list[tuple[str, str]]], list[m.Signal]]
 
 
 class JudgeLLM(J.LLM, Protocol):
@@ -45,6 +47,10 @@ def no_rules(masked_text: str, urls: list[str]) -> list[m.Signal]:
     return []
 
 
+def no_url_intel(urls: list[str], links: list[tuple[str, str]]) -> list[m.Signal]:
+    return []
+
+
 def _utf16_slice(text: str, offset: int, length: int) -> str:
     """``offset``/``length`` của entity Telegram tính theo đơn vị UTF-16."""
     return text.encode("utf-16-le")[2 * offset: 2 * (offset + length)].decode("utf-16-le", errors="ignore")
@@ -54,6 +60,12 @@ def entity_urls(texts: list[m.TextPart]) -> list[str]:
     """URL từ ``entities``: ``url`` là đoạn chữ trong tin, ``text_link`` là URL thật (không phải chữ hiển thị, ARCH §6.4)."""
     return [e.url if e.kind == "text_link" and e.url else _utf16_slice(t.text, e.offset, e.length)
             for t in texts for e in t.entities]
+
+
+def text_links(texts: list[m.TextPart]) -> list[tuple[str, str]]:
+    """``(chữ hiển thị, URL thật)`` của các entity ``text_link``, cho ``U_TEXT_LINK_MISMATCH``."""
+    return [(_utf16_slice(t.text, e.offset, e.length), e.url) for t in texts for e in t.entities
+            if e.kind == "text_link" and e.url]
 
 
 def extract_urls(text: str, texts: list[m.TextPart]) -> list[str]:
@@ -73,12 +85,13 @@ def _ms(start: float) -> int:
 
 class RealPipeline:
     def __init__(self, llm: JudgeLLM, system_prompt: str, *, normalize: Callable[[str], str] = default_normalize,
-                 rules: Rules = no_rules, rules_version: str = "none", roles: tuple[str, str] = ("judge", "backup"),
-                 thresholds: F.Thresholds = F.DEFAULT_THRESHOLDS) -> None:
+                 rules: Rules = no_rules, rules_version: str = "none", url_intel: UrlSignals = no_url_intel,
+                 roles: tuple[str, str] = ("judge", "backup"), thresholds: F.Thresholds = F.DEFAULT_THRESHOLDS) -> None:
         self.llm = llm
         self.system_prompt = system_prompt
         self.normalize = normalize
         self.rules = rules
+        self.url_intel = url_intel
         self.roles = roles
         self.thresholds = thresholds
         self.versions = {"contract": m.CONTRACT_VERSION, "pipeline": "real", "prompt": J.PROMPT_VERSION,
@@ -110,7 +123,7 @@ class RealPipeline:
         masked = mask(text).text
         urls = extract_urls(text, bundle.texts)
         t = time.perf_counter()
-        signals = self.rules(masked, urls)
+        signals = self.rules(masked, urls) + self.url_intel(urls, text_links(bundle.texts))
         latency = {"rules": _ms(t)}
 
         res = J.JudgeResult(None)

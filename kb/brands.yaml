@@ -3,7 +3,9 @@
 # Quy ước:
 #  - `tokens`: chữ thường, KHÔNG dấu, không khoảng trắng.
 #  - `official_domains`: mỗi tên miền phải nằm trong kb/allowlist.yaml (scripts/validate_kb.py kiểm tra chéo).
-#  - Token rất ngắn hoặc là từ thông dụng (mb, vib, acb, ocb, msb, tcb, vcb, dvc, thue) dễ khớp nhầm khi so Levenshtein: AI-24a nên bắt buộc khớp nguyên token hoặc đặt độ dài tối thiểu.
+#  - Cách AI-24a (ai/src/askfirst/pipeline/url_intel.py) dùng token: token < 5 ký tự (mb, vib, acb, ocb, msb, tcb, vcb, dvc, evn…) chỉ khớp khi bằng đúng
+#    một phần của host ("mb-bank.top"); token ≥ 5 ký tự khớp khi host chứa nó; token ≥ 6 ký tự còn so Levenshtein ≤ 1–2.
+#    Không đặt token là từ thông dụng: đã bỏ `thue` ("thuê xe", "thuế") vì `thue-xe-tu-lai.vn` bị báo nhầm là giả trang Thuế.
 #  - Viettel Post: SMS thật dùng domain vtp.vn nhưng máy kiểm chưa mở được (HTTP 503) nên chưa vào allowlist; vì vậy chưa đặt token `vtp`, tránh báo nhầm SMS thật là typosquat. Thêm lại cả hai khi đã xác minh vtp.vn.
 #  - Danh sách là điểm khởi đầu từ các thương hiệu xuất hiện trong bài cảnh báo (Cổng dịch vụ công, VNeID, CSGT, Techcombank, Vietcombank, Viettel Post...)
 #    và nhóm cơ quan/ngân hàng/ví/sàn lớn. Chưa phủ hết.
@@ -15,7 +17,7 @@
 - {name: "Cảnh sát giao thông", tokens: [csgt, canhsatgiaothong], official_domains: [csgt.bocongan.gov.vn, csgt.vn]}
 - {name: "Cục Cảnh sát QLHC về TTXH", tokens: [canhsatquanlyhanhchinh], official_domains: [canhsatquanlyhanhchinh.gov.vn]}
 - {name: "Bảo hiểm xã hội", tokens: [baohiemxahoi, bhxh], official_domains: [baohiemxahoi.gov.vn]}
-- {name: "Thuế", tokens: [thue, thuedientu, gdt], official_domains: [gdt.gov.vn, thuedientu.gdt.gov.vn]}
+- {name: "Thuế", tokens: [thuedientu, gdt], official_domains: [gdt.gov.vn, thuedientu.gdt.gov.vn]}
 # Ngân hàng
 - {name: "Vietcombank", tokens: [vietcombank, vcb], official_domains: [vietcombank.com.vn]}
 - {name: "BIDV", tokens: [bidv], official_domains: [bidv.com.vn]}

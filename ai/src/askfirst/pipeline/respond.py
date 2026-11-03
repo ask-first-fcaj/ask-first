@@ -112,8 +112,11 @@ def signal_texts() -> dict[str, str]:
 
 def is_official(url: str) -> bool:
     """URL ``https`` có host thuộc allowlist (đúng tên miền hoặc subdomain của nó, so theo ranh giới nhãn)."""
-    parts = urlsplit(url)
-    host = (parts.hostname or "").lower()
+    try:
+        parts = urlsplit(url)
+        host = (parts.hostname or "").lower()
+    except ValueError:   # URL đã defang ("v-acb[.]com") hoặc IPv6 hỏng: urlsplit raise "Invalid IPv6 URL"
+        return False
     return parts.scheme == "https" and any(host == d or host.endswith("." + d) for d in _official())
 
 
