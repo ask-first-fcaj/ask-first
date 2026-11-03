@@ -18,22 +18,26 @@ def msg(kind: str, text: str | None = None, media: dict | None = None, **kw) -> 
 
 
 class FakeTelegram:
-    """getFile trả file_path = "<file_id>.<ext>"; nội dung file = b"data:<file_id>"."""
+    """getFile trả file_path = "<file_id>.<ext>"; nội dung file = b"data:<file_id>". Quá `deadline` thì raise như http_get."""
 
     def __init__(self, ext: dict[str, str] | None = None, fail: str | None = None, delay: float = 0.0) -> None:
         self.ext, self.fail, self.delay = ext or {}, fail, delay
         self.urls: list[str] = []
+        self.deadlines: list[float] = []
         self.active = self.peak = 0
         self.lock = threading.Lock()
 
-    def __call__(self, url: str) -> bytes:
+    def __call__(self, url: str, deadline: float) -> bytes:
         assert TOKEN in url
         with self.lock:
             self.urls.append(url)
+            self.deadlines.append(deadline)
             self.active += 1
             self.peak = max(self.peak, self.active)
         try:
             time.sleep(self.delay)
+            if time.monotonic() > deadline:
+                raise TimeoutError("hết giờ")
             if "/getFile?" in url:
                 fid = url.split("file_id=")[1]
                 if fid == self.fail:
@@ -113,7 +117,7 @@ def test_download_error_hides_url_and_token() -> None:
 @pytest.mark.parametrize("body", [b'{"ok": false, "description": "file is too big"}', b"<html>", b'{"ok": true, "result": {}}'])
 def test_bad_getfile_response_is_download_error(body: bytes) -> None:
     with pytest.raises(tg.MediaDownloadError):
-        tg.TelegramMedia(lambda: TOKEN, lambda url: body).build_bundle([msg("photo", None, media("p"))], None, m.Flags())
+        tg.TelegramMedia(lambda: TOKEN, lambda url, deadline: body).build_bundle([msg("photo", None, media("p"))], None, m.Flags())
 
 
 def test_token_error_is_download_error() -> None:
@@ -123,20 +127,61 @@ def test_token_error_is_download_error() -> None:
         tg.TelegramMedia(boom, FakeTelegram()).build_bundle([msg("photo", None, media("p"))], None, m.Flags())
 
 
+class Stream:
+    """Response giả: trả mãi các chunk `n` byte, mỗi lần đọc chờ `delay` giây."""
+
+    def __init__(self, delay: float = 0.0) -> None:
+        self.delay, self.timeout = delay, None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self, n: int) -> bytes:
+        time.sleep(self.delay)
+        return b"x" * n
+
+
 def test_http_get_rejects_files_over_20mb(monkeypatch: pytest.MonkeyPatch) -> None:
-    class Resp:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-        def read(self, n: int) -> bytes:
-            return b"x" * n
-
-    monkeypatch.setattr(tg.urllib.request, "urlopen", lambda url, timeout: Resp())
+    monkeypatch.setattr(tg.urllib.request, "urlopen", lambda url, timeout: Stream())
     with pytest.raises(ValueError):
-        tg.http_get("https://api.telegram.org/file/botX/big.jpg")
+        tg.http_get("https://api.telegram.org/file/botX/big.jpg", time.monotonic() + 60)
+
+
+def test_http_get_stops_at_total_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    s = Stream(delay=0.02)                     # mỗi chunk đều về kịp timeout socket, nhưng tổng thì quá hạn
+    def urlopen(url, timeout):
+        s.timeout = timeout
+        return s
+    monkeypatch.setattr(tg.urllib.request, "urlopen", urlopen)
+    started = time.monotonic()
+    with pytest.raises(TimeoutError):
+        tg.http_get("https://api.telegram.org/file/botX/slow.ogg", started + 0.1)
+    assert time.monotonic() - started < 0.5 and s.timeout <= tg.SOCKET_TIMEOUT_S
+
+
+def test_http_get_past_deadline_does_not_connect(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tg.urllib.request, "urlopen", lambda url, timeout: pytest.fail("không được mở kết nối"))
+    with pytest.raises(TimeoutError):
+        tg.http_get("https://api.telegram.org/file/botX/a.jpg", time.monotonic() - 1)
+
+
+@pytest.mark.parametrize("budget_s,limit", [(60, tg.TIMEOUT_S), (2, 2)])
+def test_file_deadline_is_min_of_ten_seconds_and_budget(budget_s: float, limit: float) -> None:
+    fake = FakeTelegram()
+    started = time.monotonic()
+    tg.TelegramMedia(lambda: TOKEN, fake).build_bundle([msg("photo", None, media("a"))], None, m.Flags(), budget_s=budget_s)
+    assert len(fake.deadlines) == 2 and all(started + limit - 1 < d <= time.monotonic() + limit for d in fake.deadlines)
+
+
+def test_total_budget_exceeded_is_download_error() -> None:
+    items = [msg("photo", None, media(f"p{i}")) for i in range(6)]   # 2 lượt song song × 2 request × 0.05 s > 0.15 s
+    started = time.monotonic()
+    with pytest.raises(tg.MediaDownloadError):
+        tg.TelegramMedia(lambda: TOKEN, FakeTelegram(delay=0.05)).build_bundle(items, None, m.Flags(), budget_s=0.15)
+    assert time.monotonic() - started < 1
 
 
 def test_handler_maps_media_error_to_retryable() -> None:

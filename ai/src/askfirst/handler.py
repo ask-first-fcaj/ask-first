@@ -29,7 +29,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from askfirst.domain import models as m
-from askfirst.media.telegram import MediaDownloadError
+from askfirst.media.telegram import TOTAL_S, MediaDownloadError
 from askfirst.pipeline import build_pipeline
 from askfirst.pipeline.stub import bundle_from_items
 
@@ -38,8 +38,11 @@ log.setLevel(logging.INFO)
 
 OPS = ("analyze", "render_guardian_alerts", "render")
 CACHE_TTL_S = 24 * 3600
+# Chừa cho pipeline sau khi tải media: judge (8 s × 2 lần + backoff) + backup 12 s theo models.yaml + 5 s lề của deadline_s.
+PIPELINE_RESERVE_S = 35
 
-BundleBuilder = Callable[[list[m.InboundMessage], m.SessionContext | None, m.Flags], m.Bundle]
+# (items, session, flags, budget_s): budget_s = tổng số giây được dùng để tải media.
+BundleBuilder = Callable[[list[m.InboundMessage], m.SessionContext | None, m.Flags, float], m.Bundle]
 
 
 class _Fail(Exception):
@@ -68,7 +71,7 @@ class _NoKV:
         pass
 
 
-def _stub_bundle(items: list[m.InboundMessage], session: m.SessionContext | None, flags: m.Flags) -> m.Bundle:
+def _stub_bundle(items: list[m.InboundMessage], session: m.SessionContext | None, flags: m.Flags, budget_s: float) -> m.Bundle:
     return bundle_from_items(items, session)   # stub không tải media (plan §3.5)
 
 
@@ -117,8 +120,10 @@ def _cache_get(cache: m.KVCache, key: str) -> m.Verdict | None:
 
 def _analyze(event: dict, rt: Runtime, info: dict) -> m.AiResponse:
     req: m.AnalyzeRequest = _validate(m.AnalyzeRequest, event)
+    started = time.monotonic()
+    budget_s = max(0.0, min(TOTAL_S, req.ctx.deadline_s - PIPELINE_RESERVE_S))
     try:
-        bundle = rt.build_bundle(req.items, req.session, req.ctx.flags)
+        bundle = rt.build_bundle(req.items, req.session, req.ctx.flags, budget_s)
     except MediaDownloadError:
         raise _Fail("retryable", "telegram_download") from None
 
@@ -134,7 +139,9 @@ def _analyze(event: dict, rt: Runtime, info: dict) -> m.AiResponse:
             return m.AiResponse(op="analyze", analyze=m.AnalyzeResult(verdict=hit.model_copy(update={"path": "cache"}), cache_hit=True))
 
     try:
-        verdict = rt.pipeline.analyze(bundle, req.ctx)
+        # deadline_s tính từ lúc BE gửi: trừ thời gian đã tải media để pipeline không tưởng còn nguyên hạn.
+        ctx = req.ctx.model_copy(update={"deadline_s": req.ctx.deadline_s - (time.monotonic() - started)})
+        verdict = rt.pipeline.analyze(bundle, ctx)
     except Exception as e:  # noqa: BLE001
         if getattr(e, "retryable", False):
             raise _Fail("retryable", "llm_throttled", type(e).__name__) from None
