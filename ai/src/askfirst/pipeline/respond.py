@@ -202,13 +202,15 @@ def render(verdict: m.Verdict, ctx: m.RenderContext) -> m.ReplyPlan:
     card = _card(verdict)
     reasons = _reasons(verdict.signals) if level != "LOW_RISK" else []
     disclaimer = _render("verdict/disclaimer.j2")
+    # Báo bảo trì cả khi LLM lỗi (path rules_only), không chỉ khi Java bật kill switch (ARCH §5.8, §6.7; AI-07).
+    maintenance = ctx.maintenance or verdict.path == "rules_only"
 
     def conclusion_with(lead: str) -> str:
         return _render(
             "verdict/conclusion.j2", **base, level=level, lead=lead, actions=verdict.risky_actions,
             scenario_title=card["title"] if card else "",
             otp_genuine=verdict.group == "N0" and any(s.code == "R_OTP_GENUINE" for s in verdict.signals),
-            alerted=_names(ctx.alerts, "sent"), failed=_names(ctx.alerts, "failed"), maintenance=ctx.maintenance)
+            alerted=_names(ctx.alerts, "sent"), failed=_names(ctx.alerts, "failed"), maintenance=maintenance)
 
     if verdict.explanation:
         # Cắt giải thích của LLM tới khi tin kết luận (kể cả disclaimer) không quá CONCLUSION_MAX ký tự hiển thị.

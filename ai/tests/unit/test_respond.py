@@ -135,6 +135,21 @@ def test_long_reply_keeps_conclusion_first_and_details_after() -> None:
     assert plan.messages[1].text_html.startswith("<b>Vì sao Bot nghi ngờ:</b>")
 
 
+@pytest.mark.parametrize(
+    ("verdict", "kill_switch", "shown"),
+    [
+        (UNSURE, False, True),                              # LLM lỗi: Java không biết, ai tự báo
+        (UNSURE, True, True),
+        (FINE, False, False),
+        (FINE, True, True),                                 # kill switch bật thì luôn báo
+        (FAST, False, False),                               # fast path không gọi LLM, không phải sự cố
+    ],
+)
+def test_maintenance_line_when_llm_unavailable(verdict: m.Verdict, kill_switch: bool, shown: bool) -> None:
+    first = R.render(verdict, _ctx(maintenance=kill_switch)).messages[0].text_html
+    assert ("bảo trì" in first) is shown
+
+
 def test_guardian_status_line_is_honest() -> None:
     ctx = _ctx(alerts=[{"guardian_name": "Nam", "status": "sent"}, {"guardian_name": "Hoa", "status": "failed"}])
     first = R.render(FAST, ctx).messages[0].text_html

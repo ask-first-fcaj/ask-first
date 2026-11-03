@@ -47,6 +47,7 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - `CODEOWNERS`, template PR, workflow CI khung (3 OS, job `contract`).
 
 ### Fixed
+- AI-07 (#67): Respond hiện dòng "Bot đang bảo trì" cả khi LLM lỗi (`path=rules_only`), không chỉ khi Java bật kill switch (`RenderContext.maintenance`), đúng ARCH §5.8/§6.7.
 - AI-20 (#17): `eval/ocr_benchmark.py` chấm "chép đúng URL" theo **ranh giới URL** thay vì so chuỗi con sau khi xoá hết khoảng trắng. Trước đây `https://a.vn` được tính là đúng khi OCR đọc ra `https://a.vn.evil.com` hay `https://a.vn/x?id=1`; chấm lại kết quả thô bằng cách mới ra **cùng số** với bản cũ (cả bộ 50 ảnh và bộ 16 ảnh). Vẫn chấp nhận URL bị ngắt dòng, dấu câu cuối câu, và URL có `http(s)://` dính chữ phía trước (`oi-048`).
 - `eval/ocr_benchmark.py`: thêm `--dataset` (chạy được bộ 16 ảnh độc lập `eval/testocr/test_images.jsonl`), báo cáo mặc định ghi ra thư mục tạm thay vì ghi đè `docs/results/ocr-spike.md` (file có phần viết tay), không lỗi khi máy không có Tesseract, biến môi trường `OCR_THREADS` đặt số luồng onnxruntime. Bỏ `eval/testocr/run_test.py` (pytest nhặt nhầm vì tên `*_test.py` và chạy OCR khi import).
 - CI: job `ai` chạy thêm test trong `eval/` (validator, chấm OCR); workflow mới `.github/workflows/ocr-bench.yml` chạy lại RapidOCR (2 cấu hình) trên cả hai bộ ảnh, khoá 2 lõi, lưu kết quả thô + báo cáo + RAM đỉnh làm artifact.
