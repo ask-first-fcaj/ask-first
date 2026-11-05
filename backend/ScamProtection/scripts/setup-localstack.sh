@@ -19,6 +19,12 @@ QUEUE_URL=$(awsl sqs create-queue --queue-name webhookQueue \
 QUEUE_ARN=$(awsl sqs get-queue-attributes --queue-url "$QUEUE_URL" \
   --attribute-names QueueArn --query Attributes.QueueArn --output text)
 
+TABLE_NAME=askfirst-main
+awsl dynamodb create-table --table-name "$TABLE_NAME" \
+  --attribute-definitions AttributeName=pk,AttributeType=S AttributeName=sk,AttributeType=S \
+  --key-schema AttributeName=pk,KeyType=HASH AttributeName=sk,KeyType=RANGE \
+  --billing-mode PAY_PER_REQUEST >/dev/null 2>&1 || true
+
 deploy() {  # tên | handler | jar | biến môi trường
   awsl lambda delete-function --function-name "$1" >/dev/null 2>&1 || true
   awsl lambda create-function --function-name "$1" --runtime java21 \
@@ -29,7 +35,7 @@ deploy() {  # tên | handler | jar | biến môi trường
 
 deploy webhook-handler "com.askfirst.webhookhandler.WebhookHandler::handleRequest" \
   "webhook-handler/target/webhook-handler-$VERSION.jar" \
-  "Variables={WEBHOOK_QUEUE_URL=$QUEUE_URL,TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN,TELEGRAM_WEBHOOK_SECRET=$TELEGRAM_WEBHOOK_SECRET,AWS_ENDPOINT_URL=$INTERNAL}"
+  "Variables={WEBHOOK_QUEUE_URL=$QUEUE_URL,TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN,TELEGRAM_WEBHOOK_SECRET=$TELEGRAM_WEBHOOK_SECRET,AWS_ENDPOINT_URL=$INTERNAL,DYNAMODB_TABLE_NAME=$TABLE_NAME}"
 
 deploy worker "com.askfirst.worker.WorkerHandler::handleRequest" \
   "worker/target/worker-$VERSION.jar" \

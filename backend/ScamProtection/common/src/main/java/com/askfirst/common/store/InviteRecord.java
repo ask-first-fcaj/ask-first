@@ -119,3 +119,4 @@ public class InviteRecord {
         this.createdAt = createdAt;
     }
 }
+

@@ -171,3 +171,4 @@ public class UserRecord {
         this.updatedAt = updatedAt;
     }
 }
+

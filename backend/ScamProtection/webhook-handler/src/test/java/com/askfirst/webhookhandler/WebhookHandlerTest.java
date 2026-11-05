@@ -58,8 +58,7 @@ class WebhookHandlerTest {
                 fakeUserRepo,
                 fakeAuditRepo,
                 fakeRateLimitRepo,
-                POLICY_SHA256
-        );
+                POLICY_SHA256);
         mockContext = createMockContext();
     }
 
@@ -84,17 +83,17 @@ class WebhookHandlerTest {
     @DisplayName("BE-25: Unconsented user sending /start receives welcome message with consent buttons")
     void testStartCommandUnconsented() {
         String updateJson = """
-            {
-              "update_id": 101,
-              "message": {
-                "message_id": 1,
-                "from": { "id": 111, "is_bot": false, "first_name": "Nam" },
-                "chat": { "id": 222, "type": "private" },
-                "date": 1729000000,
-                "text": "/start"
-              }
-            }
-            """;
+                {
+                  "update_id": 101,
+                  "message": {
+                    "message_id": 1,
+                    "from": { "id": 111, "is_bot": false, "first_name": "Nam" },
+                    "chat": { "id": 222, "type": "private" },
+                    "date": 1729000000,
+                    "text": "/start"
+                  }
+                }
+                """;
 
         APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(updateJson), mockContext);
         assertThat(res.getStatusCode()).isEqualTo(200);
@@ -108,20 +107,20 @@ class WebhookHandlerTest {
     @DisplayName("BE-25: Clicking consent:agree updates UserRepo and AuditRepo, sends confirmation")
     void testConsentAgreeCallback() {
         String callbackJson = """
-            {
-              "update_id": 102,
-              "callback_query": {
-                "id": "cb_102",
-                "from": { "id": 111, "is_bot": false, "first_name": "Nam" },
-                "message": {
-                  "message_id": 1,
-                  "chat": { "id": 222, "type": "private" },
-                  "date": 1729000000
-                },
-                "data": "consent:agree"
-              }
-            }
-            """;
+                {
+                  "update_id": 102,
+                  "callback_query": {
+                    "id": "cb_102",
+                    "from": { "id": 111, "is_bot": false, "first_name": "Nam" },
+                    "message": {
+                      "message_id": 1,
+                      "chat": { "id": 222, "type": "private" },
+                      "date": 1729000000
+                    },
+                    "data": "consent:agree"
+                  }
+                }
+                """;
 
         APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(callbackJson), mockContext);
         assertThat(res.getStatusCode()).isEqualTo(200);
@@ -139,20 +138,20 @@ class WebhookHandlerTest {
     @DisplayName("BE-25: Clicking consent:decline records audit and sends polite refusal")
     void testConsentDeclineCallback() {
         String callbackJson = """
-            {
-              "update_id": 103,
-              "callback_query": {
-                "id": "cb_103",
-                "from": { "id": 111, "is_bot": false },
-                "message": {
-                  "message_id": 1,
-                  "chat": { "id": 222, "type": "private" },
-                  "date": 1729000000
-                },
-                "data": "consent:decline"
-              }
-            }
-            """;
+                {
+                  "update_id": 103,
+                  "callback_query": {
+                    "id": "cb_103",
+                    "from": { "id": 111, "is_bot": false },
+                    "message": {
+                      "message_id": 1,
+                      "chat": { "id": 222, "type": "private" },
+                      "date": 1729000000
+                    },
+                    "data": "consent:decline"
+                  }
+                }
+                """;
 
         APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(callbackJson), mockContext);
         assertThat(res.getStatusCode()).isEqualTo(200);
@@ -164,17 +163,17 @@ class WebhookHandlerTest {
     @DisplayName("BE-25: Unconsented user sending message is BLOCKED from SQS enqueue")
     void testUnconsentedMessageBlockedFromSqs() {
         String updateJson = """
-            {
-              "update_id": 104,
-              "message": {
-                "message_id": 2,
-                "from": { "id": 111, "is_bot": false, "first_name": "Nam" },
-                "chat": { "id": 222, "type": "private" },
-                "date": 1729000000,
-                "text": "Kiểm tra stk 123456"
-              }
-            }
-            """;
+                {
+                  "update_id": 104,
+                  "message": {
+                    "message_id": 2,
+                    "from": { "id": 111, "is_bot": false, "first_name": "Nam" },
+                    "chat": { "id": 222, "type": "private" },
+                    "date": 1729000000,
+                    "text": "Kiểm tra stk 123456"
+                  }
+                }
+                """;
 
         APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(updateJson), mockContext);
         assertThat(res.getStatusCode()).isEqualTo(200);
@@ -190,17 +189,17 @@ class WebhookHandlerTest {
         fakeUserRepo.updateConsent("tg:111", "old_policy_sha", "0.9", Map.of("analyze", true));
 
         String updateJson = """
-            {
-              "update_id": 105,
-              "message": {
-                "message_id": 3,
-                "from": { "id": 111, "is_bot": false },
-                "chat": { "id": 222, "type": "private" },
-                "date": 1729000000,
-                "text": "Kiểm tra link"
-              }
-            }
-            """;
+                {
+                  "update_id": 105,
+                  "message": {
+                    "message_id": 3,
+                    "from": { "id": 111, "is_bot": false },
+                    "chat": { "id": 222, "type": "private" },
+                    "date": 1729000000,
+                    "text": "Kiểm tra link"
+                  }
+                }
+                """;
 
         APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(updateJson), mockContext);
         assertThat(res.getStatusCode()).isEqualTo(200);
@@ -215,22 +214,22 @@ class WebhookHandlerTest {
         fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true, "voice", false));
 
         String voiceJson = """
-            {
-              "update_id": 106,
-              "message": {
-                "message_id": 4,
-                "from": { "id": 111, "is_bot": false },
-                "chat": { "id": 222, "type": "private" },
-                "date": 1729000000,
-                "voice": {
-                  "file_id": "v_123",
-                  "file_unique_id": "uv_123",
-                  "mime_type": "audio/ogg",
-                  "duration": 10
+                {
+                  "update_id": 106,
+                  "message": {
+                    "message_id": 4,
+                    "from": { "id": 111, "is_bot": false },
+                    "chat": { "id": 222, "type": "private" },
+                    "date": 1729000000,
+                    "voice": {
+                      "file_id": "v_123",
+                      "file_unique_id": "uv_123",
+                      "mime_type": "audio/ogg",
+                      "duration": 10
+                    }
+                  }
                 }
-              }
-            }
-            """;
+                """;
 
         APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(voiceJson), mockContext);
         assertThat(res.getStatusCode()).isEqualTo(200);
@@ -244,27 +243,31 @@ class WebhookHandlerTest {
     void testBasicCommands() {
         // /caidat
         APIGatewayProxyResponseEvent caidatRes = handler.handleRequest(
-                createRequest("{\"update_id\": 107, \"message\": {\"message_id\": 5, \"from\": {\"id\": 111, \"is_bot\": false}, \"chat\": {\"id\": 222, \"type\": \"private\"}, \"date\": 1729000000, \"text\": \"/caidat\"}}"),
+                createRequest(
+                        "{\"update_id\": 107, \"message\": {\"message_id\": 5, \"from\": {\"id\": 111, \"is_bot\": false}, \"chat\": {\"id\": 222, \"type\": \"private\"}, \"date\": 1729000000, \"text\": \"/caidat\"}}"),
                 mockContext);
         assertThat(caidatRes.getBody()).isEqualTo("COMMAND_HANDLED");
         assertThat(fakeTelegram.lastText).contains("Cài đặt cách xưng hô thân mật");
 
         // Selecting xungho:co
         handler.handleRequest(
-                createRequest("{\"update_id\": 108, \"callback_query\": {\"id\": \"cb_108\", \"from\": {\"id\": 111, \"is_bot\": false}, \"message\": {\"message_id\": 5, \"chat\": {\"id\": 222, \"type\": \"private\"}, \"date\": 1729000000}, \"data\": \"xungho:co\"}}"),
+                createRequest(
+                        "{\"update_id\": 108, \"callback_query\": {\"id\": \"cb_108\", \"from\": {\"id\": 111, \"is_bot\": false}, \"message\": {\"message_id\": 5, \"chat\": {\"id\": 222, \"type\": \"private\"}, \"date\": 1729000000}, \"data\": \"xungho:co\"}}"),
                 mockContext);
         assertThat(fakeUserRepo.getUser("tg:111").get().getAddressForm()).isEqualTo("Cô");
 
         // /huongdan
         APIGatewayProxyResponseEvent hdRes = handler.handleRequest(
-                createRequest("{\"update_id\": 109, \"message\": {\"message_id\": 6, \"from\": {\"id\": 111, \"is_bot\": false}, \"chat\": {\"id\": 222, \"type\": \"private\"}, \"date\": 1729000000, \"text\": \"/huongdan\"}}"),
+                createRequest(
+                        "{\"update_id\": 109, \"message\": {\"message_id\": 6, \"from\": {\"id\": 111, \"is_bot\": false}, \"chat\": {\"id\": 222, \"type\": \"private\"}, \"date\": 1729000000, \"text\": \"/huongdan\"}}"),
                 mockContext);
         assertThat(hdRes.getBody()).isEqualTo("COMMAND_HANDLED");
         assertThat(fakeTelegram.lastText).contains("Hướng dẫn sử dụng AskFirst");
 
         // /bilua (emergency checklist)
         APIGatewayProxyResponseEvent biluaRes = handler.handleRequest(
-                createRequest("{\"update_id\": 110, \"message\": {\"message_id\": 7, \"from\": {\"id\": 111, \"is_bot\": false}, \"chat\": {\"id\": 222, \"type\": \"private\"}, \"date\": 1729000000, \"text\": \"/bilua\"}}"),
+                createRequest(
+                        "{\"update_id\": 110, \"message\": {\"message_id\": 7, \"from\": {\"id\": 111, \"is_bot\": false}, \"chat\": {\"id\": 222, \"type\": \"private\"}, \"date\": 1729000000, \"text\": \"/bilua\"}}"),
                 mockContext);
         assertThat(biluaRes.getBody()).isEqualTo("COMMAND_HANDLED");
         assertThat(fakeTelegram.lastText).contains("CÁC VIỆC CẦN LÀM NGAY (30 PHÚT ĐẦU");
@@ -279,24 +282,23 @@ class WebhookHandlerTest {
         fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
 
         String updateTemplate = """
-            {
-              "update_id": %d,
-              "message": {
-                "message_id": %d,
-                "from": { "id": 111, "is_bot": false },
-                "chat": { "id": 222, "type": "private" },
-                "date": 1729000000,
-                "text": "Kiểm tra tin nhắn %d"
-              }
-            }
-            """;
+                {
+                  "update_id": %d,
+                  "message": {
+                    "message_id": %d,
+                    "from": { "id": 111, "is_bot": false },
+                    "chat": { "id": 222, "type": "private" },
+                    "date": 1729000000,
+                    "text": "Kiểm tra tin nhắn %d"
+                  }
+                }
+                """;
 
         // Gửi 30 tin liên tiếp
         for (int i = 1; i <= 30; i++) {
             APIGatewayProxyResponseEvent res = handler.handleRequest(
                     createRequest(updateTemplate.formatted(200 + i, i, i)),
-                    mockContext
-            );
+                    mockContext);
             assertThat(res.getStatusCode()).isEqualTo(200);
             assertThat(res.getBody()).isEqualTo("OK");
         }
@@ -305,12 +307,12 @@ class WebhookHandlerTest {
         // Tin thứ 31 trong giờ: Bị chặn và nhận câu nhắc nhẹ nhàng
         APIGatewayProxyResponseEvent res31 = handler.handleRequest(
                 createRequest(updateTemplate.formatted(231, 31, 31)),
-                mockContext
-        );
+                mockContext);
         assertThat(res31.getStatusCode()).isEqualTo(200);
         assertThat(res31.getBody()).isEqualTo("RATE_LIMITED");
         assertThat(fakeSqs.sentCount.get()).isEqualTo(30); // KHÔNG enqueue thêm
-        assertThat(fakeTelegram.lastText).contains("Bác ơi, hiện tại Bác đã gửi kiểm tra khá nhiều tin trong ngày rồi ạ");
+        assertThat(fakeTelegram.lastText)
+                .contains("Bác ơi, hiện tại Bác đã gửi kiểm tra khá nhiều tin trong ngày rồi ạ");
         assertThat(fakeTelegram.lastText).contains("30 tin/giờ");
     }
 
@@ -339,15 +341,23 @@ class WebhookHandlerTest {
         }
 
         @Override
-        public void answerCallbackQuery(String callbackQueryId, String text) {}
+        public void answerCallbackQuery(String callbackQueryId, String text) {
+        }
     }
 
     private static class FakeSqsClient implements SqsClient {
         AtomicBoolean messageSent = new AtomicBoolean(false);
         AtomicInteger sentCount = new AtomicInteger(0);
 
-        @Override public String serviceName() { return "sqs"; }
-        @Override public void close() {}
+        @Override
+        public String serviceName() {
+            return "sqs";
+        }
+
+        @Override
+        public void close() {
+        }
+
         @Override
         public SendMessageResponse sendMessage(SendMessageRequest req) {
             messageSent.set(true);
@@ -397,7 +407,8 @@ class WebhookHandlerTest {
         }
 
         @Override
-        public void recordEvent(String userId, String event, String policyVersion, String policySha256, String details) {
+        public void recordEvent(String userId, String event, String policyVersion, String policySha256,
+                String details) {
             events.add(event);
         }
     }
@@ -423,21 +434,66 @@ class WebhookHandlerTest {
 
     private static Context createMockContext() {
         return new Context() {
-            @Override public String getAwsRequestId() { return "req-1"; }
-            @Override public String getLogGroupName() { return null; }
-            @Override public String getLogStreamName() { return null; }
-            @Override public String getFunctionName() { return "webhook"; }
-            @Override public String getFunctionVersion() { return "1"; }
-            @Override public String getInvokedFunctionArn() { return null; }
-            @Override public com.amazonaws.services.lambda.runtime.CognitoIdentity getIdentity() { return null; }
-            @Override public com.amazonaws.services.lambda.runtime.ClientContext getClientContext() { return null; }
-            @Override public int getRemainingTimeInMillis() { return 30000; }
-            @Override public int getMemoryLimitInMB() { return 512; }
+            @Override
+            public String getAwsRequestId() {
+                return "req-1";
+            }
+
+            @Override
+            public String getLogGroupName() {
+                return null;
+            }
+
+            @Override
+            public String getLogStreamName() {
+                return null;
+            }
+
+            @Override
+            public String getFunctionName() {
+                return "webhook";
+            }
+
+            @Override
+            public String getFunctionVersion() {
+                return "1";
+            }
+
+            @Override
+            public String getInvokedFunctionArn() {
+                return null;
+            }
+
+            @Override
+            public com.amazonaws.services.lambda.runtime.CognitoIdentity getIdentity() {
+                return null;
+            }
+
+            @Override
+            public com.amazonaws.services.lambda.runtime.ClientContext getClientContext() {
+                return null;
+            }
+
+            @Override
+            public int getRemainingTimeInMillis() {
+                return 30000;
+            }
+
+            @Override
+            public int getMemoryLimitInMB() {
+                return 512;
+            }
+
             @Override
             public LambdaLogger getLogger() {
                 return new LambdaLogger() {
-                    @Override public void log(String s) {}
-                    @Override public void log(byte[] b) {}
+                    @Override
+                    public void log(String s) {
+                    }
+
+                    @Override
+                    public void log(byte[] b) {
+                    }
                 };
             }
         };

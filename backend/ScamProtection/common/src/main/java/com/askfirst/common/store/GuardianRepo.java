@@ -76,3 +76,4 @@ public class GuardianRepo {
         table.deleteItem(Key.builder().partitionValue(pk).sortValue(sk).build());
     }
 }
+

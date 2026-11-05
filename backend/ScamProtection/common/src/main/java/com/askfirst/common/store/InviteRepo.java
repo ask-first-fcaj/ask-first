@@ -86,3 +86,4 @@ public class InviteRepo {
         table.deleteItem(Key.builder().partitionValue(pk).sortValue("META").build());
     }
 }
+

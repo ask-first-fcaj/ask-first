@@ -243,3 +243,4 @@ class LaneBRepositoriesTest {
         assertThat(trail).anyMatch(r -> "ADDRESS_FORM_CHANGED".equals(r.getEvent()));
     }
 }
+
