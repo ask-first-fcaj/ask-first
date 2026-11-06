@@ -13,7 +13,6 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -28,6 +27,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Long Polling runner for local development and testing (BE-20).
  * Continuously polls getUpdates from Telegram and forwards to WebhookHandler.
  * Allows dev to test /start and bot features without configuring ngrok.
+ *
+ * Đây là nơi DUY NHẤT được bỏ qua kiểm tra secret của webhook (qua WebhookHandler.forLocalDevelopment),
+ * vì long polling không đi qua Function URL nên không có header X-Telegram-Bot-Api-Secret-Token.
  */
 public class LocalBotRunner {
 
@@ -45,8 +47,6 @@ public class LocalBotRunner {
             System.err.println("❌ LỖI: Không tìm thấy TELEGRAM_BOT_TOKEN trong biến môi trường hoặc file .env!");
             System.exit(1);
         }
-
-        String secret = env.getOrDefault("TELEGRAM_WEBHOOK_SECRET", "local-dev-secret-token");
 
         // 1. Kiểm tra trạng thái webhook hiện tại
         try {
@@ -78,8 +78,8 @@ public class LocalBotRunner {
         }
 
         TelegramClient telegramClient = new TelegramClient(botToken);
-        // Trong chế độ local không bắt buộc có SQS (sqs = null)
-        WebhookHandler handler = new WebhookHandler(telegramClient, null, null, secret);
+        // Chế độ local: không có SQS, không có header secret -> dùng factory dành riêng cho local
+        WebhookHandler handler = WebhookHandler.forLocalDevelopment(telegramClient);
         Context mockContext = createMockContext();
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -98,7 +98,7 @@ public class LocalBotRunner {
 
                 JsonNode updatesResp = callTelegram(botToken, "getUpdates", params);
                 if (!updatesResp.path("ok").asBoolean(false)) {
-                    System.err.println("Lỗi getUpdates: " + updatesResp);
+                    System.err.println("Lỗi getUpdates: " + updatesResp.path("description").asText("không rõ nguyên nhân"));
                     Thread.sleep(2000);
                     continue;
                 }
@@ -109,28 +109,14 @@ public class LocalBotRunner {
                         long updateId = update.path("update_id").asLong();
                         offset = Math.max(offset, updateId + 1);
 
-                        // In log tóm tắt tin nhận được
-                        JsonNode msg = update.path("message");
-                        String from = msg.path("from").path("first_name").asText("User");
-                        String text = msg.path("text").asText("");
-                        if (text.isBlank() && msg.has("caption")) {
-                            text = "[Ảnh] " + msg.path("caption").asText();
-                        } else if (text.isBlank() && msg.has("photo")) {
-                            text = "[Ảnh]";
-                        } else if (text.isBlank() && msg.has("voice")) {
-                            text = "[Voice]";
-                        }
-
-                        System.out.println("\n📥 [Update #" + updateId + "] Từ: " + from + " | Nội dung: " + text);
+                        // Chỉ log loại update, KHÔNG in tên người dùng hay nội dung tin nhắn (dữ liệu cá nhân)
+                        System.out.println("\n📥 [Update #" + updateId + "] Loại: " + describeUpdate(update));
 
                         // Giả lập sự kiện API Gateway gửi tới WebhookHandler
                         APIGatewayProxyRequestEvent request = new APIGatewayProxyRequestEvent()
                                 .withHttpMethod("POST")
                                 .withPath("/webhook")
-                                .withHeaders(Map.of(
-                                        "X-Telegram-Bot-Api-Secret-Token", secret,
-                                        "Content-Type", "application/json"
-                                ))
+                                .withHeaders(Map.of("Content-Type", "application/json"))
                                 .withBody(MAPPER.writeValueAsString(update));
 
                         APIGatewayProxyResponseEvent response = handler.handleRequest(request, mockContext);
@@ -153,6 +139,27 @@ public class LocalBotRunner {
         }
 
         System.out.println("Local Bot Runner đã kết thúc.");
+    }
+
+    /** Mô tả update không lộ dữ liệu cá nhân: chỉ loại và độ dài văn bản. */
+    private static String describeUpdate(JsonNode update) {
+        if (update.has("callback_query")) {
+            return "callback_query";
+        }
+        JsonNode msg = update.path("message");
+        if (msg.isMissingNode() || msg.isNull()) {
+            return "khác";
+        }
+        if (msg.has("voice")) {
+            return "voice";
+        }
+        if (msg.has("photo")) {
+            return "ảnh";
+        }
+        if (msg.has("text")) {
+            return "văn bản (" + msg.path("text").asText("").length() + " ký tự)";
+        }
+        return "tin nhắn khác";
     }
 
     private static JsonNode callTelegram(String token, String method, Map<String, Object> payload) throws Exception {

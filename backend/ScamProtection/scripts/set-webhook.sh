@@ -1,12 +1,23 @@
 #!/usr/bin/env bash
 # Đăng ký webhook Telegram: token từ .env, URL từ ngrok, API_ID từ LocalStack
+# Usage: ./scripts/set-webhook.sh [--drop-pending]
+#   --drop-pending : xóa các update đang chờ khi đăng ký (mặc định KHÔNG xóa, tránh mất tin người dùng đã gửi)
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+DROP_PENDING=false
+for arg in "$@"; do
+  case "$arg" in
+    --drop-pending) DROP_PENDING=true ;;
+    *) echo "Tham số không hợp lệ: $arg (chỉ hỗ trợ --drop-pending)"; exit 1 ;;
+  esac
+done
 
 # Đọc từng biến từ .env (tự bỏ ký tự \r nếu file bị CRLF)
 get_env() { grep -E "^$1=" .env | head -n1 | cut -d= -f2- | tr -d '\r' || true; }
 TELEGRAM_BOT_TOKEN=$(get_env TELEGRAM_BOT_TOKEN)
 TELEGRAM_WEBHOOK_SECRET=$(get_env TELEGRAM_WEBHOOK_SECRET)
+# Secret là BẮT BUỘC: handler từ chối mọi request không có đúng header X-Telegram-Bot-Api-Secret-Token
 if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_WEBHOOK_SECRET" ]; then
   echo "Thiếu TELEGRAM_BOT_TOKEN hoặc TELEGRAM_WEBHOOK_SECRET trong .env"; exit 1
 fi
@@ -29,7 +40,7 @@ if [ -z "$API_ID" ] || [ "$API_ID" = "None" ]; then
 fi
 
 WEBHOOK_URL="$NGROK_URL/restapis/$API_ID/dev/_user_request_/webhook"
-echo "Đăng ký webhook: $WEBHOOK_URL"
+echo "Đăng ký webhook: $WEBHOOK_URL (drop_pending_updates=$DROP_PENDING)"
 
 call_telegram() {  # $1 = tên method, phần còn lại là tham số curl
   local method=$1; shift
@@ -43,7 +54,8 @@ for i in 1 2 3; do
   set +e
   RESP=$(call_telegram setWebhook \
     -d "url=${WEBHOOK_URL}" -d "secret_token=${TELEGRAM_WEBHOOK_SECRET}" \
-    -d "drop_pending_updates=true" 2>&1)
+    -d "drop_pending_updates=${DROP_PENDING}" \
+    -d 'allowed_updates=["message","callback_query","my_chat_member"]' 2>&1)
   CODE=$?
   set -e
   if [ "$CODE" -eq 0 ]; then OK=1; break; fi

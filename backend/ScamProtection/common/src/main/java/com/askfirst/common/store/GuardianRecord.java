@@ -3,18 +3,24 @@ package com.askfirst.common.store;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbAttribute;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSecondaryPartitionKey;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSecondarySortKey;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSortKey;
 
 /**
  * DynamoDB item representing Guardian link between an elder and a relative (BE-24, ARCH §7).
  * PK: USER#<elder_uid>
  * SK: GUARDIAN#<guardian_uid>
+ * GSI1PK: WARD_OF#<guardian_uid>   (tra ngược: người thân này đang bảo vệ những ai)
+ * GSI1SK: USER#<elder_uid>
  */
 @DynamoDbBean
 public class GuardianRecord {
 
     private String pk;
     private String sk;
+    private String gsi1Pk;
+    private String gsi1Sk;
     private String elderUid;
     private String guardianUid;
     private String guardianChatId;
@@ -38,7 +44,7 @@ public class GuardianRecord {
     }
 
     @DynamoDbPartitionKey
-    @DynamoDbAttribute("pk")
+    @DynamoDbAttribute("PK")
     public String getPk() {
         return pk;
     }
@@ -48,13 +54,53 @@ public class GuardianRecord {
     }
 
     @DynamoDbSortKey
-    @DynamoDbAttribute("sk")
+    @DynamoDbAttribute("SK")
     public String getSk() {
         return sk;
     }
 
     public void setSk(String sk) {
         this.sk = sk;
+    }
+
+    private static String stripPrefix(String value, String... prefixes) {
+        for (String prefix : prefixes) {
+            if (value.startsWith(prefix)) {
+                return value.substring(prefix.length());
+            }
+        }
+        return value;
+    }
+
+    /**
+     * GSI1PK = WARD_OF#<guardian_uid>. Nếu chưa set tường minh thì suy ra từ guardianUid,
+     * để item tạo bằng constructor rỗng + setter vẫn có mặt trong GSI1.
+     */
+    @DynamoDbSecondaryPartitionKey(indexNames = "GSI1")
+    @DynamoDbAttribute("GSI1PK")
+    public String getGsi1Pk() {
+        if (gsi1Pk != null) {
+            return gsi1Pk;
+        }
+        return guardianUid == null ? null : "WARD_OF#" + stripPrefix(guardianUid, "GUARDIAN#", "USER#");
+    }
+
+    public void setGsi1Pk(String gsi1Pk) {
+        this.gsi1Pk = gsi1Pk;
+    }
+
+    /** GSI1SK = USER#<elder_uid>. */
+    @DynamoDbSecondarySortKey(indexNames = "GSI1")
+    @DynamoDbAttribute("GSI1SK")
+    public String getGsi1Sk() {
+        if (gsi1Sk != null) {
+            return gsi1Sk;
+        }
+        return elderUid == null ? null : "USER#" + stripPrefix(elderUid, "USER#");
+    }
+
+    public void setGsi1Sk(String gsi1Sk) {
+        this.gsi1Sk = gsi1Sk;
     }
 
     @DynamoDbAttribute("elder_uid")

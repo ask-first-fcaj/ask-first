@@ -35,7 +35,7 @@ public class RateLimitRecord {
     }
 
     @DynamoDbPartitionKey
-    @DynamoDbAttribute("pk")
+    @DynamoDbAttribute("PK")
     public String getPk() {
         return pk;
     }
@@ -45,7 +45,7 @@ public class RateLimitRecord {
     }
 
     @DynamoDbSortKey
-    @DynamoDbAttribute("sk")
+    @DynamoDbAttribute("SK")
     public String getSk() {
         return sk;
     }

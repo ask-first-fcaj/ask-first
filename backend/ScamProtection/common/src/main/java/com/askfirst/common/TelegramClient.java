@@ -20,27 +20,45 @@ import java.util.Map;
  */
 public class TelegramClient {
 
+    // Lambda webhook chỉ có 30s cho cả request: timeout phải ngắn để một lần Telegram chậm/429 không làm cả Lambda timeout
     private static final HttpClient HTTP = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
+            .connectTimeout(Duration.ofSeconds(3))
             .build();
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static final int MAX_ATTEMPTS = 2;
-    private static final int MAX_RATE_LIMIT_WAIT_SECONDS = 30;
+
+    /** Mặc định cho fast path (webhook Lambda 30s): mỗi request tối đa 4s, chỉ chờ retry_after <= 2s. */
+    public static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(4);
+    public static final int DEFAULT_MAX_RETRY_AFTER_SECONDS = 2;
+
+    /** Tổng thời gian tối đa cho MỘT lời gọi API kể cả chờ retry (4s + 2s chờ + 4s thử lại vẫn nằm trong ngân sách). */
+    private static final long TOTAL_BUDGET_MILLIS = 8_000L;
 
     private final String baseUrl;
+    private final Duration requestTimeout;
+    private final int maxRetryAfterSeconds;
 
     public TelegramClient(String botToken) {
         this(botToken, "https://api.telegram.org");
     }
 
     public TelegramClient(String botToken, String apiHost) {
+        this(botToken, apiHost, DEFAULT_REQUEST_TIMEOUT, DEFAULT_MAX_RETRY_AFTER_SECONDS);
+    }
+
+    /**
+     * Cho phép worker nền (timeout dài hơn, không bị giới hạn 30s) truyền giá trị lớn hơn mặc định của fast path.
+     */
+    public TelegramClient(String botToken, String apiHost, Duration requestTimeout, int maxRetryAfterSeconds) {
         if (botToken == null || botToken.isBlank()) {
             throw new IllegalArgumentException("TELEGRAM_BOT_TOKEN chưa được cấu hình");
         }
         String host = (apiHost == null || apiHost.isBlank()) ? "https://api.telegram.org" : apiHost.replaceAll("/+$", "");
         this.baseUrl = host + "/bot" + botToken;
+        this.requestTimeout = requestTimeout != null ? requestTimeout : DEFAULT_REQUEST_TIMEOUT;
+        this.maxRetryAfterSeconds = Math.max(0, maxRetryAfterSeconds);
     }
 
     /**
@@ -164,10 +182,12 @@ public class TelegramClient {
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(targetUrl))
-                    .timeout(Duration.ofSeconds(20))
+                    .timeout(requestTimeout)
                     .header("Content-Type", "application/json; charset=UTF-8")
                     .POST(HttpRequest.BodyPublishers.ofString(json))
                     .build();
+
+            final long deadlineNanos = System.nanoTime() + TOTAL_BUDGET_MILLIS * 1_000_000L;
 
             for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
                 try {
@@ -175,7 +195,13 @@ public class TelegramClient {
 
                     if (response.statusCode() == 429) {
                         int retryAfter = extractRetryAfter(response);
-                        if (retryAfter > 0 && retryAfter <= MAX_RATE_LIMIT_WAIT_SECONDS && attempt < MAX_ATTEMPTS) {
+                        long remainingMillis = (deadlineNanos - System.nanoTime()) / 1_000_000L;
+                        // Chỉ ngủ khi chờ ngắn VÀ còn đủ ngân sách để thử lại; ngược lại báo lỗi ngay thay vì treo Lambda
+                        boolean canWait = retryAfter > 0
+                                && retryAfter <= maxRetryAfterSeconds
+                                && attempt < MAX_ATTEMPTS
+                                && remainingMillis > retryAfter * 1000L + requestTimeout.toMillis();
+                        if (canWait) {
                             Thread.sleep(retryAfter * 1000L);
                             continue;
                         } else {

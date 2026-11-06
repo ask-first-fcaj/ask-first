@@ -32,7 +32,7 @@ public class DedupRecord {
     }
 
     @DynamoDbPartitionKey
-    @DynamoDbAttribute("pk")
+    @DynamoDbAttribute("PK")
     public String getPk() {
         return pk;
     }
@@ -42,7 +42,7 @@ public class DedupRecord {
     }
 
     @DynamoDbSortKey
-    @DynamoDbAttribute("sk")
+    @DynamoDbAttribute("SK")
     public String getSk() {
         return sk;
     }

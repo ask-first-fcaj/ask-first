@@ -6,10 +6,13 @@ import software.amazon.awssdk.services.dynamodb.model.ReturnValue;
 import software.amazon.awssdk.services.dynamodb.model.UpdateItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.UpdateItemResponse;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Repository managing Rate Limiting counters with DynamoDB atomic ADD (BE-24, BE-26, ARCH §7).
@@ -17,8 +20,14 @@ import java.util.Map;
  * - Hour: RATE#<uid>#<yyyyMMddHH>
  * - Day:  RATE#<uid>#<yyyyMMdd>
  * SK: COUNTER, TTL: 48 hours.
+ *
+ * Quyết định thiết kế (cần ghi vào ADR): khi DynamoDB lỗi, rate limit FAIL-OPEN - vẫn cho người dùng đi tiếp
+ * thay vì chặn nhầm người cao tuổi đang cần kiểm tra tin lừa đảo. Đổi lại mỗi lần fail-open phải để lại log
+ * WARN để lỗi hạ tầng không bị che giấu.
  */
 public class RateLimitRepo {
+
+    private static final Logger LOG = Logger.getLogger(RateLimitRepo.class.getName());
 
     public static final int DEFAULT_MAX_PER_HOUR = 30;
     public static final int DEFAULT_MAX_PER_DAY = 100;
@@ -28,17 +37,25 @@ public class RateLimitRepo {
 
     private final DynamoDbClient client;
     private final String tableName;
+    private final Clock clock;
 
     public record RateLimitResult(boolean allowed, long hourCount, long dayCount, String reason) {}
 
     protected RateLimitRepo() {
         this.client = null;
         this.tableName = null;
+        this.clock = Clock.systemUTC();
     }
 
     public RateLimitRepo(DynamoDbClient client, String tableName) {
+        this(client, tableName, Clock.systemUTC());
+    }
+
+    /** Có tiêm Clock để test được các mốc giờ/ngày mà không phụ thuộc đồng hồ thật. */
+    public RateLimitRepo(DynamoDbClient client, String tableName, Clock clock) {
         this.client = client;
         this.tableName = (tableName != null && !tableName.isBlank()) ? tableName : DynamoStoreService.DEFAULT_TABLE_NAME;
+        this.clock = clock;
     }
 
     /**
@@ -50,7 +67,7 @@ public class RateLimitRepo {
     }
 
     public RateLimitResult checkAndIncrement(String userId, int maxPerHour, int maxPerDay) {
-        Instant now = Instant.now();
+        Instant now = clock.instant();
         String hourWindow = HOUR_FORMAT.format(now);
         String dayWindow = DAY_FORMAT.format(now);
         long ttlEpoch = now.getEpochSecond() + (48 * 3600); // 48h TTL
@@ -73,8 +90,8 @@ public class RateLimitRepo {
             UpdateItemRequest request = UpdateItemRequest.builder()
                     .tableName(tableName)
                     .key(Map.of(
-                            "pk", AttributeValue.builder().s(pk).build(),
-                            "sk", AttributeValue.builder().s("COUNTER").build()
+                            DynamoStoreService.ATTR_PK, AttributeValue.builder().s(pk).build(),
+                            DynamoStoreService.ATTR_SK, AttributeValue.builder().s("COUNTER").build()
                     ))
                     .updateExpression("ADD #cnt :one SET #ttl = if_not_exists(#ttl, :ttlVal), #uid = :userIdVal")
                     .expressionAttributeNames(Map.of(
@@ -96,7 +113,8 @@ public class RateLimitRepo {
             }
             return 1L;
         } catch (Exception e) {
-            // Trường hợp lỗi kết nối DB, fallback để không chặn người dùng
+            // Fail-open có chủ đích (xem Javadoc lớp). Không log userId/khóa để tránh lộ dữ liệu cá nhân.
+            LOG.log(Level.WARNING, "Rate limit không đếm được do lỗi DynamoDB ({0}) -> fail-open, cho phép request", e.toString());
             return 1L;
         }
     }

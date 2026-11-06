@@ -23,6 +23,7 @@ import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +32,15 @@ import java.util.Optional;
 public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
     public static final String POLICY_VERSION = "1.0";
+
+    /**
+     * CHỈ dùng cho test / LocalBotRunner. Đây là hash giả, KHÔNG được dùng làm fallback khi chạy thật:
+     * constructor mặc định (Lambda) bắt buộc biến môi trường POLICY_SHA256.
+     */
     public static final String DEFAULT_POLICY_SHA256 = "d1a8f9b2c3e4567890abcdef1234567890abcdef1234567890abcdef12345678";
+
+    /** Khóa dedup update_id sống 24 giờ (Telegram chỉ retry update trong thời gian ngắn). */
+    private static final long DEDUP_TTL_SECONDS = 24 * 3600L;
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
@@ -47,27 +56,36 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     private final AuditRepo auditRepo;
     private final RateLimitRepo rateLimitRepo;
 
-    public WebhookHandler() {
-        this.queueUrl = System.getenv("WEBHOOK_QUEUE_URL");
-        this.secret = System.getenv("TELEGRAM_WEBHOOK_SECRET");
-        String pSha = System.getenv("POLICY_SHA256");
-        this.policySha256 = (pSha != null && !pSha.isBlank()) ? pSha : DEFAULT_POLICY_SHA256;
+    /** Chống xử lý trùng cùng một update_id (Telegram retry). Null = không dedup (test/local). */
+    private final DynamoStoreService dedup;
 
-        String botToken = System.getenv("TELEGRAM_BOT_TOKEN");
-        this.telegram = (botToken != null && !botToken.isBlank()) ? new TelegramClient(botToken) : null;
+    /**
+     * true chỉ khi tạo qua {@link #forLocalDevelopment(TelegramClient)} (long polling trên máy dev):
+     * bỏ kiểm tra secret và cho phép chạy không có SQS. Lambda thật luôn là false.
+     */
+    private final boolean localDevelopment;
+
+    /**
+     * Constructor cho Lambda. Thiếu biến môi trường nào là lỗi ngay lúc khởi tạo (thấy rõ trong CloudWatch)
+     * thay vì chạy tiếp rồi mất job / chấp nhận request giả mạo một cách im lặng.
+     */
+    public WebhookHandler() {
+        this.queueUrl = requireEnv("WEBHOOK_QUEUE_URL");
+        this.secret = requireEnv("TELEGRAM_WEBHOOK_SECRET");
+        this.policySha256 = requireEnv("POLICY_SHA256");
+        this.telegram = new TelegramClient(requireEnv("TELEGRAM_BOT_TOKEN"));
+        String tableName = requireEnv("DYNAMODB_TABLE_NAME");
+
         this.sqs = SqsClient.create();
         this.adapter = new TelegramAdapter();
-
-        String tableName = System.getenv("DYNAMODB_TABLE_NAME");
-        if (tableName == null || tableName.isBlank()) {
-            tableName = DynamoStoreService.DEFAULT_TABLE_NAME;
-        }
+        this.localDevelopment = false;
 
         DynamoDbClient ddb = DynamoDbClient.create();
         DynamoDbEnhancedClient enhanced = DynamoDbEnhancedClient.builder().dynamoDbClient(ddb).build();
         this.userRepo = new UserRepo(enhanced, tableName);
         this.auditRepo = new AuditRepo(enhanced, tableName);
         this.rateLimitRepo = new RateLimitRepo(ddb, tableName);
+        this.dedup = DynamoStoreService.create(ddb, tableName);
     }
 
     public WebhookHandler(TelegramClient telegram, SqsClient sqs, String queueUrl, String secret) {
@@ -83,6 +101,33 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             AuditRepo auditRepo,
             RateLimitRepo rateLimitRepo,
             String policySha256) {
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, null, false);
+    }
+
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            String policySha256,
+            DynamoStoreService dedup) {
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, dedup, false);
+    }
+
+    private WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            String policySha256,
+            DynamoStoreService dedup,
+            boolean localDevelopment) {
         this.telegram = telegram;
         this.sqs = sqs;
         this.queueUrl = queueUrl;
@@ -92,13 +137,31 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.rateLimitRepo = rateLimitRepo;
         this.policySha256 = (policySha256 != null && !policySha256.isBlank()) ? policySha256 : DEFAULT_POLICY_SHA256;
         this.adapter = new TelegramAdapter();
+        this.dedup = dedup;
+        this.localDevelopment = localDevelopment;
+    }
+
+    /**
+     * Handler cho LocalBotRunner (long polling, không có webhook nên không có header secret, không có SQS).
+     * Đây là đường DUY NHẤT được bỏ qua kiểm tra secret.
+     */
+    public static WebhookHandler forLocalDevelopment(TelegramClient telegram) {
+        return new WebhookHandler(telegram, null, null, null, null, null, null, DEFAULT_POLICY_SHA256, null, true);
+    }
+
+    private static String requireEnv(String name) {
+        String value = System.getenv(name);
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException("Thiếu biến môi trường bắt buộc: " + name);
+        }
+        return value;
     }
 
     @Override
     public APIGatewayProxyResponseEvent handleRequest(
             APIGatewayProxyRequestEvent input,
             Context context) {
-        if (!isFromTelegram(input)) {
+        if (!isFromTelegram(input, context)) {
             return response(401, "UNAUTHORIZED");
         }
 
@@ -110,6 +173,45 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return response(400, "INVALID_JSON");
         }
 
+        // Dedup theo update_id: Telegram retry khi không nhận 200 -> không được ghi audit / đếm rate limit / enqueue lần 2
+        final String updateId = root.hasNonNull("update_id") ? root.path("update_id").asText() : null;
+        boolean lockAcquired = false;
+        if (dedup != null && updateId != null) {
+            try {
+                long ttl = Instant.now().getEpochSecond() + DEDUP_TTL_SECONDS;
+                if (!dedup.tryAcquireDedup(updateId, ttl)) {
+                    log(context, "Bỏ qua update trùng: " + updateId);
+                    return response(200, "DUPLICATE");
+                }
+                lockAcquired = true;
+            } catch (Exception e) {
+                log(context, "Không kiểm tra được dedup (" + e + ") -> vẫn xử lý update " + updateId);
+            }
+        }
+
+        try {
+            APIGatewayProxyResponseEvent result = routeUpdate(root, context);
+            if (result.getStatusCode() >= 500 && lockAcquired) {
+                // Job CHƯA được nhận (vd. SQS lỗi): nhả khóa để Telegram retry được
+                releaseDedup(updateId, context);
+            }
+            return result;
+        } catch (Exception e) {
+            // Đã có tác dụng phụ một phần -> giữ khóa dedup, trả 200 để Telegram không retry gây xử lý đôi
+            log(context, "Lỗi không mong đợi khi xử lý update " + updateId + ": " + e);
+            return response(200, "INTERNAL_ERROR_LOGGED");
+        }
+    }
+
+    private void releaseDedup(String updateId, Context context) {
+        try {
+            dedup.deleteDedup(updateId);
+        } catch (Exception e) {
+            log(context, "Không nhả được khóa dedup " + updateId + ": " + e);
+        }
+    }
+
+    private APIGatewayProxyResponseEvent routeUpdate(JsonNode root, Context context) {
         // 1. Xử lý Callback Query (Bấm nút inline keyboard - Fast Path)
         Optional<TelegramCallbackQuery> cbOpt = adapter.parseCallbackQuery(root);
         if (cbOpt.isPresent()) {
@@ -141,18 +243,33 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         return handleContentInspection(inbound, chatId, userId, context);
     }
 
+    /** Callback luôn được trả lời: lỗi DB không được để nút "xoay" mãi hay báo "đã lưu" khi chưa lưu. */
     private APIGatewayProxyResponseEvent handleCallbackQuery(TelegramCallbackQuery cb, Context context) {
+        try {
+            return processCallbackQuery(cb, context);
+        } catch (Exception e) {
+            log(context, "Lỗi xử lý callback '" + cb.data() + "': " + e);
+            try {
+                if (telegram != null) {
+                    telegram.answerCallbackQuery(cb.queryId(), "Cháu chưa lưu được, Bác bấm lại giúp cháu nhé.");
+                }
+            } catch (Exception ignored) {
+                // không còn gì để làm thêm
+            }
+            return response(200, "CALLBACK_FAILED");
+        }
+    }
+
+    private APIGatewayProxyResponseEvent processCallbackQuery(TelegramCallbackQuery cb, Context context) {
         long chatId = Long.parseLong(cb.chatId());
         String userId = cb.userId();
         String data = cb.data();
 
         if ("consent:agree".equals(data)) {
             if (userRepo != null) {
+                // Chỉ bật "analyze": các mục đích khác (guardian/voice/donate) giữ nguyên lựa chọn đã có
                 Map<String, Boolean> purposes = new HashMap<>();
                 purposes.put("analyze", true);
-                purposes.put("guardian", false);
-                purposes.put("voice", false);
-                purposes.put("donate", false);
                 userRepo.updateConsent(userId, policySha256, POLICY_VERSION, purposes);
             }
             if (auditRepo != null) {
@@ -170,6 +287,10 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return response(200, "CALLBACK_HANDLED");
 
         } else if ("consent:decline".equals(data)) {
+            if (userRepo != null) {
+                // Từ chối = thu hồi đồng ý đã có (nếu có), bot ngừng xử lý nội dung ngay
+                userRepo.revokeConsent(userId);
+            }
             if (auditRepo != null) {
                 auditRepo.recordEvent(userId, "CONSENT_DECLINED", POLICY_VERSION, policySha256, "Declined via inline button");
             }
@@ -335,7 +456,15 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
         }
 
-        // 3. Kiểm tra Giới hạn tốc độ người dùng (Rate Limiting - BE-26)
+        // 3. Hàng đợi SQS phải sẵn sàng TRƯỚC khi nhận việc: không gửi "⏳" cho một job chắc chắn bị mất.
+        //    (Chế độ local long polling không có SQS nên được bỏ qua bước enqueue.)
+        boolean queueReady = queueUrl != null && !queueUrl.isBlank() && sqs != null;
+        if (!queueReady && !localDevelopment) {
+            log(context, "Chưa cấu hình hàng đợi SQS (WEBHOOK_QUEUE_URL) -> từ chối xử lý để không mất job im lặng");
+            return response(500, "QUEUE_NOT_CONFIGURED");
+        }
+
+        // 4. Kiểm tra Giới hạn tốc độ người dùng (Rate Limiting - BE-26)
         if (rateLimitRepo != null) {
             RateLimitRepo.RateLimitResult rlResult = rateLimitRepo.checkAndIncrement(userId);
             if (!rlResult.allowed()) {
@@ -351,20 +480,20 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
         }
 
-        // 4. Bước tin nhắn chờ ("⏳")
+        // 5. Bước tin nhắn chờ ("⏳")
         if (telegram != null) {
             try {
                 telegram.sendText(
                         chatId,
                         "⏳ Cháu đang kiểm tra, " + addressForm.toLowerCase() + " chờ cháu vài giây nhé...");
             } catch (Exception e) {
+                // Tin chờ chỉ là phụ: lỗi ở đây không được làm Telegram retry (gây xử lý/đếm đôi), vẫn đưa job vào hàng đợi
                 log(context, "Không gửi được tin nhắn chờ: " + e);
-                return response(500, "WAIT_MESSAGE_FAILED");
             }
         }
 
-        // 5. Enqueue vào SQS
-        if (queueUrl != null && !queueUrl.isBlank() && sqs != null) {
+        // 6. Enqueue vào SQS
+        if (queueReady) {
             try {
                 String payload = MAPPER.writeValueAsString(inbound);
                 sqs.sendMessage(
@@ -388,9 +517,17 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         return UserRecord.DEFAULT_ADDRESS_FORM;
     }
 
-    private boolean isFromTelegram(APIGatewayProxyRequestEvent input) {
-        if (secret == null || secret.isBlank()) {
+    /**
+     * Fail-closed: Function URL công khai (AuthType NONE) nên header secret là lớp xác thực duy nhất.
+     * Không có secret được cấu hình => từ chối tất cả. Chỉ chế độ local development mới được bỏ qua.
+     */
+    private boolean isFromTelegram(APIGatewayProxyRequestEvent input, Context context) {
+        if (localDevelopment) {
             return true;
+        }
+        if (secret == null || secret.isBlank()) {
+            log(context, "TELEGRAM_WEBHOOK_SECRET chưa được cấu hình -> từ chối request (fail-closed)");
+            return false;
         }
         Map<String, String> headers = input.getHeaders();
         if (headers == null) {
@@ -399,7 +536,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
         byte[] expectedBytes = secret.getBytes(StandardCharsets.UTF_8);
         for (Map.Entry<String, String> entry : headers.entrySet()) {
-            if ("X-Telegram-Bot-Api-Secret-Token".equalsIgnoreCase(entry.getKey())) {
+            if ("X-Telegram-Bot-Api-Secret-Token".equalsIgnoreCase(entry.getKey()) && entry.getValue() != null) {
                 byte[] actualBytes = entry.getValue().getBytes(StandardCharsets.UTF_8);
                 if (MessageDigest.isEqual(expectedBytes, actualBytes)) {
                     return true;
