@@ -289,3 +289,93 @@ def test_judge_applies_post_check_and_turn():
     r = _run(FakeLLM({"judge": [out]}), turn=2)
     assert r.judgement.scenario == "OTHER" and r.judgement.followup_question is None
     assert {"scenario_unknown", "followup_turn2"} <= set(r.fixes)
+
+
+# ------------------------------------------------------------------ cascade (AI-07, ARCH §6.9)
+
+LOW = json.dumps(_j(confidence="low"), ensure_ascii=False)
+BENIGN = json.dumps(_j(group="N0", scenario="N0", risk_score=10, signals=[], requested_actions=["none"]), ensure_ascii=False)
+
+
+def test_judge_result_from_primary_is_not_escalated():
+    r = _run(FakeLLM({"judge": [GOOD]}))
+    assert not r.escalated and r.escalation is None and r.skipped is None
+
+
+def test_client_error_escalates_to_backup():
+    r = _run(FakeLLM({"judge": [RuntimeError("ThrottlingException")], "backup": [GOOD]}))
+    assert r.escalated and r.escalation == "error"
+
+
+def test_two_bad_json_escalate_with_reason_json():
+    r = _run(FakeLLM({"judge": ["x", "y"], "backup": [GOOD]}))
+    assert r.escalated and r.escalation == "json"
+
+
+def test_low_confidence_escalates_and_backup_wins():
+    llm = FakeLLM({"judge": [LOW], "backup": [GOOD]})
+    r = _run(llm)
+    assert [c[0] for c in llm.calls] == ["judge", "backup"]
+    assert r.escalated and r.escalation == "low_confidence" and r.judgement.confidence == "high"
+    assert r.calls == 2 and r.cost_usd == pytest.approx(0.002)
+
+
+@pytest.mark.parametrize(("rule_score", "escalate"), [(80, True), (100, True), (79, False)])
+def test_rule_conflict_escalates_only_when_rules_are_sure(rule_score, escalate):
+    llm = FakeLLM({"judge": [BENIGN], "backup": [GOOD]})
+    r = J.judge(llm, "SYS", J.build_user_message(TEXT), TEXT, rule_score=rule_score)
+    assert r.escalated is escalate
+    assert r.escalation == ("rule_conflict" if escalate else None)
+
+
+def test_llm_score_at_threshold_is_not_a_conflict():
+    edge = json.dumps(_j(risk_score=J.ESCALATE_LLM_MAX), ensure_ascii=False)
+    r = J.judge(FakeLLM({"judge": [edge]}), "SYS", "u", TEXT, rule_score=100)
+    assert not r.escalated and r.escalation is None
+
+
+@pytest.mark.parametrize("backup", [[RuntimeError("ThrottlingException")], ["x", "y"]])
+def test_failed_escalation_keeps_primary_answer(backup):
+    r = _run(FakeLLM({"judge": [LOW], "backup": backup}))
+    assert r.judgement is not None and r.judgement.confidence == "low"
+    assert r.model_role == "judge" and not r.escalated and r.escalation == "low_confidence"
+
+
+def test_both_models_throttled_gives_rules_only():
+    throttle = RuntimeError("ThrottlingException")
+    r = _run(FakeLLM({"judge": [throttle], "backup": [throttle]}))
+    assert r.judgement is None and r.llm_errors == 2 and r.escalation == "error"
+
+
+def test_kill_switch_never_calls_llm():
+    llm = FakeLLM({})
+    r = J.judge(llm, "SYS", "u", TEXT, llm_enabled=False)
+    assert r.judgement is None and r.skipped == "llm_disabled" and llm.calls == []
+
+
+def test_no_time_for_primary_skips_llm():
+    llm = FakeLLM({})
+    r = J.judge(llm, "SYS", "u", TEXT, can_call=lambda role: False)
+    assert r.judgement is None and r.skipped == "deadline" and llm.calls == []
+
+
+def test_no_time_for_backup_keeps_primary_answer():
+    llm = FakeLLM({"judge": [LOW]})
+    r = J.judge(llm, "SYS", "u", TEXT, can_call=lambda role: role == "judge")
+    assert r.judgement is not None and r.model_role == "judge" and r.skipped == "deadline"
+    assert [c[0] for c in llm.calls] == ["judge"]
+
+
+def test_no_time_for_backup_after_error_gives_rules_only():
+    r = J.judge(FakeLLM({"judge": [RuntimeError("x")]}), "SYS", "u", TEXT, can_call=lambda role: role == "judge")
+    assert r.judgement is None and r.skipped == "deadline" and r.escalation == "error"
+
+
+def test_deadline_check_compares_time_left_with_role_budget():
+    now = [100.0]
+    can = J.deadline_check(60, {"judge": 17, "backup": 13}, margin_s=5, clock=lambda: now[0])
+    assert can("judge") and can("backup")       # còn 55 giây
+    now[0] += 40                                # còn 15 giây
+    assert not can("judge") and can("backup")
+    now[0] += 3                                 # còn 12 giây
+    assert not can("backup")

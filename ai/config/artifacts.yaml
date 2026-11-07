@@ -1,9 +1,13 @@
-# Empty skeleton (G0). AI2 fills in version, license and sha256 once real artifacts exist.
-- name: ocr
-  version: ""
-  s3_prefix: ""
-  license: ""
-  files: {}
+# Local model artifacts; S3ArtifactStore downloads s3://$ARTIFACT_BUCKET/<s3_prefix><file> and checks sha256.
+# Entries with an empty version/files are still the G0 skeleton. Source, license and how to rebuild: ai/MODELS.md.
+- name: ocr                      # AI-26: RapidOCR 3.10.0 defaults (PP-OCRv6 small det/rec + PP-OCRv4 cls), ONNX fp32
+  version: ppocrv6-small-rapidocr3.10.0
+  s3_prefix: ocr/ppocrv6-small-rapidocr3.10.0/
+  license: Apache-2.0
+  files:
+    PP-OCRv6_det_small.onnx: 090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f
+    PP-OCRv6_rec_small.onnx: 6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884
+    ch_ppocr_mobile_v2.0_cls_mobile.onnx: e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c
 - name: embedder
   version: ""
   s3_prefix: ""

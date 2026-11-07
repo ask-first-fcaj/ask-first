@@ -9,7 +9,9 @@ là hỏng), độ trễ CPU. Chạy:
 
 Kết quả thô của từng engine lưu ở --raw-dir, báo cáo sinh ra ở --out (cả hai mặc định thư mục tạm,
 KHÔNG vào repo). Trên Linux/macOS thay `.venv/Scripts/python.exe` bằng `.venv/bin/python`.
-Workflow `.github/workflows/ocr-bench.yml` chạy lại hai cấu hình RapidOCR trên cả hai bộ và lưu kết quả thô.
+Workflow `.github/workflows/ocr-bench.yml` chạy lại RapidOCR + cột (cấu hình G2) và đường production `askfirst`
+(fp32, int8) trên cả hai bộ và lưu kết quả thô. Hậu xử lý import từ `ai/src/askfirst/local_models/ocr.py` (AI-26);
+engine `askfirst*` cần thư mục model từ `ai/scripts/fetch_ocr_models.py` (biến `OCR_MODELS_DIR`, `OCR_MODELS_DIR_INT8`).
 """
 
 from __future__ import annotations
@@ -32,16 +34,21 @@ import unicodedata
 from collections import Counter
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "ai" / "src"))  # hậu xử lý dùng chung với production (AI-26)
+from askfirst.local_models.ocr import order_by_columns, repair_phones, repair_urls  # noqa: E402
 DATASET = ROOT / "eval" / "datasets" / "ocr_images.jsonl"
 BLUR = "[mờ]"
 TESSERACT_EXE = os.environ.get("TESSERACT_EXE", r"C:\Program Files\Tesseract-OCR\tesseract.exe")
 TESSDATA = os.environ.get("TESSDATA_PREFIX", str(Path.home() / "tessdata"))
-ENGINE_ORDER = ["rapidocr", "rapidocr_cols", "rapidocr_x2", "rapidocr_latin", "rapidocr_latin_x2", "tesseract", "tesseract_vie_eng", "paddle_default", "paddle_cols", "paddle_vietocr"]
+ENGINE_ORDER = ["rapidocr", "rapidocr_cols", "askfirst", "askfirst_int8", "rapidocr_x2", "rapidocr_latin", "rapidocr_latin_x2", "tesseract", "tesseract_vie_eng", "paddle_default", "paddle_cols", "paddle_vietocr"]
 ENGINE_LABEL = {
     "rapidocr": "RapidOCR (PP-OCRv6 small, ONNX)",
     "rapidocr_cols": "RapidOCR + sắp dòng theo cột (ảnh ghép 2 khung)",
+    "askfirst": "Production `RapidOcr` (cột + sửa SĐT/URL), ONNX fp32",
+    "askfirst_int8": "Production `RapidOcr` (cột + sửa SĐT/URL), ONNX int8 động",
     "rapidocr_x2": "RapidOCR + phóng ×2 ảnh rộng < 800 px",
     "rapidocr_latin": "RapidOCR rec Latinh (PP-OCRv5 mobile)",
     "rapidocr_latin_x2": "RapidOCR rec Latinh + phóng ×2",
@@ -99,42 +106,30 @@ class RapidOCRLatinx2Engine(RapidOCRLatinEngine):
     upscale = True
 
 
-def order_by_columns(txts: list[str], boxes, min_gap_px: int = 12, min_boxes_per_side: int = 3) -> str:
-    """Chỉ khi ảnh có dải dọc trống liên tục ở giữa (ảnh ghép 2 khung chat) thì đọc hết cột trái rồi cột phải.
-    Ảnh không có dải trống giữ nguyên thứ tự gốc của engine. Dùng chung cho mọi engine để so công bằng."""
-    import numpy as np
-
-    if not txts:
-        return ""
-    boxes = np.asarray(boxes)
-    x0, x1 = boxes[:, :, 0].min(1), boxes[:, :, 0].max(1)
-    lo, hi = int(x1.max() * 0.3), int(x1.max() * 0.7)
-    best, run = (0, 0), None
-    for x in range(lo, hi + 1):
-        free = not ((x0 < x) & (x1 > x)).any()
-        if free and run is None:
-            run = x
-        if run is not None and (not free or x == hi):
-            end = x if not free else x + 1
-            best = max(best, (end - run, run), key=lambda t: t[0])
-            run = None
-    gap, start = best
-    if gap < min_gap_px:
-        return "\n".join(txts)
-    cut = start + gap / 2
-    centre_x = (x0 + x1) / 2
-    left = [i for i in range(len(txts)) if centre_x[i] < cut]
-    right = [i for i in range(len(txts)) if centre_x[i] >= cut]
-    if min(len(left), len(right)) < min_boxes_per_side:
-        return "\n".join(txts)
-    key = lambda i: (boxes[i, :, 1].mean(), boxes[i, :, 0].mean())
-    return "\n".join(txts[i] for i in sorted(left, key=key) + sorted(right, key=key))
-
-
 class RapidOCRColumnsEngine(RapidOCREngine):
     def read(self, path: str) -> str:
         res = self.eng(path)
         return order_by_columns(list(res.txts), res.boxes) if res.txts else ""
+
+
+class AskFirstEngine:
+    """Đúng đường production (AI-26): `RapidOcr.read(bytes)`, model lấy từ thư mục trong biến môi trường `env`."""
+    env = "OCR_MODELS_DIR"
+
+    def load(self):
+        from askfirst.local_models.ocr import RapidOcr
+
+        d = Path(os.environ[self.env])
+        threads = int(os.environ["OCR_THREADS"]) if os.environ.get("OCR_THREADS") else None
+        self.eng = RapidOcr(SimpleNamespace(path=lambda name: d), threads=threads)
+        self.eng._engine = self.eng._load()   # tính thời gian nạp model vào load_s, không vào ảnh đầu
+
+    def read(self, path: str) -> str:
+        return self.eng.read(Path(path).read_bytes()).text
+
+
+class AskFirstInt8Engine(AskFirstEngine):
+    env = "OCR_MODELS_DIR_INT8"
 
 
 class TesseractEngine:
@@ -237,6 +232,8 @@ ENGINES = {
     "rapidocr": RapidOCREngine,
     "rapidocr_x2": RapidOCRx2Engine,
     "rapidocr_cols": RapidOCRColumnsEngine,
+    "askfirst": AskFirstEngine,
+    "askfirst_int8": AskFirstInt8Engine,
     "rapidocr_latin": RapidOCRLatinEngine,
     "rapidocr_latin_x2": RapidOCRLatinx2Engine,
     "tesseract": TesseractEngine,
@@ -330,24 +327,6 @@ def url_ok(url: str, hyp: str) -> bool:
 def url_host_ok(url: str, hyp: str) -> bool:
     """Phụ: chỉ xét tên miền + đường dẫn, bỏ `http(s)://` (không thay ngưỡng chính)."""
     return _url_found(re.sub(r"^https?://", "", re.sub(r"\s+", "", url)), hyp)
-
-
-def repair_urls(text: str) -> str:
-    """Sửa 3 lỗi ở URL thấy ở RapidOCR/Paddle: mất chữ `h` (`ttps://`), thừa dấu chấm sau `://`, và URL bị xuống dòng ngay sau `://`."""
-    text = re.sub(r"(?<![A-Za-z])ttp(s?):", r"http\1:", text)
-    text = re.sub(r"(https?:\s*/\s*/)\s*\.+", r"\1", text)
-    return re.sub(r"(https?://)\s+(?=[A-Za-z0-9])", r"\1", text)
-
-
-_PHONE_LIKE = re.compile(r"(?<![\w.])(\+?84|0|O)[\dOIl .\-]{8,13}(?!\w)")
-
-
-def repair_phones(text: str) -> str:
-    """Sửa nhầm `O`→`0`, `I`/`l`→`1` chỉ bên trong chuỗi giống SĐT (bắt đầu bằng 0/O/+84, có ≥ 8 chữ số thật); chữ thường không bị đụng."""
-    def fix(m: re.Match) -> str:
-        s = m.group(0)
-        return s.translate(str.maketrans("OIl", "011")) if sum(c.isdigit() for c in s) >= 8 else s
-    return _PHONE_LIKE.sub(fix, text)
 
 
 def near_miss(url: str, hyp: str) -> str:
