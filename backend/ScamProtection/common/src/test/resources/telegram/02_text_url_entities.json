@@ -1,0 +1,24 @@
+{
+  "update_id": 10002,
+  "message": {
+    "message_id": 102,
+    "from": { "id": 111111, "is_bot": false, "first_name": "Nguyen" },
+    "chat": { "id": 222222, "type": "private" },
+    "date": 1729000000,
+    "text": "Kiểm tra trang web https://example-scam.com hoặc bấm vào đây",
+    "entities": [
+      {
+        "offset": 18,
+        "length": 24,
+        "type": "url"
+      },
+      {
+        "offset": 52,
+        "length": 6,
+        "type": "text_link",
+        "url": "https://malicious-site.vn"
+      }
+    ]
+  }
+}
+

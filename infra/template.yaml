@@ -1,0 +1,221 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: AskFirst Cloud Infrastructure (Dev) - BE-03 SAM skeleton
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+    Description: Environment stage (dev or prod)
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: java21
+    Architectures:
+      - x86_64
+
+Resources:
+  # ============================================================================
+  # 1. LAMBDA WEBHOOK (FUNCTION URL)
+  # ============================================================================
+  WebhookFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub askfirst-${Stage}-webhook
+      Description: Telegram webhook handler with Function URL
+      CodeUri: ../backend/ScamProtection/webhook-handler/
+      Handler: com.askfirst.webhookhandler.WebhookHandler::handleRequest
+      # Handler đọc/ghi DynamoDB và gửi SQS -> cần quyền, nếu không dev sẽ AccessDenied
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AskFirstTable
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt JobsQueue.QueueName
+      FunctionUrlConfig:
+        # Function URL công khai: lớp xác thực duy nhất là header X-Telegram-Bot-Api-Secret-Token
+        AuthType: NONE
+      Environment:
+        Variables:
+          STAGE: !Ref Stage
+          # Tên biến phải khớp WebhookHandler (thiếu biến nào là Lambda lỗi ngay lúc khởi tạo)
+          DYNAMODB_TABLE_NAME: !Ref AskFirstTable
+          WEBHOOK_QUEUE_URL: !Ref JobsQueue
+          # Giá trị lấy từ SSM Parameter Store (kiểu String) lúc deploy -> tạo param TRƯỚC khi sam deploy
+          TELEGRAM_BOT_TOKEN: !Sub '{{resolve:ssm:/askfirst/${Stage}/telegram/bot_token}}'
+          TELEGRAM_WEBHOOK_SECRET: !Sub '{{resolve:ssm:/askfirst/${Stage}/telegram/webhook_secret}}'
+          POLICY_SHA256: !Sub '{{resolve:ssm:/askfirst/${Stage}/config/policy_sha256}}'
+
+  # ============================================================================
+  # 2. DYNAMODB ASKFIRST (SINGLE-TABLE)
+  # ============================================================================
+  AskFirstTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub askfirst-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+  # ============================================================================
+  # 3. SQS QUEUES (jobs + jobs-dlq)
+  # ============================================================================
+  JobsDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub askfirst-${Stage}-jobs-dlq
+      MessageRetentionPeriod: 1209600 # 14 days
+      SqsManagedSseEnabled: true
+
+  JobsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub askfirst-${Stage}-jobs
+      VisibilityTimeout: 720 # 6x worker timeout (120s)
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt JobsDeadLetterQueue.Arn
+        maxReceiveCount: 5
+      SqsManagedSseEnabled: true
+
+  # ============================================================================
+  # 4. S3 DATA BUCKET
+  # ============================================================================
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub askfirst-${Stage}-data-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireDonatedSamplesAfter30Days
+            Status: Enabled
+            Prefix: donated/
+            ExpirationInDays: 30
+
+  # ============================================================================
+  # 5. SSM PARAMETER STORE
+  # ============================================================================
+  StageParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /askfirst/${Stage}/config/stage
+      Type: String
+      Value: !Ref Stage
+      Description: Environment stage
+
+  TableNameParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /askfirst/${Stage}/dynamodb/table_name
+      Type: String
+      Value: !Ref AskFirstTable
+      Description: DynamoDB single-table name
+
+  JobsQueueUrlParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /askfirst/${Stage}/sqs/jobs_queue_url
+      Type: String
+      Value: !Ref JobsQueue
+      Description: Jobs queue URL
+
+  JobsDlqUrlParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /askfirst/${Stage}/sqs/jobs_dlq_url
+      Type: String
+      Value: !Ref JobsDeadLetterQueue
+      Description: Jobs DLQ URL
+
+  DataBucketNameParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /askfirst/${Stage}/s3/bucket_name
+      Type: String
+      Value: !Ref DataBucket
+      Description: S3 Data Bucket name
+
+Outputs:
+  Stage:
+    Description: Environment stage
+    Value: !Ref Stage
+
+  WebhookFunctionUrl:
+    Description: Function URL for Webhook Lambda (Public HTTP endpoint)
+    Value: !GetAtt WebhookFunctionUrl.FunctionUrl
+
+  WebhookFunctionArn:
+    Description: Webhook Lambda Function ARN
+    Value: !GetAtt WebhookFunction.Arn
+
+  DynamoDBTableName:
+    Description: DynamoDB Single-Table Name
+    Value: !Ref AskFirstTable
+
+  DynamoDBTableArn:
+    Description: DynamoDB Table ARN
+    Value: !GetAtt AskFirstTable.Arn
+
+  JobsQueueUrl:
+    Description: Jobs SQS Queue URL
+    Value: !Ref JobsQueue
+
+  JobsQueueArn:
+    Description: Jobs SQS Queue ARN
+    Value: !GetAtt JobsQueue.Arn
+
+  JobsDlqUrl:
+    Description: Jobs Dead-Letter Queue URL
+    Value: !Ref JobsDeadLetterQueue
+
+  JobsDlqArn:
+    Description: Jobs DLQ ARN
+    Value: !GetAtt JobsDeadLetterQueue.Arn
+
+  DataBucketName:
+    Description: S3 Data Bucket Name
+    Value: !Ref DataBucket
+
+  DataBucketArn:
+    Description: S3 Data Bucket ARN
+    Value: !GetAtt DataBucket.Arn

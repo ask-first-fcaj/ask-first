@@ -1,0 +1,14 @@
+{
+  "update_id": 10013,
+  "callback_query": {
+    "id": "cb_query_10013",
+    "from": { "id": 111111, "is_bot": false, "first_name": "Nguyen" },
+    "message": {
+      "message_id": 101,
+      "chat": { "id": 222222, "type": "private" },
+      "date": 1729000000
+    },
+    "data": "action:confirm_report"
+  }
+}
+

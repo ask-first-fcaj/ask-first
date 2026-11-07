@@ -53,6 +53,9 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - Khung repo: `docs/`, `backend/`, `ai/`, `contracts/`, `infra/`.
 - Tài liệu: kiến trúc (`docs/system-architecture.md`), kế hoạch (`docs/implementation-plan.md`), hướng dẫn cho team Backend và AI.
 - `CODEOWNERS`, template PR, workflow CI khung (3 OS, job `contract`).
+- BE-02: Tích hợp plugin Spotless chuẩn hoá code Java, hoàn thiện kiểm tra CI 3 hệ điều hành và kiểm tra chéo lệnh chuẩn BE/AI.
+- BE-03 (#1): Khung hạ tầng AWS SAM (`infra/template.yaml`, `infra/samconfig.toml`, `infra/README.md`) cho môi trường `dev`: Lambda `webhook` (Java 21, Function URL), DynamoDB `askfirst` (PK/SK, GSI1, TTL, PITR), SQS `jobs` + `jobs-dlq`, S3 Data Bucket (Block Public Access, lifecycle `donated/` 90 ngày), SSM Parameter Store; kèm handler `HelloWebhookHandler` và unit test.
+
 
 ### Fixed
 - AI-03b (#39), sửa theo review #121: `media/telegram.py` giới hạn **tổng thời gian** tải (trước đây 10 giây chỉ tính cho từng thao tác socket, file gần 20 MB trên mạng chậm có thể vượt `deadline_s`): mỗi file (getFile + tải) ≤ 10 giây, cả `build_bundle` ≤ `budget_s`, đọc theo chunk và dừng khi quá hạn; có thể vượt mốc vài giây ở bước mở kết nối. `handler.py` truyền `budget_s = min(20, ctx.deadline_s - 35)` (tối thiểu 0), chừa 35 giây cho judge, backup và lề 5 giây; pipeline nhận `deadline_s` đã trừ thời gian tải media. `artifacts/s3.py`: tên không có trong `artifacts.yaml` raise `ArtifactError` thay cho `KeyError`; file `.part` tải dở bị xoá trong `finally` khi `download_file` lỗi.

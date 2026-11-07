@@ -3,6 +3,7 @@ package com.askfirst.common.channel;
 import com.askfirst.common.channel.model.EntityRef;
 import com.askfirst.common.channel.model.InboundMessage;
 import com.askfirst.common.channel.model.MediaRef;
+import com.askfirst.common.channel.model.TelegramCallbackQuery;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.time.Instant;
@@ -24,7 +25,7 @@ public class TelegramAdapter {
     /**
      * Parses a Telegram update JSON.
      * Returns Optional.empty() if the update is not a user message (e.g., bot
-     * sender, callback query, unsupported media).
+     * sender, unsupported media, or empty).
      */
     public Optional<InboundMessage> parseUpdate(JsonNode update) {
         if (update == null || !update.has("message")) {
@@ -56,7 +57,7 @@ public class TelegramAdapter {
         String rawText = msg.hasNonNull("text") ? msg.path("text").asText() : msg.path("caption").asText(null);
         String text = null;
         if (rawText != null) {
-            text = rawText.length() > MAX_TEXT_LENGTH ? rawText.substring(0, MAX_TEXT_LENGTH) : rawText;
+            text = truncate(rawText, MAX_TEXT_LENGTH);
         }
 
         // 2. Identify kind and media reference (Java NEVER downloads media bytes: plan
@@ -159,5 +160,55 @@ public class TelegramAdapter {
                 forwardOrigin,
                 mediaGroupId,
                 receivedAt));
+    }
+
+    /**
+     * Parses an inline keyboard button callback query (Fast Path).
+     */
+    public Optional<TelegramCallbackQuery> parseCallbackQuery(JsonNode update) {
+        if (update == null || !update.has("callback_query")) {
+            return Optional.empty();
+        }
+        JsonNode cb = update.path("callback_query");
+        String updateId = update.path("update_id").asText("");
+        String queryId = cb.path("id").asText("");
+        String fromId = cb.path("from").path("id").asText("");
+        String chatId = cb.path("message").path("chat").path("id").asText("");
+        String messageId = cb.path("message").path("message_id").asText("");
+        String data = cb.path("data").asText("");
+
+        if (queryId.isBlank() || chatId.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(new TelegramCallbackQuery(
+                updateId,
+                queryId,
+                "tg:" + fromId,
+                chatId,
+                messageId,
+                data));
+    }
+
+    /**
+     * Cắt chuỗi tối đa {@code max} ký tự UTF-16. Không để cắt đôi cặp surrogate (emoji, chữ hiếm),
+     * vì chuỗi lỗi surrogate sẽ hỏng khi serialize JSON gửi sang SQS.
+     */
+    static String truncate(String value, int max) {
+        if (value.length() <= max) {
+            return value;
+        }
+        int end = max;
+        if (Character.isHighSurrogate(value.charAt(end - 1))) {
+            end--;
+        }
+        return value.substring(0, end);
+    }
+
+    /**
+     * Helper to check if an inbound message is a bot command (e.g., /start,
+     * /huongdan).
+     */
+    public static boolean isCommand(InboundMessage message) {
+        return message != null && message.text() != null && message.text().startsWith("/");
     }
 }
