@@ -1,0 +1,43 @@
+{#- Tin kết luận (ARCH §6.8): luôn là messages[0], ≤ 600 ký tự, dòng 1–3 là kết luận. Bản nháp, câu chữ chốt theo SH-08.
+    Biến lấy từ input (explanation, lead, tên người thân) đã qua filter `untrusted` trong respond.py: escape HTML và defang URL. -#}
+{% set ACTIONS = {
+  "transfer_money": "ĐỪNG chuyển tiền",
+  "share_otp": "ĐỪNG đọc mã OTP cho ai",
+  "share_password": "ĐỪNG đưa mật khẩu",
+  "install_app": "ĐỪNG cài ứng dụng theo lời họ",
+  "share_screen": "ĐỪNG chia sẻ màn hình",
+  "click_link": "ĐỪNG bấm link",
+  "keep_secret": "ĐỪNG giữ bí mật, hãy kể với người nhà",
+  "share_id_card": "ĐỪNG gửi ảnh căn cước",
+} %}
+{% if level == "DANGEROUS" %}
+🔴 <b>RẤT GIỐNG LỪA ĐẢO</b>{% if scenario_title %} – {{ scenario_title }}{% endif %}
+
+{% if lead %}{{ lead }}
+{% endif %}
+👉 {{ XH }} {% if actions %}{% for a in actions[:2] %}{{ ACTIONS[a] }}{{ ", " if not loop.last else "" }}{% endfor %}{% else %}ĐỪNG làm theo tin này, hỏi người nhà trước{% endif %}.
+{% elif level == "SUSPICIOUS" %}
+🟠 <b>NGHI NGỜ</b>{% if scenario_title %} – {{ scenario_title }}{% endif %}
+
+{% if lead %}{{ lead }}
+{% endif %}
+👉 {{ XH }} khoan làm theo tin này{% if actions %}: {% for a in actions[:2] %}{{ ACTIONS[a] }}{{ ", " if not loop.last else "" }}{% endfor %}{% endif %}. Hỏi người nhà hoặc gọi ngân hàng trước.
+{% elif level == "UNSURE" %}
+🟡 <b>BOT CHƯA CHẮC CHẮN</b>
+Bot chưa chắc chắn, {{ xh }} hỏi con hoặc gọi ngân hàng trước khi làm gì.
+{% elif otp_genuine %}
+⚪ <b>TIN OTP THẬT</b>
+Đây là tin OTP thật từ ngân hàng. Mã này <b>chỉ để {{ xh }} tự nhập</b>. Ai hỏi mã này, kể cả người xưng là nhân viên ngân hàng, đều là lừa đảo.
+{% else %}
+⚪ <b>CHƯA THẤY DẤU HIỆU LỪA ĐẢO RÕ RÀNG</b>
+Bot chưa thấy dấu hiệu lừa đảo rõ ràng. Nhưng nếu ai bảo chuyển tiền, đọc OTP hay giữ bí mật thì {{ xh }} hãy dừng lại.
+{% endif %}
+{% if alerted %}
+✅ Cháu {{ alerted }} đã được báo.
+{% endif %}
+{% if failed %}
+❗ Bot chưa báo được cho {{ failed }}, {{ xh }} gọi trực tiếp nhé.
+{% endif %}
+{% if maintenance %}
+🛠 Bot đang bảo trì, chỉ kiểm được dấu hiệu cơ bản.
+{% endif %}
