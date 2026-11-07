@@ -57,7 +57,7 @@ public class TelegramAdapter {
         String rawText = msg.hasNonNull("text") ? msg.path("text").asText() : msg.path("caption").asText(null);
         String text = null;
         if (rawText != null) {
-            text = rawText.length() > MAX_TEXT_LENGTH ? rawText.substring(0, MAX_TEXT_LENGTH) : rawText;
+            text = truncate(rawText, MAX_TEXT_LENGTH);
         }
 
         // 2. Identify kind and media reference (Java NEVER downloads media bytes: plan
@@ -187,6 +187,21 @@ public class TelegramAdapter {
                 chatId,
                 messageId,
                 data));
+    }
+
+    /**
+     * Cắt chuỗi tối đa {@code max} ký tự UTF-16. Không để cắt đôi cặp surrogate (emoji, chữ hiếm),
+     * vì chuỗi lỗi surrogate sẽ hỏng khi serialize JSON gửi sang SQS.
+     */
+    static String truncate(String value, int max) {
+        if (value.length() <= max) {
+            return value;
+        }
+        int end = max;
+        if (Character.isHighSurrogate(value.charAt(end - 1))) {
+            end--;
+        }
+        return value.substring(0, end);
     }
 
     /**

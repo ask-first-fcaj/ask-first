@@ -87,6 +87,13 @@
                 <version>${jackson.version}</version>
             </dependency>
 
+            <!-- WebhookHandler dùng JavaTimeModule; cùng phiên bản với jackson-databind để tránh lệch Jackson -->
+            <dependency>
+                <groupId>com.fasterxml.jackson.datatype</groupId>
+                <artifactId>jackson-datatype-jsr310</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+
             <dependency>
                 <groupId>org.apache.httpcomponents.client5</groupId>
                 <artifactId>httpclient5</artifactId>

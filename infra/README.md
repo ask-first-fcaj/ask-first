@@ -8,14 +8,14 @@ Tài liệu này hướng dẫn chi tiết cách build, deploy, kiểm tra nghi�
 
 Khi triển khai stack `askfirst-dev` (Region `ap-southeast-1`), AWS SAM sẽ tạo các tài nguyên:
 
-| STT | Tài nguyên | Tên logic (SAM) | Tên thực tế trên AWS | Đặc tả chi tiết |
-|---|---|---|---|---|
-| 1 | **Lambda Webhook** | `WebhookFunction` | `askfirst-dev-webhook` | Java 21, Function URL công khai (`AuthType: NONE`), handler hello world |
+| STT | Tài nguyên | Tên logic (SAM) | Tên thực tế trên AWS | Đặc tả chi tiết                                                                                                                 |
+|---|---|---|---|---------------------------------------------------------------------------------------------------------------------------------|
+| 1 | **Lambda Webhook** | `WebhookFunction` | `askfirst-dev-webhook` | Java 21, Function URL công khai (`AuthType: NONE`), handler hello world                                                         |
 | 2 | **DynamoDB Single-Table** | `AskFirstTable` | `askfirst-dev` | Partition Key (`PK`), Sort Key (`SK`), GSI1 (`GSI1PK`, `GSI1SK`), TTL (`ttl`), PITR bật, Billing: On-Demand (`PAY_PER_REQUEST`) |
-| 3 | **SQS Queue chính** | `JobsQueue` | `askfirst-dev-jobs` | Visibility timeout: 720s (6 × 120s worker timeout), SSE bật, Redrive sang DLQ khi lỗi 5 lần |
-| 4 | **SQS Dead-Letter Queue** | `JobsDeadLetterQueue` | `askfirst-dev-jobs-dlq` | Message retention: 14 ngày (1.209.600s), SSE bật |
-| 5 | **S3 Data Bucket** | `DataBucket` | `askfirst-dev-data-<account_id>` | Block Public Access toàn diện, SSE AES256, Lifecycle rule xoá prefix `donated/` sau 90 ngày |
-| 6 | **SSM Parameter Store** | `StageParam`, `TableNameParam`, `JobsQueueUrlParam`, `JobsDlqUrlParam`, `DataBucketNameParam` | `/askfirst/dev/...` | Quản lý cấu hình tập trung (`stage`, `table_name`, `jobs_queue_url`, `jobs_dlq_url`, `bucket_name`) |
+| 3 | **SQS Queue chính** | `JobsQueue` | `askfirst-dev-jobs` | Visibility timeout: 720s (6 × 120s worker timeout), SSE bật, Redrive sang DLQ khi lỗi 5 lần                                     |
+| 4 | **SQS Dead-Letter Queue** | `JobsDeadLetterQueue` | `askfirst-dev-jobs-dlq` | Message retention: 14 ngày (1.209.600s), SSE bật                                                                                |
+| 5 | **S3 Data Bucket** | `DataBucket` | `askfirst-dev-data-<account_id>` | Block Public Access toàn diện, SSE AES256, Lifecycle rule xoá prefix `donated/` sau 30 ngày                                     |
+| 6 | **SSM Parameter Store** | `StageParam`, `TableNameParam`, `JobsQueueUrlParam`, `JobsDlqUrlParam`, `DataBucketNameParam` | `/askfirst/dev/...` | Quản lý cấu hình tập trung (`stage`, `table_name`, `jobs_queue_url`, `jobs_dlq_url`, `bucket_name`)                             |
 
 > [!IMPORTANT]
 > **Quy tắc thiết kế mạng & chi phí (D1):**
@@ -161,7 +161,7 @@ $BUCKET_NAME = $(aws ssm get-parameter --name "/askfirst/dev/s3/bucket_name" --q
 # Kiểm tra trạng thái Block Public Access
 aws s3api get-public-access-block --bucket $BUCKET_NAME
 
-# Kiểm tra Lifecycle Rule (ExpireDonatedSamplesAfter90Days)
+# Kiểm tra Lifecycle Rule (ExpireDonatedSamplesAfter30Days)
 aws s3api get-bucket-lifecycle-configuration --bucket $BUCKET_NAME
 
 # Khởi tạo 3 prefix chuẩn: models/, kb/, donated/

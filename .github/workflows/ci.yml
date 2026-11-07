@@ -16,6 +16,7 @@ jobs:
   backend:
     name: backend (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25   # test Testcontainers có thể treo nếu container không khởi động
     strategy:
       fail-fast: false
       matrix:
@@ -46,7 +47,32 @@ jobs:
         if: steps.has.outputs.found == 'true'
         working-directory: ${{ steps.has.outputs.dir }}
         shell: bash
+        # Test DynamoDB dùng Testcontainers: chỉ chạy được khi có Docker.
+        # Ubuntu runner có sẵn Docker; Windows/macOS runner không có nên test đó được bỏ qua có chủ đích.
         run: ./mvnw -B verify
+
+      # Chặn "pass giả": trên Ubuntu, test DynamoDB PHẢI chạy thật, không được bị skip.
+      - name: Bắt buộc test DynamoDB chạy thật (không skip)
+        if: steps.has.outputs.found == 'true' && matrix.os == 'ubuntu-latest'
+        working-directory: ${{ steps.has.outputs.dir }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          for cls in DynamoSpikeTest LaneBRepositoriesTest; do
+            reports=(target/surefire-reports/TEST-*${cls}.xml)
+            if [ ${#reports[@]} -eq 0 ]; then
+              echo "::error::Không có báo cáo surefire cho ${cls} (test có bị bỏ qua cả class không?)"; exit 1
+            fi
+            for r in "${reports[@]}"; do
+              if ! grep -q 'tests="[1-9]' "$r"; then
+                echo "::error::${r}: không có test nào được chạy"; exit 1
+              fi
+              if grep -q 'skipped="[1-9]' "$r"; then
+                echo "::error::${r}: có test bị skip, DynamoDB chưa được kiểm chứng thật"; exit 1
+              fi
+            done
+            echo "OK: ${cls} chạy thật"
+          done
 
   ai:
     name: ai (${{ matrix.os }})

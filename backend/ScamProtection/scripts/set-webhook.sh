@@ -21,6 +21,10 @@ TELEGRAM_WEBHOOK_SECRET=$(get_env TELEGRAM_WEBHOOK_SECRET)
 if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_WEBHOOK_SECRET" ]; then
   echo "Thiếu TELEGRAM_BOT_TOKEN hoặc TELEGRAM_WEBHOOK_SECRET trong .env"; exit 1
 fi
+# Telegram chỉ chấp nhận secret_token gồm A-Z a-z 0-9 _ - (1-256 ký tự)
+if ! [[ "$TELEGRAM_WEBHOOK_SECRET" =~ ^[A-Za-z0-9_-]{1,256}$ ]]; then
+  echo "TELEGRAM_WEBHOOK_SECRET không hợp lệ: chỉ dùng A-Z a-z 0-9 _ - (tối đa 256 ký tự)"; exit 1
+fi
 
 # URL công khai từ ngrok (ngrok phải đang chạy)
 NGROK_URL=$(curl -s http://127.0.0.1:4040/api/tunnels \
@@ -42,9 +46,17 @@ fi
 WEBHOOK_URL="$NGROK_URL/restapis/$API_ID/dev/_user_request_/webhook"
 echo "Đăng ký webhook: $WEBHOOK_URL (drop_pending_updates=$DROP_PENDING)"
 
+# --ssl-no-revoke chỉ có ý nghĩa với curl dùng Schannel (Windows, Git Bash);
+# curl trên Linux/macOS không hỗ trợ tùy chọn này nên không được truyền vào.
+SSL_OPTS=()
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) SSL_OPTS+=(--ssl-no-revoke) ;;
+esac
+
 call_telegram() {  # $1 = tên method, phần còn lại là tham số curl
   local method=$1; shift
-  curl -sS --ssl-no-revoke --connect-timeout 10 -m 30 -X POST \
+  # ${arr[@]+...} để tránh lỗi "unbound variable" khi mảng rỗng trên bash 3.2 (macOS) với set -u
+  curl -sS ${SSL_OPTS[@]+"${SSL_OPTS[@]}"} --connect-timeout 10 -m 30 -X POST \
     "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method}" "$@"
 }
 
@@ -65,6 +77,11 @@ done
 
 if [ "$OK" -ne 1 ]; then
   echo "Không kết nối được api.telegram.org (xem hướng dẫn kiểm tra mạng)."; exit 1
+fi
+
+# curl có thể thành công nhưng Telegram từ chối (token sai, URL không hợp lệ...): phải kiểm tra "ok":true
+if ! grep -q '"ok" *: *true' <<<"$RESP"; then
+  echo "Telegram từ chối setWebhook: $RESP"; exit 1
 fi
 
 echo "setWebhook: $RESP"
