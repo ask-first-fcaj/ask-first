@@ -18,7 +18,11 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - Làm rõ quy tắc duyệt `contracts/` và `ai/src/askfirst/domain/`: "1 BE + 1 AI" là luật team, vì CODEOWNERS của GitHub chỉ cần 1 owner bất kỳ approve (`README.md`, `.github/CODEOWNERS`, plan §1, ARCH §8.1).
 - Cắt scope MVP còn text + ảnh (OCR) + người thân + RAG cơ bản; **hoãn** voice/ASR, VLM fallback, multi-turn, Phase 2, Mini App; **bỏ pilot**, thay bằng test nội bộ ở W6.
 
+- BE-03 (`infra/template.yaml`, `infra/README.md`): token bot và webhook secret chuyển sang SSM `SecureString`. Lambda đọc lúc khởi tạo qua `TELEGRAM_BOT_TOKEN_PARAM` và `TELEGRAM_WEBHOOK_SECRET_PARAM`, không còn đưa giá trị plaintext vào cấu hình Lambda. Lambda được cấp `ssm:GetParameter` cho `parameter/askfirst/<stage>/telegram/*` và `kms:Decrypt` qua SSM. Cần thêm `software.amazon.awssdk:ssm` vào `webhook-handler/pom.xml`.
+
 ### Added
+- BE-22, BE-25, BE-26: `WebhookHandlerTest` bổ sung 7 test: dedup `update_id`, thu hồi đồng ý khi từ chối, đồng ý không bật lại mục đích khác, webhook không có secret bị từ chối, lỗi SQS nhả khóa dedup, và thiếu hàng đợi thì báo lỗi rõ ràng.
+- `scripts/set_webhook.py`: bản Python cho Windows, dựa trên bản gốc của team.
 - AI-25 (#48) và SH-05, bản nháp KB v1: `kb/scenarios.yaml` (19 thẻ theo mã `eval/LABELING.md` §1, mỗi thẻ có bài nguồn đã mở ngày 30/10/2026; câu `example_phrases` chỉ trích nguyên văn từ bài nguồn, AI2 kiểm tay), `kb/allowlist.yaml` (39 tên miền; `verified_at` nghĩa là gọi HTTPS nhận 200 ngày 30/10/2026, **chưa** đối chiếu danh sách NHNN/Cục ATTT), `kb/brands.yaml` (35 thương hiệu), `kb/hotlines.yaml` (20 mục, AI2 tự mở link nguồn và điền `verified_at` 30/10/2026; máy chỉ xác nhận thấy số trên trang được 17/20, riêng MB, VIB, VPBank đối chiếu bằng ảnh chụp màn hình của AI2; job `kb-freshness.yml` chạy mỗi thứ Hai và đỏ khi `verified_at` quá 30 ngày, tức từ khoảng 29/11/2026), `kb/checklist.yaml` (lệnh `/bilua`; khung phút 0-5/5-15/15-30 là thiết kế của team, chưa có nguồn ngoài) và `scripts/validate_kb.py` kèm `scripts/test_validate_kb.py` (chạy trong CI job `ai`; `uv run --with pyyaml scripts/validate_kb.py`). **Chưa có:** thẻ `N2.2`, `N5.2`, cổng báo lừa đảo của Cục ATTT, đường dây nóng Bộ Công an, phần hoàn tiền/bồi thường của `N1.6`; `vtp.vn` chưa vào allowlist (trang chủ trả 503); eval gate chưa đo vì chưa có pipeline dùng KB (xem #69). AI1 duyệt từng thẻ; BE2 rà `hotlines.yaml` (SH-05).
 - AI-01 (#15): `eval/run_eval.py` chạy bộ eval qua pipeline (`--pipeline stub|real`) và ghi `report.md`/`report.json`: recall, tỷ lệ UNSURE, false alarm theo split, đúng mức nhãn, đúng mã kịch bản, F1 theo nhóm N1–N6, must_signals còn thiếu, fast path, độ trễ p50/p95, chi phí. `--cache` lưu kết quả theo hash code/config + input để chạy lại không tốn tiền; `--baseline` + `--gate` trả mã 1 khi recall < 90%, false alarm > 10% hoặc lệch quá 2 điểm so với baseline. JSON hợp lệ và trích dẫn bị loại ghi n/a tới khi có RealPipeline (INT-01).
 - SH-07 (#49): nháp `docs/privacy-policy.md` v0.1 (chính sách quyền riêng tư + disclaimer, tiếng Việt) theo phạm vi MVP: thu thập gì, dùng làm gì, che số trước khi gửi AI, thời hạn lưu lấy từ ARCH §7, dữ liệu xử lý ở Singapore/Sydney, người thân, quyền và lệnh `/lichsu` `/nguoithan` `/rutdongy` `/xoadulieu`, căn cứ Luật 91/2025/QH15 và NĐ 356/2025/NĐ-CP. **Chờ mentor đọc**; còn TODO: @username bot, kênh liên hệ, thời hạn AUDIT/PITR.
@@ -42,10 +46,33 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - Tài liệu: kiến trúc (`docs/system-architecture.md`), kế hoạch (`docs/implementation-plan.md`), hướng dẫn cho team Backend và AI.
 - `CODEOWNERS`, template PR, workflow CI khung (3 OS, job `contract`).
 - BE-02: Tích hợp plugin Spotless chuẩn hoá code Java, hoàn thiện kiểm tra CI 3 hệ điều hành và kiểm tra chéo lệnh chuẩn BE/AI.
-- BE-03 (#1): Khung hạ tầng AWS SAM (`infra/template.yaml`, `infra/samconfig.toml`, `infra/README.md`) cho môi trường `dev`: Lambda `webhook` (Java 21, Function URL), DynamoDB `askfirst` (PK/SK, GSI1, TTL, PITR), SQS `jobs` + `jobs-dlq`, S3 Data Bucket (Block Public Access, lifecycle `donated/` 90 ngày), SSM Parameter Store; kèm handler `HelloWebhookHandler` và unit test.
+- BE-14 (ADR-007): spike DynamoDB Enhanced Client với khóa `PK`/`SK`, GSI1 và TTL; test integration chạy `amazon/dynamodb-local` qua Testcontainers, tự bỏ qua khi không có Docker.
+- BE-20: `LocalBotRunner` long polling cho dev; chỉ in loại tin nhắn, không in nội dung hay tên người gửi.
+- BE-22: dedup theo `update_id` bằng ghi có điều kiện; Telegram gửi lại cùng update sẽ được trả 200 `DUPLICATE`.
+- BE-24: repository User, Guardian, Invite, RateLimit, Audit trên DynamoDB; `GuardianRecord` có GSI1 `WARD_OF#<guardian_uid>`.
+- BE-25: ghi nhận đồng ý chính sách theo mục đích; từ chối = thu hồi quyền phân tích; audit không bị ghi đè.
+- BE-26: giới hạn 30 tin/giờ và 100 tin/ngày; khi DynamoDB lỗi thì cho đi tiếp (fail-open) và ghi log WARN.
+- BE-03: Khung hạ tầng AWS SAM (`infra/template.yaml`, `infra/samconfig.toml`, `infra/README.md`) cho môi trường `dev`: Lambda `webhook` (Java 21, Function URL, handler `WebhookHandler`), DynamoDB `askfirst-<stage>` (PK/SK, GSI1, TTL, PITR), SQS `jobs` + `jobs-dlq`, S3 Data Bucket (Block Public Access, lifecycle `donated/` 30 ngày), SSM Parameter Store.
 
 
 ### Fixed
+- `infra/README.md`: hướng dẫn tạo SSM khớp template (`SecureString` cho token và webhook secret, `String` cho `policy_sha256`); bỏ bước "hello world" trong bảng tài nguyên và bước kiểm tra sai (`{"message": ...}`); kiểm tra Function URL bằng 401 khi thiếu secret và 200 `IGNORED` khi đúng secret; sửa lệnh PowerShell nằm trong khối bash; sửa typo `UpdateTimeToLive` trong danh sách IAM.
+- `infra/verify-dev.sh` và `verify-dev.ps1`: kiểm tra biến `TELEGRAM_BOT_TOKEN_PARAM` và `TELEGRAM_WEBHOOK_SECRET_PARAM` thay vì hai biến cũ.
+- `scripts/set_webhook.py`: secret bắt buộc và đúng định dạng (không còn tùy chọn bỏ qua); `--drop-pending` mặc định tắt; thêm `my_chat_member` vào `allowed_updates`; báo lỗi khi Telegram trả `ok=false`.
+- CI: bước kiểm tra test DynamoDB tìm báo cáo surefire ở `<module>/target/surefire-reports/` thay vì `target/` gốc.
+- BE-14, BE-22, BE-24: khóa DynamoDB `pk`/`sk` chữ thường đổi thành `PK`/`SK` để khớp bảng SAM (DynamoDB phân biệt hoa thường, trước đây ghi bị `ValidationException`).
+- BE-03 (`infra/template.yaml`): Lambda trỏ đúng handler `WebhookHandler`; tên biến môi trường khớp code; thêm quyền đọc/ghi DynamoDB và gửi SQS cho Lambda; lifecycle `donated/` đổi từ 90 sang 30 ngày theo cam kết trong chính sách quyền riêng tư.
+- Bảo mật webhook: thiếu `TELEGRAM_WEBHOOK_SECRET` thì từ chối mọi request (trước đây cho qua). Chỉ `LocalBotRunner` được bỏ qua kiểm tra secret.
+- Webhook: Telegram gửi lại cùng một update không còn ghi audit, đếm rate limit hay gửi vào hàng đợi lần hai. Callback lỗi được báo cho người dùng thay vì báo "đã lưu". Lỗi gửi tin "⏳" không còn làm Telegram gửi lại cả update.
+- BE-25: từ chối đồng ý thu hồi quyền phân tích; đồng ý lại không còn đặt lại các mục đích guardian/voice/donate; thiếu hash chính sách thì không coi là đồng ý; cập nhật hồ sơ dùng khóa lạc quan nên không đè mất thay đổi song song.
+- BE-26: rate limit fail-open có log WARN; có test biên 30/31 tin mỗi giờ và 100/101 tin mỗi ngày.
+- BE-03/BE-20: `TelegramClient` đặt timeout 4 giây mỗi request và tổng 8 giây mỗi lời gọi, không ngủ quá 2 giây khi bị giới hạn tốc độ, để không vượt timeout 30 giây của Lambda.
+- `scripts/set-webhook.sh`: secret bắt buộc và đúng định dạng; `--drop-pending` mặc định tắt; thêm `my_chat_member` vào `allowed_updates`; kiểm tra `"ok":true` của Telegram; `--ssl-no-revoke` chỉ dùng trên Windows.
+- `infra/verify-dev.sh` và `verify-dev.ps1`: kiểm tra thật từng tiêu chí (khóa bảng, TTL, lifecycle, handler, biến môi trường, từ chối khi thiếu secret, redrive DLQ, SSM) thay vì in `[PASS]` cố định; thoát mã 1 khi có lỗi; không còn ghi file vào S3.
+- `LocalBotRunner`: không in tên và nội dung tin nhắn ra terminal.
+- `TelegramAdapter`: không cắt đôi cặp ký tự surrogate khi giới hạn 4000 ký tự.
+- CI: trên Ubuntu, job backend kiểm tra test DynamoDB phải chạy thật, không được skip.
+- `pom.xml`: quản lý phiên bản `jackson-datatype-jsr310` cùng `jackson-databind`.
 - AI-20 (#17): `eval/ocr_benchmark.py` chấm "chép đúng URL" theo **ranh giới URL** thay vì so chuỗi con sau khi xoá hết khoảng trắng. Trước đây `https://a.vn` được tính là đúng khi OCR đọc ra `https://a.vn.evil.com` hay `https://a.vn/x?id=1`; chấm lại kết quả thô bằng cách mới ra **cùng số** với bản cũ (cả bộ 50 ảnh và bộ 16 ảnh). Vẫn chấp nhận URL bị ngắt dòng, dấu câu cuối câu, và URL có `http(s)://` dính chữ phía trước (`oi-048`).
 - `eval/ocr_benchmark.py`: thêm `--dataset` (chạy được bộ 16 ảnh độc lập `eval/testocr/test_images.jsonl`), báo cáo mặc định ghi ra thư mục tạm thay vì ghi đè `docs/results/ocr-spike.md` (file có phần viết tay), không lỗi khi máy không có Tesseract, biến môi trường `OCR_THREADS` đặt số luồng onnxruntime. Bỏ `eval/testocr/run_test.py` (pytest nhặt nhầm vì tên `*_test.py` và chạy OCR khi import).
 - CI: job `ai` chạy thêm test trong `eval/` (validator, chấm OCR); workflow mới `.github/workflows/ocr-bench.yml` chạy lại RapidOCR (2 cấu hình) trên cả hai bộ ảnh, khoá 2 lõi, lưu kết quả thô + báo cáo + RAM đỉnh làm artifact.

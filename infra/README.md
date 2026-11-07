@@ -10,12 +10,12 @@ Khi triển khai stack `askfirst-dev` (Region `ap-southeast-1`), AWS SAM sẽ t�
 
 | STT | Tài nguyên | Tên logic (SAM) | Tên thực tế trên AWS | Đặc tả chi tiết                                                                                                                 |
 |---|---|---|---|---------------------------------------------------------------------------------------------------------------------------------|
-| 1 | **Lambda Webhook** | `WebhookFunction` | `askfirst-dev-webhook` | Java 21, Function URL công khai (`AuthType: NONE`), handler hello world                                                         |
+| 1 | **Lambda Webhook** | `WebhookFunction` | `askfirst-dev-webhook` | Java 21, Function URL công khai (`AuthType: NONE`), handler `WebhookHandler`: từ chối request thiếu secret, đọc token và secret từ SSM `SecureString` lúc khởi tạo                                                         |
 | 2 | **DynamoDB Single-Table** | `AskFirstTable` | `askfirst-dev` | Partition Key (`PK`), Sort Key (`SK`), GSI1 (`GSI1PK`, `GSI1SK`), TTL (`ttl`), PITR bật, Billing: On-Demand (`PAY_PER_REQUEST`) |
 | 3 | **SQS Queue chính** | `JobsQueue` | `askfirst-dev-jobs` | Visibility timeout: 720s (6 × 120s worker timeout), SSE bật, Redrive sang DLQ khi lỗi 5 lần                                     |
 | 4 | **SQS Dead-Letter Queue** | `JobsDeadLetterQueue` | `askfirst-dev-jobs-dlq` | Message retention: 14 ngày (1.209.600s), SSE bật                                                                                |
 | 5 | **S3 Data Bucket** | `DataBucket` | `askfirst-dev-data-<account_id>` | Block Public Access toàn diện, SSE AES256, Lifecycle rule xoá prefix `donated/` sau 30 ngày                                     |
-| 6 | **SSM Parameter Store** | `StageParam`, `TableNameParam`, `JobsQueueUrlParam`, `JobsDlqUrlParam`, `DataBucketNameParam` | `/askfirst/dev/...` | Quản lý cấu hình tập trung (`stage`, `table_name`, `jobs_queue_url`, `jobs_dlq_url`, `bucket_name`)                             |
+| 6 | **SSM Parameter Store** | `StageParam`, `TableNameParam`, `JobsQueueUrlParam`, `JobsDlqUrlParam`, `DataBucketNameParam` | `/askfirst/dev/...` | Quản lý cấu hình tập trung (`stage`, `table_name`, `jobs_queue_url`, `jobs_dlq_url`, `bucket_name`). Token và secret do bạn tạo thủ công (mục 5), CloudFormation không tạo                             |
 
 > [!IMPORTANT]
 > **Quy tắc thiết kế mạng & chi phí (D1):**
@@ -125,18 +125,27 @@ Sau khi hoàn tất, SAM sẽ in ra các giá trị **Outputs** (bao gồm `Webh
 
 Chạy các lệnh thủ công hoặc script tự động để xác nhận 100% tài nguyên đã hoạt động đúng:
 
-### 1. Kiểm tra Function URL của Webhook (HTTP 200)
+### 1. Kiểm tra Webhook Function URL (xác thực secret)
 
-Lấy Function URL từ output của SAM và gọi bằng `curl`:
+Function URL là công khai (`AuthType: NONE`), nên Lambda **phải** từ chối request không có secret và chấp nhận request có secret đúng. Lấy URL từ output `WebhookFunctionUrl` của SAM:
+
 ```bash
-curl -X POST https://<id-duoc-cap>.lambda-url.ap-southeast-1.on.aws/
+FUNCTION_URL="<WebhookFunctionUrl từ output>"
+SECRET=$(aws ssm get-parameter --name "/askfirst/dev/telegram/webhook_secret" \
+  --with-decryption --region ap-southeast-1 --query Parameter.Value --output text)
+
+# Không có secret -> phải trả 401
+curl -s -o /dev/null -w "%{http_code}\n" -X POST "$FUNCTION_URL" \
+  -H "Content-Type: application/json" -d '{}'
+
+# Có secret đúng, update rỗng -> phải trả 200 với body IGNORED
+curl -s -w "\n%{http_code}\n" -X POST "$FUNCTION_URL" \
+  -H "Content-Type: application/json" \
+  -H "X-Telegram-Bot-Api-Secret-Token: $SECRET" -d '{}'
 ```
-**Kết quả mong đợi:**
-- HTTP Status: `200 OK`
-- Body trả về:
-  ```json
-  {"message": "Hello from AskFirst Webhook!"}
-  ```
+
+**Kết quả mong đợi:** lệnh đầu in `401`; lệnh sau in `IGNORED` rồi `200`.
+Hoặc chạy `verify-dev.sh` / `verify-dev.ps1`, script sẽ kiểm tra cả hai trường hợp.
 
 ### 2. Kiểm tra DynamoDB `askfirst-dev` (GSI1, TTL, PITR)
 
@@ -152,26 +161,20 @@ aws dynamodb describe-time-to-live --table-name askfirst-dev --region ap-southea
 aws dynamodb describe-continuous-backups --table-name askfirst-dev --region ap-southeast-1
 ```
 
-### 3. Kiểm tra S3 Bucket & Khởi tạo 3 prefix
+### 3. Kiểm tra S3 Bucket
 
 ```bash
-# Lấy tên bucket từ SSM hoặc SAM output
-$BUCKET_NAME = $(aws ssm get-parameter --name "/askfirst/dev/s3/bucket_name" --query "Parameter.Value" --output text)
+BUCKET_NAME=$(aws ssm get-parameter --name "/askfirst/dev/s3/bucket_name" \
+  --region ap-southeast-1 --query Parameter.Value --output text)
 
-# Kiểm tra trạng thái Block Public Access
-aws s3api get-public-access-block --bucket $BUCKET_NAME
+# Block Public Access: cả 4 cờ phải là true
+aws s3api get-public-access-block --bucket "$BUCKET_NAME" --region ap-southeast-1
 
-# Kiểm tra Lifecycle Rule (ExpireDonatedSamplesAfter30Days)
-aws s3api get-bucket-lifecycle-configuration --bucket $BUCKET_NAME
-
-# Khởi tạo 3 prefix chuẩn: models/, kb/, donated/
-aws s3api put-object --bucket $BUCKET_NAME --key models/
-aws s3api put-object --bucket $BUCKET_NAME --key kb/
-aws s3api put-object --bucket $BUCKET_NAME --key donated/
-
-# Liệt kê kiểm tra các prefix đã có
-aws s3 ls s3://$BUCKET_NAME/
+# Lifecycle: prefix donated/ hết hạn sau 30 ngày
+aws s3api get-bucket-lifecycle-configuration --bucket "$BUCKET_NAME" --region ap-southeast-1
 ```
+
+Các prefix `models/`, `kb/`, `donated/` chỉ là tiền tố của key, không cần tạo trước. Script verify không ghi gì vào bucket.
 
 ### 4. Kiểm tra SQS `jobs` & `jobs-dlq`
 
@@ -190,24 +193,45 @@ aws ssm get-parameters-by-path --path "/askfirst/dev" --recursive
 
 ---
 
-## 5. Hướng Dẫn Lưu Secret & Token (Bảo Mật)
+## 5. Lưu Token & Secret (Bảo Mật)
 
-Tuyệt đối **KHÔNG commit token hoặc secret vào Git/template SAM**. Khi cần lưu Telegram Bot Token và Webhook Secret cho bot dev, thực hiện lưu trực tiếp vào SSM Parameter Store dưới dạng `SecureString`:
+Tuyệt đối **không** commit token hoặc secret vào Git hay template SAM. Lambda đọc hai giá trị bí mật lúc khởi tạo từ SSM `SecureString`, nên giá trị không nằm trong cấu hình Lambda.
 
-```bash
-# 1. Lưu Telegram Bot Token
-aws ssm put-parameter \
-  --name "/askfirst/dev/telegram/bot_token" \
-  --value "YOUR_TELEGRAM_BOT_TOKEN_HERE" \
-  --type SecureString \
-  --overwrite
+| Tham số SSM | Kiểu | Lambda nhận qua biến | Ghi chú |
+|---|---|---|---|
+| `/askfirst/dev/telegram/bot_token` | `SecureString` | `TELEGRAM_BOT_TOKEN_PARAM` | Lấy từ BotFather |
+| `/askfirst/dev/telegram/webhook_secret` | `SecureString` | `TELEGRAM_WEBHOOK_SECRET_PARAM` | Chỉ dùng `A-Za-z0-9_-`, tối đa 256 ký tự |
+| `/askfirst/dev/config/policy_sha256` | `String` | `POLICY_SHA256` (CloudFormation resolve lúc deploy) | Không phải bí mật |
 
-# 2. Lưu Telegram Webhook Secret Token
-aws ssm put-parameter \
-  --name "/askfirst/dev/telegram/secret_token" \
-  --value "YOUR_TELEGRAM_SECRET_TOKEN_HERE" \
-  --type SecureString \
-  --overwrite
+**Tạo token và secret bằng PowerShell.** Nhập giá trị qua prompt để không lưu vào lịch sử lệnh:
+
+```powershell
+$token = Read-Host "Telegram bot token"
+aws ssm put-parameter --region ap-southeast-1 --name "/askfirst/dev/telegram/bot_token" `
+  --value $token --type SecureString --overwrite
+
+$secret = Read-Host "Webhook secret"
+aws ssm put-parameter --region ap-southeast-1 --name "/askfirst/dev/telegram/webhook_secret" `
+  --value $secret --type SecureString --overwrite
+
+Remove-Variable token, secret
+```
+
+Tạo webhook secret ngẫu nhiên (Git Bash): `openssl rand -hex 32`.
+
+**Tạo policy hash** (chạy từ thư mục gốc repo). Hash này phải khớp với `docs/privacy-policy.md` hiện hành. Khi đổi chính sách, phải cập nhật lại hash, và người dùng sẽ được yêu cầu đồng ý lại:
+
+```powershell
+$sha = (Get-FileHash -Algorithm SHA256 docs/privacy-policy.md).Hash.ToLower()
+aws ssm put-parameter --region ap-southeast-1 --name "/askfirst/dev/config/policy_sha256" `
+  --value $sha --type String --overwrite
+```
+
+Sau khi tạo, kiểm tra kiểu của từng tham số:
+
+```powershell
+aws ssm get-parameters-by-path --region ap-southeast-1 --path "/askfirst/dev" --recursive `
+  --query "Parameters[*].[Name,Type]" --output table
 ```
 
 ---
@@ -247,8 +271,8 @@ Sau khi hoàn thành đợt kiểm thử hoặc khi không sử dụng môi trư
 
 ```bash
 # Bước 1: Dọn sạch object trong S3 bucket (nếu bucket có chứa file, CloudFormation sẽ không xoá được bucket)
-$BUCKET_NAME = $(aws ssm get-parameter --name "/askfirst/dev/s3/bucket_name" --query "Parameter.Value" --output text)
-aws s3 rm s3://$BUCKET_NAME --recursive
+BUCKET_NAME=$(aws ssm get-parameter --name "/askfirst/dev/s3/bucket_name" --query Parameter.Value --output text)
+aws s3 rm "s3://$BUCKET_NAME" --recursive
 
 # Bước 2: Xoá sạch toàn bộ stack AWS SAM
 sam delete --stack-name askfirst-dev
@@ -272,10 +296,10 @@ Trong lần triển khai đầu tiên, người dùng IAM hoặc Role deploy th�
 - **CloudFormation:** `cloudformation:*` trên stack `askfirst-dev`.
 - **Lambda:** `lambda:CreateFunction`, `lambda:DeleteFunction`, `lambda:UpdateFunction*`, `lambda:AddPermission`, `lambda:CreateFunctionUrlConfig`, `lambda:GetFunctionUrlConfig`.
 - **IAM:** `iam:CreateRole`, `iam:DeleteRole`, `iam:GetRole`, `iam:AttachRolePolicy`, `iam:DetachRolePolicy`, `iam:PutRolePolicy`, `iam:DeleteRolePolicy`, `iam:PassRole` (PassRole vào role thực thi của Lambda `WebhookFunctionRole`).
-- **DynamoDB:** `dynamodb:CreateTable`, `dynamodb:DeleteTable`, `dynamodb:DescribeTable`, `dynamodb:UpdateTimeTimeToLive`, `dynamodb:UpdateContinuousBackups`.
+- **DynamoDB:** `dynamodb:CreateTable`, `dynamodb:DeleteTable`, `dynamodb:DescribeTable`, `dynamodb:UpdateTimeToLive`, `dynamodb:UpdateContinuousBackups`.
 - **SQS:** `sqs:CreateQueue`, `sqs:DeleteQueue`, `sqs:GetQueueAttributes`, `sqs:SetQueueAttributes`.
 - **S3:** `s3:CreateBucket`, `s3:DeleteBucket`, `s3:PutBucketPublicAccessBlock`, `s3:PutEncryptionConfiguration`, `s3:PutLifecycleConfiguration`, `s3:PutObject`, `s3:DeleteObject`.
-- **SSM:** `ssm:PutParameter`, `ssm:DeleteParameter`, `ssm:GetParameter*`.
+- **SSM:** `ssm:PutParameter`, `ssm:DeleteParameter`, `ssm:GetParameter*`, và `kms:Decrypt` (để verify đọc được SecureString với `--with-decryption`).
 
 ### 3. Trạng thái kiểm nghiệm SnapStart (Java 21):
 - `not verified: hành vi SAM + Java 21 SnapStart trên cả 3 OS dev (Windows, macOS, Linux)`

@@ -46,7 +46,7 @@ expect_eq "Handler" "${HANDLER}" "com.askfirst.webhookhandler.WebhookHandler::ha
 
 ENV_KEYS=$(aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" \
   --region "${REGION}" --query "keys(Environment.Variables)" --output text | tr '\t' '\n')
-for key in DYNAMODB_TABLE_NAME WEBHOOK_QUEUE_URL TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET POLICY_SHA256; do
+for key in DYNAMODB_TABLE_NAME WEBHOOK_QUEUE_URL TELEGRAM_BOT_TOKEN_PARAM TELEGRAM_WEBHOOK_SECRET_PARAM POLICY_SHA256; do
   if grep -qx "${key}" <<<"${ENV_KEYS}"; then pass "Env var ${key} co mat"; else fail "Thieu env var ${key}"; fi
 done
 

@@ -60,7 +60,8 @@ public class DynamoStoreService {
         this.enhancedClient = enhancedClient;
         this.standardClient = standardClient;
         this.tableName = (tableName != null && !tableName.isBlank()) ? tableName : DEFAULT_TABLE_NAME;
-        this.dedupTable = enhancedClient.table(this.tableName, DEDUP_SCHEMA);
+        // enhancedClient == null chỉ xảy ra trong test (bản giả ghi đè tryAcquireDedup/deleteDedup)
+        this.dedupTable = enhancedClient != null ? enhancedClient.table(this.tableName, DEDUP_SCHEMA) : null;
     }
 
     public static DynamoStoreService create(DynamoDbClient client, String tableName) {

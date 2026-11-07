@@ -20,6 +20,8 @@ import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
+import software.amazon.awssdk.services.ssm.SsmClient;
+import software.amazon.awssdk.services.ssm.model.GetParameterRequest;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -71,9 +73,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
      */
     public WebhookHandler() {
         this.queueUrl = requireEnv("WEBHOOK_QUEUE_URL");
-        this.secret = requireEnv("TELEGRAM_WEBHOOK_SECRET");
+        this.secret = secretFromSsmOrEnv("TELEGRAM_WEBHOOK_SECRET");
         this.policySha256 = requireEnv("POLICY_SHA256");
-        this.telegram = new TelegramClient(requireEnv("TELEGRAM_BOT_TOKEN"));
+        this.telegram = new TelegramClient(secretFromSsmOrEnv("TELEGRAM_BOT_TOKEN"));
         String tableName = requireEnv("DYNAMODB_TABLE_NAME");
 
         this.sqs = SqsClient.create();
@@ -147,6 +149,27 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
      */
     public static WebhookHandler forLocalDevelopment(TelegramClient telegram) {
         return new WebhookHandler(telegram, null, null, null, null, null, null, DEFAULT_POLICY_SHA256, null, true);
+    }
+
+    /**
+     * Lấy secret. Nếu có biến NAME_PARAM (tên tham số SSM) thì đọc SecureString từ SSM lúc khởi tạo Lambda,
+     * nên giá trị không nằm trong cấu hình Lambda. Nếu không có (LocalStack, test) thì đọc biến NAME.
+     */
+    private static String secretFromSsmOrEnv(String name) {
+        String paramName = System.getenv(name + "_PARAM");
+        if (paramName == null || paramName.isBlank()) {
+            return requireEnv(name);
+        }
+        try (SsmClient ssm = SsmClient.create()) {
+            String value = ssm.getParameter(GetParameterRequest.builder()
+                    .name(paramName)
+                    .withDecryption(true)
+                    .build()).parameter().value();
+            if (value == null || value.isBlank()) {
+                throw new IllegalStateException("Tham số SSM rỗng: " + paramName);
+            }
+            return value;
+        }
     }
 
     private static String requireEnv(String name) {

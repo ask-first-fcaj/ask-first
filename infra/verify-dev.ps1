@@ -61,7 +61,7 @@ Expect-Equal "Handler" $Handler "com.askfirst.webhookhandler.WebhookHandler::han
 
 $EnvKeys = (Invoke-Aws lambda get-function-configuration --function-name $FunctionName --region $Region `
   --query "keys(Environment.Variables)" --output text) -split "\s+"
-foreach ($Key in @("DYNAMODB_TABLE_NAME", "WEBHOOK_QUEUE_URL", "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "POLICY_SHA256")) {
+foreach ($Key in @("DYNAMODB_TABLE_NAME", "WEBHOOK_QUEUE_URL", "TELEGRAM_BOT_TOKEN_PARAM", "TELEGRAM_WEBHOOK_SECRET_PARAM", "POLICY_SHA256")) {
   if ($EnvKeys -contains $Key) { Write-Pass "Env var $Key co mat" } else { Write-Fail "Thieu env var $Key" }
 }
 

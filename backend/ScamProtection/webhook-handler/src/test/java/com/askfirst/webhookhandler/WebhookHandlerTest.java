@@ -7,6 +7,7 @@ import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent
 import com.askfirst.common.TelegramClient;
 import com.askfirst.common.store.AuditRecord;
 import com.askfirst.common.store.AuditRepo;
+import com.askfirst.common.store.DynamoStoreService;
 import com.askfirst.common.store.RateLimitRepo;
 import com.askfirst.common.store.UserRecord;
 import com.askfirst.common.store.UserRepo;
@@ -21,9 +22,11 @@ import software.amazon.awssdk.services.sqs.model.SendMessageResponse;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -316,6 +319,119 @@ class WebhookHandlerTest {
         assertThat(fakeTelegram.lastText).contains("30 tin/giờ");
     }
 
+    // ------------------------------------------------------------------ bổ sung: bảo mật, dedup, thu hồi đồng ý
+
+    @Test
+    @DisplayName("Fail-closed: webhook chưa cấu hình secret thì từ chối mọi request")
+    void testMissingSecretConfigFailsClosed() {
+        WebhookHandler noSecret = new WebhookHandler(fakeTelegram, fakeSqs, "https://sqs.mock.queue", null,
+                fakeUserRepo, fakeAuditRepo, fakeRateLimitRepo, POLICY_SHA256);
+
+        APIGatewayProxyResponseEvent res = noSecret.handleRequest(createRequest(textUpdate(301, "kiểm tra")), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(401);
+        assertThat(fakeSqs.sentCount.get()).isZero();
+    }
+
+    @Test
+    @DisplayName("BE-22: Telegram gửi lại cùng update_id thì không enqueue lần hai")
+    void testDuplicateUpdateIsNotEnqueuedTwice() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        WebhookHandler h = handlerWithDedup(new InMemoryDedup());
+
+        APIGatewayProxyResponseEvent first = h.handleRequest(createRequest(textUpdate(401, "kiểm tra")), mockContext);
+        APIGatewayProxyResponseEvent retry = h.handleRequest(createRequest(textUpdate(401, "kiểm tra")), mockContext);
+
+        assertThat(first.getBody()).isEqualTo("OK");
+        assertThat(retry.getBody()).isEqualTo("DUPLICATE");
+        assertThat(fakeSqs.sentCount.get()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("BE-22: SQS lỗi thì nhả khóa dedup để Telegram gửi lại được")
+    void testSqsFailureReleasesDedupForRetry() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        InMemoryDedup dedup = new InMemoryDedup();
+        WebhookHandler h = handlerWithDedup(dedup);
+
+        fakeSqs.fail = true;
+        APIGatewayProxyResponseEvent failed = h.handleRequest(createRequest(textUpdate(402, "kiểm tra")), mockContext);
+        assertThat(failed.getStatusCode()).isEqualTo(500);
+        assertThat(failed.getBody()).isEqualTo("SQS_FAILED");
+        assertThat(dedup.released).containsExactly("402");
+
+        fakeSqs.fail = false;
+        APIGatewayProxyResponseEvent retry = h.handleRequest(createRequest(textUpdate(402, "kiểm tra")), mockContext);
+        assertThat(retry.getBody()).isEqualTo("OK");
+        assertThat(fakeSqs.sentCount.get()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Thiếu hàng đợi thì báo lỗi rõ, không hứa 'đang kiểm tra' với job sẽ bị mất")
+    void testMissingQueueFailsLoudly() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        WebhookHandler h = new WebhookHandler(fakeTelegram, fakeSqs, null, SECRET,
+                fakeUserRepo, fakeAuditRepo, fakeRateLimitRepo, POLICY_SHA256, new InMemoryDedup());
+
+        APIGatewayProxyResponseEvent res = h.handleRequest(createRequest(textUpdate(403, "kiểm tra")), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(500);
+        assertThat(res.getBody()).isEqualTo("QUEUE_NOT_CONFIGURED");
+        assertThat(fakeSqs.sentCount.get()).isZero();
+        assertThat(fakeTelegram.lastText == null || !fakeTelegram.lastText.startsWith("⏳")).isTrue();
+    }
+
+    @Test
+    @DisplayName("BE-25: Từ chối đồng ý thu hồi quyền phân tích, không chỉ ghi audit")
+    void testDeclineRevokesConsent() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        assertThat(fakeUserRepo.hasValidConsent("tg:111", POLICY_SHA256)).isTrue();
+
+        handler.handleRequest(createRequest(callbackUpdate(404, "consent:decline")), mockContext);
+
+        assertThat(fakeUserRepo.hasValidConsent("tg:111", POLICY_SHA256)).isFalse();
+        assertThat(fakeAuditRepo.events).contains("CONSENT_DECLINED");
+    }
+
+    @Test
+    @DisplayName("BE-25: Đồng ý chỉ bật analyze, không đặt lại các mục đích khác")
+    void testAgreeOnlyEnablesAnalyze() {
+        handler.handleRequest(createRequest(callbackUpdate(405, "consent:agree")), mockContext);
+
+        Map<String, Boolean> purposes = fakeUserRepo.getUser("tg:111").orElseThrow().getPurposes();
+        assertThat(purposes).containsOnlyKeys("analyze");
+        assertThat(purposes.get("analyze")).isTrue();
+    }
+
+    @Test
+    @DisplayName("BE-25: Lưu đồng ý lỗi thì báo người dùng là chưa lưu, không báo thành công giả")
+    void testConsentSaveFailureIsReportedHonestly() {
+        fakeUserRepo.failUpdateConsent = true;
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(callbackUpdate(406, "consent:agree")), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("CALLBACK_FAILED");
+        assertThat(fakeTelegram.lastCallbackAnswer).contains("chưa lưu");
+        assertThat(fakeTelegram.lastText == null || !fakeTelegram.lastText.contains("Cảm ơn")).isTrue();
+    }
+
+    private WebhookHandler handlerWithDedup(DynamoStoreService dedup) {
+        return new WebhookHandler(fakeTelegram, fakeSqs, "https://sqs.mock.queue", SECRET,
+                fakeUserRepo, fakeAuditRepo, fakeRateLimitRepo, POLICY_SHA256, dedup);
+    }
+
+    private static String textUpdate(long updateId, String text) {
+        return "{\"update_id\": " + updateId + ", \"message\": {\"message_id\": " + updateId
+                + ", \"from\": {\"id\": 111, \"is_bot\": false}, \"chat\": {\"id\": 222, \"type\": \"private\"}, "
+                + "\"date\": 1729000000, \"text\": \"" + text + "\"}}";
+    }
+
+    private static String callbackUpdate(long updateId, String data) {
+        return "{\"update_id\": " + updateId + ", \"callback_query\": {\"id\": \"cb_" + updateId + "\", "
+                + "\"from\": {\"id\": 111, \"is_bot\": false}, \"message\": {\"message_id\": 1, "
+                + "\"chat\": {\"id\": 222, \"type\": \"private\"}, \"date\": 1729000000}, \"data\": \"" + data + "\"}}";
+    }
+
     private APIGatewayProxyRequestEvent createRequest(String body) {
         return new APIGatewayProxyRequestEvent()
                 .withHeaders(Map.of("X-Telegram-Bot-Api-Secret-Token", SECRET))
@@ -327,6 +443,7 @@ class WebhookHandlerTest {
         Long lastChatId;
         String lastText;
         Map<String, Object> lastMarkup;
+        String lastCallbackAnswer;
 
         public FakeTelegramClient() {
             super("fake-token");
@@ -342,12 +459,14 @@ class WebhookHandlerTest {
 
         @Override
         public void answerCallbackQuery(String callbackQueryId, String text) {
+            this.lastCallbackAnswer = text;
         }
     }
 
     private static class FakeSqsClient implements SqsClient {
         AtomicBoolean messageSent = new AtomicBoolean(false);
         AtomicInteger sentCount = new AtomicInteger(0);
+        boolean fail = false;
 
         @Override
         public String serviceName() {
@@ -360,6 +479,9 @@ class WebhookHandlerTest {
 
         @Override
         public SendMessageResponse sendMessage(SendMessageRequest req) {
+            if (fail) {
+                throw new RuntimeException("SQS tạm thời không khả dụng");
+            }
             messageSent.set(true);
             sentCount.incrementAndGet();
             return SendMessageResponse.builder().messageId("mock-sqs-id").build();
@@ -368,6 +490,7 @@ class WebhookHandlerTest {
 
     private static class InMemoryUserRepo extends UserRepo {
         private final Map<String, UserRecord> store = new HashMap<>();
+        boolean failUpdateConsent = false;
 
         public InMemoryUserRepo() {
             super();
@@ -385,6 +508,9 @@ class WebhookHandlerTest {
 
         @Override
         public void updateConsent(String userId, String policySha256, String version, Map<String, Boolean> purposes) {
+            if (failUpdateConsent) {
+                throw new IllegalStateException("DynamoDB lỗi");
+            }
             UserRecord u = store.computeIfAbsent(userId, id -> new UserRecord(id, "123"));
             u.setPolicySha256(policySha256);
             u.setConsentVersion(version);
@@ -396,6 +522,39 @@ class WebhookHandlerTest {
         public void updateAddressForm(String userId, String addressForm) {
             UserRecord u = store.computeIfAbsent(userId, id -> new UserRecord(id, "123"));
             u.setAddressForm(addressForm);
+        }
+
+        @Override
+        public void revokeConsent(String userId) {
+            UserRecord u = store.get(userId);
+            if (u == null) {
+                return;
+            }
+            Map<String, Boolean> purposes = new HashMap<>(u.getPurposes());
+            purposes.replaceAll((k, v) -> false);
+            purposes.put("analyze", false);
+            u.setPurposes(purposes);
+        }
+    }
+
+    /** Dedup bản giả: ghi nhớ update_id đã xử lý, và các khóa đã được nhả. */
+    private static class InMemoryDedup extends DynamoStoreService {
+        final Set<String> seen = new HashSet<>();
+        final List<String> released = new ArrayList<>();
+
+        InMemoryDedup() {
+            super(null, null, "test-table");
+        }
+
+        @Override
+        public boolean tryAcquireDedup(String updateId, long ttlEpochSeconds) {
+            return seen.add(updateId);
+        }
+
+        @Override
+        public void deleteDedup(String updateId) {
+            released.add(updateId);
+            seen.remove(updateId);
         }
     }
 
