@@ -52,27 +52,35 @@ jobs:
         run: ./mvnw -B verify
 
       # Chặn "pass giả": trên Ubuntu, test DynamoDB PHẢI chạy thật, không được bị skip.
+      # Trong project multi-module, báo cáo surefire nằm ở <module>/target/surefire-reports/,
+      # nên phải tìm đệ quy từ thư mục backend (không chỉ target/ ở gốc).
       - name: Bắt buộc test DynamoDB chạy thật (không skip)
         if: steps.has.outputs.found == 'true' && matrix.os == 'ubuntu-latest'
         working-directory: ${{ steps.has.outputs.dir }}
         shell: bash
         run: |
-          shopt -s nullglob
+          status=0
           for cls in DynamoSpikeTest LaneBRepositoriesTest; do
-            reports=(target/surefire-reports/TEST-*${cls}.xml)
-            if [ ${#reports[@]} -eq 0 ]; then
-              echo "::error::Không có báo cáo surefire cho ${cls} (test có bị bỏ qua cả class không?)"; exit 1
+            reports=$(find . -path '*/surefire-reports/*' -name "TEST-*${cls}.xml")
+            if [ -z "$reports" ]; then
+              echo "::error::Không có báo cáo surefire cho ${cls} (test có bị bỏ qua cả class không?)"
+              status=1
+              continue
             fi
-            for r in "${reports[@]}"; do
+            while IFS= read -r r; do
               if ! grep -q 'tests="[1-9]' "$r"; then
-                echo "::error::${r}: không có test nào được chạy"; exit 1
+                echo "::error::${r}: không có test nào được chạy"; status=1
               fi
               if grep -q 'skipped="[1-9]' "$r"; then
-                echo "::error::${r}: có test bị skip, DynamoDB chưa được kiểm chứng thật"; exit 1
+                echo "::error::${r}: có test bị skip, DynamoDB chưa được kiểm chứng thật"; status=1
               fi
-            done
-            echo "OK: ${cls} chạy thật"
+              if grep -q 'failures="[1-9]\|errors="[1-9]' "$r"; then
+                echo "::error::${r}: có test thất bại"; status=1
+              fi
+            done <<< "$reports"
+            [ $status -eq 0 ] && echo "OK: ${cls} chạy thật"
           done
+          exit $status
 
   ai:
     name: ai (${{ matrix.os }})
