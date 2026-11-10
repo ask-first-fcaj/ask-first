@@ -1,8 +1,25 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: AskFirst Cloud Infrastructure (Dev) - BE-03 SAM skeleton
+Description: AskFirst Cloud Infrastructure (Dev) - BE-03 SAM skeleton + BE-07 worker
 
 Parameters:
+  AlarmTopicArn:
+    Type: String
+    Default: ''
+    Description: >-
+      (Tùy chọn) ARN SNS topic nhận alarm DLQ. Để trống thì alarm vẫn có trạng thái ALARM trên CloudWatch
+      nhưng không gửi thông báo. Topic gửi email do BE-13 tạo.
+
+  WorkerSnapStart:
+    Type: String
+    Default: None
+    AllowedValues:
+      - None
+      - PublishedVersions
+    Description: >-
+      SnapStart cho worker. Mặc định None để có số đo gốc; đổi PublishedVersions để đo lại (docs/decisions/ADR-008).
+      Worker luôn có alias live; SQS gắn vào alias này.
+
   Stage:
     Type: String
     Default: dev
@@ -10,6 +27,17 @@ Parameters:
       - dev
       - prod
     Description: Environment stage (dev or prod)
+
+  TelegramBotToken:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: >-
+      Token bot cho worker (giai đoạn dev, chưa dùng SSM). Truyền lúc deploy, KHÔNG ghi vào samconfig.toml:
+      sam deploy --parameter-overrides Stage=dev TelegramBotToken=<token>
+
+Conditions:
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmTopicArn, '']]
 
 Globals:
   Function:
@@ -60,6 +88,54 @@ Resources:
           TELEGRAM_BOT_TOKEN_PARAM: !Sub /askfirst/${Stage}/telegram/bot_token
           TELEGRAM_WEBHOOK_SECRET_PARAM: !Sub /askfirst/${Stage}/telegram/webhook_secret
           POLICY_SHA256: !Sub '{{resolve:ssm:/askfirst/${Stage}/config/policy_sha256}}'
+
+  # ============================================================================
+  # 1b. LAMBDA WORKER (SQS jobs: analyze, followup)
+  # ============================================================================
+  WorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub askfirst-${Stage}-worker
+      Description: SQS jobs worker (analyze, followup)
+      CodeUri: ../backend/ScamProtection/worker/
+      Handler: com.askfirst.worker.WorkerHandler::handleRequest
+      # Lambda ai chạy tối đa 90 giây, cộng gửi Telegram: 120 giây. JobsQueue.VisibilityTimeout (720) = 6 lần giá trị này.
+      Timeout: 120
+      MemorySize: 512
+      # Alias live để SnapStart (nếu bật) áp dụng cho version đã publish. Event source SQS tự gắn vào alias.
+      AutoPublishAlias: live
+      SnapStart:
+        ApplyOn: !Ref WorkerSnapStart
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AskFirstTable
+        # Worker tự tạo job followup (DelaySeconds=900)
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt JobsQueue.QueueName
+        # Gọi Lambda ai bằng alias live. Tên function theo quy ước askfirst-<stage>-ai: đổi ở đây nếu khác.
+        - Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:askfirst-${Stage}-ai:live
+      Environment:
+        Variables:
+          STAGE: !Ref Stage
+          # Tên biến khớp WebhookHandler
+          DYNAMODB_TABLE_NAME: !Ref AskFirstTable
+          WEBHOOK_QUEUE_URL: !Ref JobsQueue
+          AI_FUNCTION_ARN: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:askfirst-${Stage}-ai:live
+          TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
+      Events:
+        JobsQueueEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt JobsQueue.Arn
+            BatchSize: 1
+            # Message lỗi được báo qua batchItemFailures (WorkerHandler trả SQSBatchResponse)
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+            ScalingConfig:
+              MaximumConcurrency: 5
 
   # ============================================================================
   # 2. DYNAMODB ASKFIRST (SINGLE-TABLE)
@@ -119,6 +195,26 @@ Resources:
         deadLetterTargetArn: !GetAtt JobsDeadLetterQueue.Arn
         maxReceiveCount: 5
       SqsManagedSseEnabled: true
+
+  # Báo khi có job vào DLQ (đã lỗi maxReceiveCount lần). Worker không xóa message ở DLQ nên số message hiển thị
+  # đủ để alarm bắn; số liệu SQS trễ vài phút.
+  JobsDlqAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub askfirst-${Stage}-jobs-dlq-not-empty
+      AlarmDescription: Có job trong DLQ. Xem message, sửa nguyên nhân rồi redrive hoặc xóa.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt JobsDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref 'AWS::NoValue']
 
   # ============================================================================
   # 4. S3 DATA BUCKET
@@ -198,6 +294,18 @@ Outputs:
   WebhookFunctionArn:
     Description: Webhook Lambda Function ARN
     Value: !GetAtt WebhookFunction.Arn
+
+  WorkerFunctionArn:
+    Description: Worker Lambda Function ARN
+    Value: !GetAtt WorkerFunction.Arn
+
+  WorkerRoleArn:
+    Description: Role của worker. BE-06 dùng để đặt resource policy của Lambda ai chỉ cho role này gọi
+    Value: !GetAtt WorkerFunctionRole.Arn
+
+  JobsDlqAlarmName:
+    Description: Tên alarm DLQ
+    Value: !Ref JobsDlqAlarm
 
   DynamoDBTableName:
     Description: DynamoDB Single-Table Name
