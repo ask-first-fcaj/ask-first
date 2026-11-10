@@ -408,13 +408,13 @@ sequenceDiagram
     K->>T: sendMessage → người thân (silent=false)
     T->>G: "⚠️ Mẹ vừa hỏi về tin giả dịch vụ công…"
     T-->>K: message_id (thành công) hoặc lỗi 403/400
-    K->>D: Put ALERT#ts#gid (status = sent | failed)
+    K->>D: Put ALERT#alert_id (pending, rồi sent | failed; alert_id suy ra từ check_id + guardian)
     K->>Q: followup job delay=900s
   end
   K->>A: invoke op=render {verdict, alerts đã gửi thật}
   A-->>K: ReplyPlan
   K->>T: editMessageText placeholder_id (kết quả + nút; dòng "Cháu Nam đã được báo" CHỈ khi status = sent)
-  K->>D: Put CHECK#ts (metadata, TTL 30d)
+  K->>D: Put CHECK#check_id (metadata, TTL 30d; cũng là dấu "đã xong" cho retry)
   K->>D: Delete BUFFER#chat IF max_seq == seq (có tin mới thì giữ lại cho job sau)
 ```
 
@@ -882,14 +882,14 @@ Dev local: `uv run python eval/run_eval.py --llm ollama` (chạy được trên 
 |---|---|---|---|---|
 | `USER#{uid}` | `PROFILE` | channel, chat_id, role (elder, guardian, both), consent {version, at, policy_sha256, purposes {analyze, guardian, voice, donate}}, prefs {address_form}, status | — | `uid` = `tg:{telegram_user_id}` |
 | `USER#{uid}` | `GUARDIAN#{gid}` | status (pending, active, paused, revoked, unreachable), share_level (1, 2, 3; mặc định 1), elder_consent_at, guardian_consent_at, guardian_chat_id, phone (tuỳ chọn) | — | GSI1PK=`WARD_OF#{gid}`, GSI1SK=`USER#{uid}` để người thân xem danh sách người mình bảo vệ |
-| `USER#{uid}` | `CHECK#{ts}#{id}` | input_kind, group, scenario, level, score, signal_codes[], path (cache, fast, llm, escalated), model_ids[], prompt_version, rules_version, kb_version, local_models_version, ocr_conf, latency_ms {stage}, cost_usd_est, notified, feedback, clf_score (shadow) | 30 ngày | **Không có nội dung gốc** |
+| `USER#{uid}` | `CHECK#{check_id}` | outcome (verdict, smalltalk, unreadable, degraded), level, score, grp, scenario, path, signal_codes[], risky_actions[], input_kinds[], alerted, created_at. Chưa ghi: model_ids, các version, ocr_conf, latency_ms, cost, feedback (BE-30), clf_score | 30 ngày | **Không có nội dung gốc**. `check_id` là ULID nên `begins_with(SK, "CHECK#")` vẫn sắp theo thời gian; sự tồn tại của item là dấu "đã xong" để retry không gửi lại kết quả |
 | `USER#{uid}` | `AUDIT#{ts}#{event}` | event (CONSENT_GIVEN, CONSENT_REVOKED, DATA_DELETED, GUARDIAN_LINKED…), policy_version | ⚠️ theo tư vấn pháp lý | Bằng chứng đồng ý |
-| `USER#{uid}` | `ALERT#{ts}#{gid}` | check_id, status (sent, failed, acked), tg_message_id, share_level_used | 30 ngày | Trạng thái cảnh báo người thân (§5.5); **không có nội dung** |
+| `ALERT#{alert_id}` | `META` | elder_uid, elder_chat_id, check_id, guardian_uid, guardian_chat_id, guardian_name, share_level, status (pending, sent, failed, acked), message_id, acked_at, reminded_at | 30 ngày | Trạng thái cảnh báo người thân (§5.5); **không có nội dung**. `alert_id` = `<check_id>-<6 hex của hash guardian_uid>` nên SQS retry dùng lại đúng alert, và callback `ack:<alert_id>` tra thẳng bằng khóa |
 | `ALERTLOCK#{uid}#{scenario}` | `META` | — | 30 phút | Chống gửi trùng cảnh báo cùng kịch bản (conditional put, §5.5) |
 | `CONFIG#global` | `FLAGS` | LLM_ENABLED, FEATURE_* | — | Kill switch và cờ tính năng (§5.8); worker cache 30 giây |
 | `INVITE#{code}` | `META` | elder_uid, expires_at, used_by | 24 giờ | Dùng một lần (conditional update) |
 | `DEDUP#{channel}#{update_id}` | `META` | — | 24 giờ | Khớp với thời gian Telegram giữ update |
-| `BUFFER#{chat_id}` | `META` | items [{`InboundMessage` dạng JSON, seq}], max_seq, done_seq, placeholder_id | 10 phút | **Chứa text gốc tạm thời**: Bot API không có lệnh lấy lại tin theo `message_id`, nên worker phải nhận text qua buffer. Xoá có điều kiện ngay sau khi xử lý (§5.2); TTL 10 phút là lưới an toàn |
+| `BUFFER#{chat_id}` | `META`, và `MSG#<seq 10 chữ số>` cho từng tin | META: max_seq, done_seq, placeholder_id. MSG: payload (`InboundMessage` dạng JSON) | 10 phút | **Chứa text gốc tạm thời**: Bot API không có lệnh lấy lại tin theo `message_id`, nên worker phải nhận text qua buffer. Xoá có điều kiện ngay sau khi xử lý (§5.2); TTL 10 phút là lưới an toàn |
 | `SESSION#{chat_id}` | `META` | check_id, masked_text, followup_question, turn | 30 phút | Hỏi thêm (§6.12) và "Đóng góp mẫu" (§5.6) trong 30 phút. Chỉ chứa bản **đã mask** |
 | `CACHE#{sha256}` | `VERDICT` | verdict (không kèm nội dung) | 24 giờ | Key = hash của cả cụm (§6.2) |
 | `URL#{sha256}` | `INTEL` | signals[], expanded_url_domain | 24 giờ | |

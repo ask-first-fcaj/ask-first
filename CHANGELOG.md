@@ -21,6 +21,7 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - BE-03 (`infra/template.yaml`, `infra/README.md`): token bot và webhook secret chuyển sang SSM `SecureString`. Lambda đọc lúc khởi tạo qua `TELEGRAM_BOT_TOKEN_PARAM` và `TELEGRAM_WEBHOOK_SECRET_PARAM`, không còn đưa giá trị plaintext vào cấu hình Lambda. Lambda được cấp `ssm:GetParameter` cho `parameter/askfirst/<stage>/telegram/*` và `kms:Decrypt` qua SSM. Cần thêm `software.amazon.awssdk:ssm` vào `webhook-handler/pom.xml`.
 
 ### Added
+- BE-24b (`common/.../store/`): `DynamoFlagsStore` (`CONFIG#global/FLAGS`, mặc định voice tắt), `DynamoCheckStore` (`CHECK#<check_id>`), `DynamoAlertStore` (`ALERT#<alert_id>`), `DynamoAlertLockStore` (`ALERTLOCK#`, tính cả khoá hết hạn nhưng TTL chưa xoá), `WorkerStoresTest` (Testcontainers, tự bỏ qua khi không có Docker). `SESSION#` hoãn cùng multi-turn.
 - BE-05b (`common/.../ai/`): `AiContract` (record viết tay theo `models.py`), `AiClient`, `LambdaAiClient`, `AiCodec`; `AiContractTest` đối chiếu 12 fixture trong `contracts/fixtures/` và bắt field lạ mà Python sẽ từ chối. `worker/.../AwsLambdaInvoker`: gọi `ai` bằng alias, read timeout 95 giây, không retry trong SDK. Ghi quyết định ở `docs/decisions/ADR-000b-contract-java-viet-tay.md`.
 - BE-22, BE-25, BE-26: `WebhookHandlerTest` bổ sung 7 test: dedup `update_id`, thu hồi đồng ý khi từ chối, đồng ý không bật lại mục đích khác, webhook không có secret bị từ chối, lỗi SQS nhả khóa dedup, và thiếu hàng đợi thì báo lỗi rõ ràng.
 - `scripts/set_webhook.py`: bản Python cho Windows, dựa trên bản gốc của team.
