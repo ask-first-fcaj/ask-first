@@ -12,8 +12,11 @@ import com.askfirst.common.channel.model.InboundMessage;
 import com.askfirst.common.channel.model.TelegramCallbackQuery;
 import com.askfirst.common.job.AnalyzeJob;
 import com.askfirst.common.job.JobCodec;
+import com.askfirst.common.store.AlertRecord;
+import com.askfirst.common.store.AlertStore;
 import com.askfirst.common.store.AuditRepo;
 import com.askfirst.common.store.BufferStore;
+import com.askfirst.common.store.DynamoAlertStore;
 import com.askfirst.common.store.DynamoBufferStore;
 import com.askfirst.common.store.DynamoStoreService;
 import com.askfirst.common.store.RateLimitRepo;
@@ -75,6 +78,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
      */
     private final BufferStore bufferStore;
 
+    /** Tra cảnh báo người thân để ghi nhận nút "Tôi đã liên hệ". Null = bỏ qua callback ack. */
+    private final AlertStore alertStore;
+
     /**
      * true chỉ khi tạo qua {@link #forLocalDevelopment(TelegramClient)} (long polling trên máy dev):
      * bỏ kiểm tra secret và cho phép chạy không có SQS. Lambda thật luôn là false.
@@ -103,6 +109,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.rateLimitRepo = new RateLimitRepo(ddb, tableName);
         this.dedup = DynamoStoreService.create(ddb, tableName);
         this.bufferStore = new DynamoBufferStore(ddb, tableName);
+        this.alertStore = new DynamoAlertStore(ddb, tableName);
     }
 
     public WebhookHandler(TelegramClient telegram, SqsClient sqs, String queueUrl, String secret) {
@@ -118,7 +125,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             AuditRepo auditRepo,
             RateLimitRepo rateLimitRepo,
             String policySha256) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, null, false, null);
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, null, false, null, null);
     }
 
     public WebhookHandler(
@@ -131,10 +138,10 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             RateLimitRepo rateLimitRepo,
             String policySha256,
             DynamoStoreService dedup) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, dedup, false, null);
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, dedup, false, null, null);
     }
 
-    /** Như trên, có thêm BUFFER# (cách Lambda thật chạy). */
+    /** Như trên, có thêm BUFFER# và ALERT# (cách Lambda thật chạy). */
     public WebhookHandler(
             TelegramClient telegram,
             SqsClient sqs,
@@ -145,9 +152,10 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             RateLimitRepo rateLimitRepo,
             String policySha256,
             DynamoStoreService dedup,
-            BufferStore bufferStore) {
+            BufferStore bufferStore,
+            AlertStore alertStore) {
         this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, dedup, false,
-                bufferStore);
+                bufferStore, alertStore);
     }
 
     private WebhookHandler(
@@ -161,7 +169,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String policySha256,
             DynamoStoreService dedup,
             boolean localDevelopment,
-            BufferStore bufferStore) {
+            BufferStore bufferStore,
+            AlertStore alertStore) {
         this.telegram = telegram;
         this.sqs = sqs;
         this.queueUrl = queueUrl;
@@ -174,6 +183,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.dedup = dedup;
         this.localDevelopment = localDevelopment;
         this.bufferStore = bufferStore;
+        this.alertStore = alertStore;
     }
 
     /**
@@ -181,7 +191,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
      * Đây là đường DUY NHẤT được bỏ qua kiểm tra secret.
      */
     public static WebhookHandler forLocalDevelopment(TelegramClient telegram) {
-        return new WebhookHandler(telegram, null, null, null, null, null, null, DEFAULT_POLICY_SHA256, null, true, null);
+        return new WebhookHandler(telegram, null, null, null, null, null, null, DEFAULT_POLICY_SHA256, null, true, null, null);
     }
 
     /**
@@ -378,9 +388,37 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                         "Dạ, cháu đã lưu cách xưng hô là <b>" + form + "</b> rồi ạ! Cháu sẽ xưng hô như vậy trong các câu trả lời sau nhé.");
             }
             return response(200, "CALLBACK_HANDLED");
+
+        } else if (data != null && data.startsWith("ack:")) {
+            return handleGuardianAck(cb, data.substring("ack:".length()));
         }
 
         return response(200, "UNKNOWN_CALLBACK");
+    }
+
+    /** Người thân bấm "Tôi đã liên hệ". Chỉ đúng người thân của cảnh báo đó mới ghi nhận được. */
+    private APIGatewayProxyResponseEvent handleGuardianAck(TelegramCallbackQuery cb, String alertId) {
+        if (alertStore == null) {
+            return response(200, "UNKNOWN_CALLBACK");
+        }
+        Optional<AlertRecord> alert = alertStore.get(alertId);
+        boolean allowed = alert.isPresent()
+                && stripUserPrefix(cb.userId()).equals(stripUserPrefix(alert.get().guardianUid()));
+        if (!allowed) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Cảnh báo này không còn hiệu lực.");
+            }
+            return response(200, "CALLBACK_HANDLED");
+        }
+        alertStore.markAcked(alertId, Instant.now());
+        if (telegram != null) {
+            telegram.answerCallbackQuery(cb.queryId(), "Cảm ơn bạn, đã ghi nhận.");
+        }
+        return response(200, "CALLBACK_HANDLED");
+    }
+
+    private static String stripUserPrefix(String uid) {
+        return uid != null && uid.startsWith("USER#") ? uid.substring("USER#".length()) : String.valueOf(uid);
     }
 
     private APIGatewayProxyResponseEvent handleCommand(long chatId, String userId, String text, Context context) {
