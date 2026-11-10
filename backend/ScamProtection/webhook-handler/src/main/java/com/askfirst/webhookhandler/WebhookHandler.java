@@ -6,10 +6,15 @@ import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
 import com.askfirst.common.TelegramClient;
 import com.askfirst.common.TelegramClient.InlineButton;
+import com.askfirst.common.Ulid;
 import com.askfirst.common.channel.TelegramAdapter;
 import com.askfirst.common.channel.model.InboundMessage;
 import com.askfirst.common.channel.model.TelegramCallbackQuery;
+import com.askfirst.common.job.AnalyzeJob;
+import com.askfirst.common.job.JobCodec;
 import com.askfirst.common.store.AuditRepo;
+import com.askfirst.common.store.BufferStore;
+import com.askfirst.common.store.DynamoBufferStore;
 import com.askfirst.common.store.DynamoStoreService;
 import com.askfirst.common.store.RateLimitRepo;
 import com.askfirst.common.store.UserRecord;
@@ -44,6 +49,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     /** Khóa dedup update_id sống 24 giờ (Telegram chỉ retry update trong thời gian ngắn). */
     private static final long DEDUP_TTL_SECONDS = 24 * 3600L;
 
+    /** Tin trong BUFFER# chỉ tồn tại tạm thời (plan: tối đa 10 phút), worker xóa ngay khi xử lý xong. */
+    private static final long BUFFER_TTL_SECONDS = 10 * 60L;
+
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
 
@@ -60,6 +68,12 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
     /** Chống xử lý trùng cùng một update_id (Telegram retry). Null = không dedup (test/local). */
     private final DynamoStoreService dedup;
+
+    /**
+     * Gom tin theo chat (BUFFER#) để worker xử lý cả cụm. Null = giữ đường cũ: gửi nguyên InboundMessage
+     * vào SQS (chỉ còn cho test cũ và LocalBotRunner; Lambda thật luôn có giá trị này).
+     */
+    private final BufferStore bufferStore;
 
     /**
      * true chỉ khi tạo qua {@link #forLocalDevelopment(TelegramClient)} (long polling trên máy dev):
@@ -88,6 +102,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.auditRepo = new AuditRepo(enhanced, tableName);
         this.rateLimitRepo = new RateLimitRepo(ddb, tableName);
         this.dedup = DynamoStoreService.create(ddb, tableName);
+        this.bufferStore = new DynamoBufferStore(ddb, tableName);
     }
 
     public WebhookHandler(TelegramClient telegram, SqsClient sqs, String queueUrl, String secret) {
@@ -103,7 +118,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             AuditRepo auditRepo,
             RateLimitRepo rateLimitRepo,
             String policySha256) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, null, false);
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, null, false, null);
     }
 
     public WebhookHandler(
@@ -116,7 +131,23 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             RateLimitRepo rateLimitRepo,
             String policySha256,
             DynamoStoreService dedup) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, dedup, false);
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, dedup, false, null);
+    }
+
+    /** Như trên, có thêm BUFFER# (cách Lambda thật chạy). */
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            String policySha256,
+            DynamoStoreService dedup,
+            BufferStore bufferStore) {
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, dedup, false,
+                bufferStore);
     }
 
     private WebhookHandler(
@@ -129,7 +160,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             RateLimitRepo rateLimitRepo,
             String policySha256,
             DynamoStoreService dedup,
-            boolean localDevelopment) {
+            boolean localDevelopment,
+            BufferStore bufferStore) {
         this.telegram = telegram;
         this.sqs = sqs;
         this.queueUrl = queueUrl;
@@ -141,6 +173,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.adapter = new TelegramAdapter();
         this.dedup = dedup;
         this.localDevelopment = localDevelopment;
+        this.bufferStore = bufferStore;
     }
 
     /**
@@ -148,7 +181,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
      * Đây là đường DUY NHẤT được bỏ qua kiểm tra secret.
      */
     public static WebhookHandler forLocalDevelopment(TelegramClient telegram) {
-        return new WebhookHandler(telegram, null, null, null, null, null, null, DEFAULT_POLICY_SHA256, null, true);
+        return new WebhookHandler(telegram, null, null, null, null, null, null, DEFAULT_POLICY_SHA256, null, true, null);
     }
 
     /**
@@ -503,6 +536,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
         }
 
+        if (bufferStore != null && queueReady) {
+            return bufferAndEnqueue(inbound, chatId, userId, addressForm, context);
+        }
+
+        // Đường cũ (bufferStore == null): chỉ còn cho test cũ và LocalBotRunner.
         // 5. Bước tin nhắn chờ ("⏳")
         if (telegram != null) {
             try {
@@ -530,6 +568,48 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
         }
 
+        return response(200, "OK");
+    }
+
+    /**
+     * Đường chính: gom tin vào BUFFER# rồi enqueue AnalyzeJob trễ 3 giây (debounce, plan §3.4).
+     * Lỗi ghi buffer xảy ra TRƯỚC mọi tác dụng phụ nên trả 500 để Telegram gửi lại update.
+     */
+    private APIGatewayProxyResponseEvent bufferAndEnqueue(
+            InboundMessage inbound, long chatId, String userId, String addressForm, Context context) {
+        final long seq;
+        try {
+            seq = bufferStore.append(inbound.chatId(), inbound, Instant.now().getEpochSecond() + BUFFER_TTL_SECONDS);
+        } catch (Exception e) {
+            log(context, "Lỗi ghi BUFFER#: " + e.getClass().getSimpleName());
+            return response(500, "BUFFER_FAILED");
+        }
+
+        // "⏳" chỉ cho tin đầu cụm (seq == 1); message_id được lưu để worker sửa thành kết quả.
+        if (seq == 1 && telegram != null) {
+            try {
+                int placeholderId = telegram.sendText(
+                        chatId,
+                        "⏳ Cháu đang kiểm tra, " + addressForm.toLowerCase() + " chờ cháu vài giây nhé...");
+                bufferStore.setPlaceholder(inbound.chatId(), placeholderId);
+            } catch (Exception e) {
+                // Tin chờ chỉ là phụ: worker sẽ gửi kết quả thành tin mới nếu không có placeholder
+                log(context, "Không gửi/lưu được tin nhắn chờ: " + e.getClass().getSimpleName());
+            }
+        }
+
+        try {
+            AnalyzeJob job = AnalyzeJob.create(Ulid.next(), inbound.chatId(), userId, seq, Instant.now());
+            sqs.sendMessage(
+                    SendMessageRequest.builder()
+                            .queueUrl(queueUrl)
+                            .messageBody(JobCodec.toJson(job))
+                            .delaySeconds(AnalyzeJob.DELAY_SECONDS)
+                            .build());
+        } catch (Exception e) {
+            log(context, "Lỗi gửi AnalyzeJob vào SQS: " + e.getClass().getSimpleName());
+            return response(500, "SQS_FAILED");
+        }
         return response(200, "OK");
     }
 
