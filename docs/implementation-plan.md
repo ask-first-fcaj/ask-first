@@ -565,7 +565,8 @@ def lambda_handler(event: dict, context) -> dict:
 | Biến môi trường của `worker` (Java) | Giá trị |
 |---|---|
 | `AI_FUNCTION_ARN` | ARN alias `live` của Lambda `ai` |
-| `TABLE_NAME`, `JOBS_QUEUE_URL`, `BOT_TOKEN_PARAM` | như tên |
+| `DYNAMODB_TABLE_NAME`, `WEBHOOK_QUEUE_URL` | tên bảng và URL hàng đợi jobs (cùng tên với `webhook`) |
+| `TELEGRAM_BOT_TOKEN` | bot token: dev đọc từ biến môi trường (truyền lúc deploy), deploy chính thức chuyển sang SSM `TELEGRAM_BOT_TOKEN_PARAM` như `webhook` |
 
 **`ai/config/models.yaml`** (AI1; model ID **copy từ console**, không đoán):
 
@@ -965,7 +966,7 @@ Code Java **và** hạ tầng của lane A: SQS/DLQ, SnapStart, IAM và image c�
 | BE-22 | **Webhook handler (Java)**: kiểm secret bằng `MessageDigest.isEqual` (constant-time, không dùng `String.equals`), dedup `update_id` (conditional put, TTL 24 giờ), chỉ nhận chat private, đường nhanh (lệnh, callback) hoặc đường chậm (gửi "⏳" rồi enqueue); luôn trả 200 nhanh; secret đọc lười sau SnapStart restore | W2 | M | BE-03, BE-21 (dùng fixtures của BE-21 khi adapter chưa xong) | Test: secret sai trả 401; gửi trùng update thì chỉ xử lý 1 lần; p95 handler < 500 ms (warm) |
 | BE-07 | Đường ống SQS → worker (Java): event source mapping (batch 1, **max concurrency 5**, ReportBatchItemFailures), visibility **720 giây** (6 × timeout 120 giây của worker), `maxReceiveCount=5`, alarm DLQ (`JobsDlqAlarm`, SNS do BE-13); xử lý DLQ: ở lần giao thứ 5 worker gửi người dùng câu "Bot đang bận" rồi báo lỗi để SQS đưa job vào DLQ (không có consumer DLQ riêng, vì consumer xóa message thì alarm không bắn); **SnapStart** cho worker qua tham số `WorkerSnapStart` + alias `live` (mặc định None, bật sau khi đo; webhook chưa bật vì gắn alias sẽ đổi Function URL). Hiện trạng: ESM, alarm, tin báo bận đã có trong code, chưa deploy; chưa có số đo cold start (ADR-008) | W2–W3 | M | BE-03 | Test: job lỗi 5 lần thì vào DLQ, alarm bắn, người dùng nhận tin báo bận; đo cold start Java có/không SnapStart, ghi ADR |
 | BE-24b | **Repos lane A** (Java, trên nền `store/` của BE-24): `CHECK#`, `BUFFER#` (META + MSG#seq), `ALERT#`, `ALERTLOCK#`, `CONFIG#global/FLAGS` (ARCH §7); `DEDUP#` đã có ở `DynamoStoreService`, `SESSION#` hoãn cùng BE-33 | W2 | S | BE-24 (phần nền) | Unit test CRUD + TTL + conditional write pass, dùng chung cấu hình Testcontainers của BE-24 (`WorkerStoresTest`) |
-| BE-27 | **Worker orchestration (Java) + `ai` bản stub**: cài đúng luồng mã giả ở **§3.2** (`analyze` → cảnh báo người thân qua `render_guardian_alerts` → `render` → sửa tin "⏳" → `CHECK` theo §3.7 → `SESSION#` → kết thúc buffer), xử lý `AiError` (retryable → SQS retry, fatal → câu suy giảm), xử lý job `answer` và `followup` (§3.4). Deploy Lambda `ai` với `PIPELINE_IMPL=stub` (cùng AI1) | W2–W3 | M | BE-07, BE-24, BE-24b, BE-05b, AI-03b | Với `ai` stub, gửi tin vào bot `dev` thì nhận kết quả giả trong < 5 giây; unit test worker dùng `FakeAiClient` phủ cả nhánh lỗi |
+| BE-27 | **Worker orchestration (Java) + `ai` bản stub**: cài đúng luồng mã giả ở **§3.2** (`analyze` → cảnh báo người thân qua `render_guardian_alerts` → `render` → sửa tin "⏳" → `CHECK` theo §3.7 → kết thúc buffer; `SESSION#` hoãn cùng multi-turn), xử lý `AiError` (retryable → SQS retry, fatal → câu suy giảm), xử lý job `followup` (§3.4); job `answer` chỉ ghi log vì multi-turn hoãn (BE-33). Deploy Lambda `ai` với `PIPELINE_IMPL=stub` (cùng AI1) | W2–W3 | M | BE-07, BE-24, BE-24b, BE-05b, AI-03b | Với `ai` stub, gửi tin vào bot `dev` thì nhận kết quả giả trong < 5 giây; unit test worker dùng `Fakes.FakeAi` (bản giả trong bộ nhớ) phủ cả nhánh lỗi: `AnalyzeProcessorTest`, `FollowupProcessorTest`, `WorkerRunnerTest` |
 | BE-23 | **Gom tin** (ARCH §5.2): `BUFFER#chat` cập nhật nguyên tử, `seq`, "⏳" **chỉ cho tin đầu cụm**, `DelaySeconds=3`, bỏ job cũ, **xoá buffer có điều kiện** (`max_seq == seq`, sai thì ghi `done_seq`) | W3 | M | BE-27 | Test: gửi 3 tin trong 2 giây thì có đúng 1 tin "⏳" và 1 câu trả lời; album 4 ảnh thì 1 câu trả lời; tin đến đúng lúc worker đang xử lý vẫn được trả lời |
 | BE-13 | **Kill switch** (ARCH §5.8): cờ ở DynamoDB `CONFIG#global/FLAGS` (worker Java cache 30 giây, gửi cho `ai` trong `AnalyzeContext.flags`), `scripts/flags.py llm off\|on`; **SNS topic nhận alarm** gửi email (SAM) | W5 | S | BE-03, BE-07 | Test: chạy `flags.py llm off` thì trong ≤ 30 giây `ai` không gọi Bedrock (`path=rules_only`); alarm DLQ test gửi được email |
 | BE-34 | Chặn media trước khi tạo job (Java, ở webhook): kiểm `duration ≤ 120` giây và `size ≤ 20 MB` từ metadata của update; gom album theo `media_group_id`. Việc tải thật nằm ở `ai` (AI-03b). Voice ⏸ hoãn: trong MVP webhook trả lời "chưa hỗ trợ voice" như khi `feature_voice=false`, vẫn giữ kiểm `duration` để bật lại sau | W4 | S | BE-21 | Ảnh > 20 MB bị từ chối kèm câu giải thích; voice (mọi độ dài) nhận câu "chưa hỗ trợ"; không có job nào được enqueue |
@@ -1075,7 +1076,7 @@ Code Java **và** hạ tầng của lane B: nền DynamoDB, CI/CD, stage `prod`,
 
 | Loại | Phạm vi | Chạy khi | Owner |
 |---|---|---|---|
-| Unit | Python: rules, mask, fuse, URL intel, post-validation, handler `ai`. Java: adapter, repos, webhook, worker orchestration (với `FakeAiClient`) | Mỗi PR | Người viết code |
+| Unit | Python: rules, mask, fuse, URL intel, post-validation, handler `ai`. Java: adapter, repos, webhook, worker orchestration (với `Fakes.FakeAi` trong bộ nhớ) | Mỗi PR | Người viết code |
 | Contract | Schema `contracts/schema` sinh lại không đổi; fixtures `contracts/fixtures/` đọc được ở **cả Python lẫn Java** (§3.9); payload Telegram (fixtures Java); schema SQS (thêm OpenAPI ↔ handler `api` nếu làm Mini App) | Mỗi PR | BE2 + AI1 |
 | Bảo mật | Mask không lọt số; log (Java và Python) không chứa nội dung hay URL tải file có token; SSRF; secret webhook sai; URL đã defang và input đã escape; người thân không xem được lịch sử người cao tuổi; chỉ `worker` invoke được `ai` (thêm `initData` giả nếu làm Mini App) | Mỗi PR | AI2 + BE1 + BE2 (BE-09a/BE-09b rà chéo lane của nhau) |
 | Eval | 300 mẫu (ARCH §6.11) | PR đổi prompt, KB, rules hoặc model; hằng tuần trên `main` | AI1 |
@@ -1136,7 +1137,7 @@ Code Java **và** hạ tầng của lane B: nền DynamoDB, CI/CD, stage `prod`,
 - Cách đảo ngược: (nếu sai thì đổi lại thế nào)
 ```
 
-ADR dự kiến: 001 Bedrock/Qwen3 spike · 002 chốt LLM (G1) · 003 OCR (G2) · 004 ASR (G2) · 005 ngưỡng · 006 VLM fallback · 007 DynamoDB Enhanced Client + DynamoDB Local (số 007 đã dùng cho việc này) · 008 cold start / SnapStart (chưa có số đo) · 000b contract Java viết tay thay codegen.
+ADR dự kiến: 001 Bedrock/Qwen3 spike · 002 chốt LLM (G1) · 003 OCR (G2) · 004 ASR (G2) · 005 ngưỡng · 006 VLM fallback · 007 DynamoDB Enhanced Client + DynamoDB Local (số 007 đã dùng cho việc này) · 008 cold start / SnapStart (chưa có số đo) · 009 worker orchestration (BUFFER#, idempotency) · 000b contract Java viết tay thay codegen.
 
 ---
 
