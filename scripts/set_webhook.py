@@ -11,6 +11,7 @@ Hoặc tự động đọc TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, WEBHOOK_
 import argparse
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -78,9 +79,14 @@ def call_telegram_api(token: str, method: str, payload: dict | None = None) -> d
 def main():
     parser = argparse.ArgumentParser(description="Cấu hình Webhook cho Telegram Bot")
     parser.add_argument("--url", help="URL Webhook công khai (HTTPS)")
-    parser.add_argument("--secret", help="Secret token (X-Telegram-Bot-Api-Secret-Token)")
+    parser.add_argument("--secret", help="Secret token (bắt buộc: X-Telegram-Bot-Api-Secret-Token)")
     parser.add_argument("--token", help="Telegram Bot Token")
-    parser.add_argument("--drop-pending", action="store_true", default=True, help="Bỏ qua các tin nhắn chờ cũ")
+    parser.add_argument(
+        "--drop-pending",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Xóa các update đang chờ khi đăng ký (mặc định False, tránh mất tin người dùng đã gửi)"
+    )
     parser.add_argument("--delete", action="store_true", help="Xoá webhook để chuyển sang chế độ Long Polling")
     args = parser.parse_args()
 
@@ -99,8 +105,16 @@ def main():
         return
 
     secret = args.secret or env_vals.get("TELEGRAM_WEBHOOK_SECRET")
-    url = args.url or env_vals.get("WEBHOOK_URL")
+    if not secret:
+        print("LỖI: Thiếu TELEGRAM_WEBHOOK_SECRET trong .env hoặc tham số --secret (bắt buộc để đảm bảo fail-closed)", file=sys.stderr)
+        sys.exit(1)
 
+    # Telegram chỉ chấp nhận secret_token gồm A-Z a-z 0-9 _ - (1-256 ký tự)
+    if not re.fullmatch(r"^[A-Za-z0-9_-]{1,256}$", secret):
+        print("LỖI: TELEGRAM_WEBHOOK_SECRET không hợp lệ: chỉ dùng A-Z a-z 0-9 _ - (tối đa 256 ký tự)", file=sys.stderr)
+        sys.exit(1)
+
+    url = args.url or env_vals.get("WEBHOOK_URL")
     if not url:
         print("LỖI: Thiếu tham số webhook URL (--url hoặc WEBHOOK_URL trong .env)", file=sys.stderr)
         sys.exit(1)
@@ -110,19 +124,17 @@ def main():
 
     payload = {
         "url": url,
-        "drop_pending_updates": args.drop_pending,
-        "allowed_updates": ["message", "callback_query"]
+        "secret_token": secret,
+        "drop_pending_updates": bool(args.drop_pending),
+        "allowed_updates": ["message", "callback_query", "my_chat_member"]
     }
-    if secret:
-        payload["secret_token"] = secret
 
-    print(f"--- Đang đăng ký Webhook tới: {url} ---")
-    if secret:
-        print("Mã secret_token đã được cấu hình bảo vệ.")
+    print(f"--- Đang đăng ký Webhook tới: {url} (drop_pending={payload['drop_pending_updates']}) ---")
+    print("Mã secret_token đã được cấu hình bảo vệ (fail-closed).")
 
     res = call_telegram_api(token, "setWebhook", payload)
-    if not res.get("ok"):
-        print(f"LỖI: Đăng ký thất bại. Phản hồi: {res}", file=sys.stderr)
+    if not res or not res.get("ok"):
+        print(f"LỖI: Đăng ký thất bại. Telegram phản hồi: {res}", file=sys.stderr)
         sys.exit(1)
 
     print(f"setWebhook: {res.get('description', 'OK')}")

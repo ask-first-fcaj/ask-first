@@ -59,15 +59,19 @@ jobs:
         working-directory: ${{ steps.has.outputs.dir }}
         shell: bash
         run: |
+          shopt -s nullglob
           status=0
           for cls in DynamoSpikeTest LaneBRepositoriesTest; do
-            reports=$(find . -path '*/surefire-reports/*' -name "TEST-*${cls}.xml")
-            if [ -z "$reports" ]; then
+            reports=(*/target/surefire-reports/TEST-*${cls}.xml */*/*/target/surefire-reports/TEST-*${cls}.xml)
+            if [ ${#reports[@]} -eq 0 ]; then
+              mapfile -t reports < <(find . -type f -name "TEST-*${cls}.xml")
+            fi
+            if [ ${#reports[@]} -eq 0 ]; then
               echo "::error::Không có báo cáo surefire cho ${cls} (test có bị bỏ qua cả class không?)"
               status=1
               continue
             fi
-            while IFS= read -r r; do
+            for r in "${reports[@]}"; do
               if ! grep -q 'tests="[1-9]' "$r"; then
                 echo "::error::${r}: không có test nào được chạy"; status=1
               fi
@@ -77,7 +81,7 @@ jobs:
               if grep -q 'failures="[1-9]\|errors="[1-9]' "$r"; then
                 echo "::error::${r}: có test thất bại"; status=1
               fi
-            done <<< "$reports"
+            done
             [ $status -eq 0 ] && echo "OK: ${cls} chạy thật"
           done
           exit $status

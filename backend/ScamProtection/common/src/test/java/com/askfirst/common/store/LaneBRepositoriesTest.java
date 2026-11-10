@@ -36,9 +36,9 @@ class LaneBRepositoriesTest {
 
     @Container
     static final GenericContainer<?> DYNAMO_LOCAL =
-            new GenericContainer<>(DockerImageName.parse("amazon/dynamodb-local:latest"))
-                    .withExposedPorts(8000)
-                    .withCommand("-jar DynamoDBLocal.jar -inMemory -sharedDb");
+        new GenericContainer<>(DockerImageName.parse("amazon/dynamodb-local:2.5.2"))
+            .withExposedPorts(8000)
+            .withCommand("-jar DynamoDBLocal.jar -inMemory -sharedDb");
 
     private DynamoDbClient dynamoClient;
     private DynamoDbEnhancedClient enhancedClient;

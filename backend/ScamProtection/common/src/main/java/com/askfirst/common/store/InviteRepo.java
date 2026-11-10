@@ -20,6 +20,10 @@ public class InviteRepo {
     private static final TableSchema<InviteRecord> SCHEMA = TableSchema.fromBean(InviteRecord.class);
     private final DynamoDbTable<InviteRecord> table;
 
+    protected InviteRepo() {
+        this.table = null;
+    }
+
     public InviteRepo(DynamoDbEnhancedClient enhancedClient, String tableName) {
         this.table = enhancedClient.table(tableName, SCHEMA);
     }

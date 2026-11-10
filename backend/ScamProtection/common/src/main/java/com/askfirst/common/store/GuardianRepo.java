@@ -27,6 +27,10 @@ public class GuardianRepo {
     private static final TableSchema<GuardianRecord> SCHEMA = TableSchema.fromBean(GuardianRecord.class);
     private final DynamoDbTable<GuardianRecord> table;
 
+    protected GuardianRepo() {
+        this.table = null;
+    }
+
     public GuardianRepo(DynamoDbEnhancedClient enhancedClient, String tableName) {
         this.table = enhancedClient.table(tableName, SCHEMA);
     }

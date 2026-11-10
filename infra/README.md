@@ -10,7 +10,7 @@ Khi triển khai stack `askfirst-dev` (Region `ap-southeast-1`), AWS SAM sẽ t�
 
 | STT | Tài nguyên | Tên logic (SAM) | Tên thực tế trên AWS | Đặc tả chi tiết                                                                                                                 |
 |---|---|---|---|---------------------------------------------------------------------------------------------------------------------------------|
-| 1 | **Lambda Webhook** | `WebhookFunction` | `askfirst-dev-webhook` | Java 21, Function URL công khai (`AuthType: NONE`), handler hello world                                                         |
+| 1 | **Lambda Webhook** | `WebhookFunction` | `askfirst-dev-webhook` | Java 21, Function URL công khai (`AuthType: NONE`), Telegram webhook handler (`WebhookHandler`) |
 | 2 | **DynamoDB Single-Table** | `AskFirstTable` | `askfirst-dev` | Partition Key (`PK`), Sort Key (`SK`), GSI1 (`GSI1PK`, `GSI1SK`), TTL (`ttl`), PITR bật, Billing: On-Demand (`PAY_PER_REQUEST`) |
 | 3 | **SQS Queue chính** | `JobsQueue` | `askfirst-dev-jobs` | Visibility timeout: 720s (6 × 120s worker timeout), SSE bật, Redrive sang DLQ khi lỗi 5 lần                                     |
 | 4 | **SQS Dead-Letter Queue** | `JobsDeadLetterQueue` | `askfirst-dev-jobs-dlq` | Message retention: 14 ngày (1.209.600s), SSE bật                                                                                |
@@ -125,18 +125,29 @@ Sau khi hoàn tất, SAM sẽ in ra các giá trị **Outputs** (bao gồm `Webh
 
 Chạy các lệnh thủ công hoặc script tự động để xác nhận 100% tài nguyên đã hoạt động đúng:
 
-### 1. Kiểm tra Function URL của Webhook (HTTP 200)
+### 1. Kiểm tra Function URL của Webhook (Xác thực Fail-Closed & HTTP Status)
 
-Lấy Function URL từ output của SAM và gọi bằng `curl`:
+Lấy Function URL từ output của SAM. Vì Function URL công khai nhưng được bảo vệ bởi cơ chế Fail-Closed (BE-20), gọi không có Secret Token sẽ bị từ chối:
+
+**Trường hợp 1: Không có header secret (hoặc secret sai) -> Từ chối 401 UNAUTHORIZED**
 ```bash
-curl -X POST https://<id-duoc-cap>.lambda-url.ap-southeast-1.on.aws/
+curl -i -X POST https://<id-duoc-cap>.lambda-url.ap-southeast-1.on.aws/
+```
+**Kết quả mong đợi:**
+- HTTP Status: `401 Unauthorized`
+- Body trả về: `UNAUTHORIZED`
+
+**Trường hợp 2: Có header secret đúng và payload webhook hợp lệ -> Trả lời 200 OK**
+```bash
+SECRET=$(aws ssm get-parameter --name "/askfirst/dev/telegram/webhook_secret" --region ap-southeast-1 --query "Parameter.Value" --output text)
+curl -i -X POST https://<id-duoc-cap>.lambda-url.ap-southeast-1.on.aws/ \
+  -H "Content-Type: application/json" \
+  -H "X-Telegram-Bot-Api-Secret-Token: $SECRET" \
+  -d '{"update_id":1,"message":{"message_id":1,"from":{"id":123,"first_name":"Dev"},"chat":{"id":123,"type":"private"},"date":1700000000,"text":"/start"}}'
 ```
 **Kết quả mong đợi:**
 - HTTP Status: `200 OK`
-- Body trả về:
-  ```json
-  {"message": "Hello from AskFirst Webhook!"}
-  ```
+- Body trả về: `COMMAND_HANDLED` (và bot gửi tin nhắn chào mừng/đồng ý điều khoản trên Telegram)
 
 ### 2. Kiểm tra DynamoDB `askfirst-dev` (GSI1, TTL, PITR)
 
@@ -192,21 +203,33 @@ aws ssm get-parameters-by-path --path "/askfirst/dev" --recursive
 
 ## 5. Hướng Dẫn Lưu Secret & Token (Bảo Mật)
 
-Tuyệt đối **KHÔNG commit token hoặc secret vào Git/template SAM**. Khi cần lưu Telegram Bot Token và Webhook Secret cho bot dev, thực hiện lưu trực tiếp vào SSM Parameter Store dưới dạng `SecureString`:
+Tuyệt đối **KHÔNG commit token hoặc secret vào Git/template SAM**. `infra/template.yaml` sử dụng cú pháp dynamic reference `{{resolve:ssm:...}}` để nạp các thông tin này vào biến môi trường của Lambda khi deploy. 
+
+> [!NOTE]
+> Do cú pháp `{{resolve:ssm:...}}` trong khối `Environment.Variables` của CloudFormation chỉ hỗ trợ đọc kiểu `String` (không hỗ trợ `SecureString`), các tham số này được lưu dưới dạng `String` với phân quyền IAM chặt chẽ. Khi nâng cấp pipeline ở BE-07, cơ chế này có thể chuyển sang Lambda tự nạp `SecureString` qua AWS SDK lúc khởi chạy.
+
+Tạo 3 parameter bắt buộc trong SSM Parameter Store **TRƯỚC KHI** chạy `sam deploy`:
 
 ```bash
 # 1. Lưu Telegram Bot Token
 aws ssm put-parameter \
   --name "/askfirst/dev/telegram/bot_token" \
   --value "YOUR_TELEGRAM_BOT_TOKEN_HERE" \
-  --type SecureString \
+  --type String \
   --overwrite
 
-# 2. Lưu Telegram Webhook Secret Token
+# 2. Lưu Telegram Webhook Secret Token (tên tham số khớp template.yaml)
 aws ssm put-parameter \
-  --name "/askfirst/dev/telegram/secret_token" \
-  --value "YOUR_TELEGRAM_SECRET_TOKEN_HERE" \
-  --type SecureString \
+  --name "/askfirst/dev/telegram/webhook_secret" \
+  --value "YOUR_TELEGRAM_WEBHOOK_SECRET_HERE" \
+  --type String \
+  --overwrite
+
+# 3. Lưu SHA256 của Chính sách bảo vệ dữ liệu cá nhân (Privacy Policy v1.0 - BE-25)
+aws ssm put-parameter \
+  --name "/askfirst/dev/config/policy_sha256" \
+  --value "d1a8f9b2c3e4567890abcdef1234567890abcdef1234567890abcdef12345678" \
+  --type String \
   --overwrite
 ```
 
@@ -279,4 +302,4 @@ Trong lần triển khai đầu tiên, người dùng IAM hoặc Role deploy th�
 
 ### 3. Trạng thái kiểm nghiệm SnapStart (Java 21):
 - `not verified: hành vi SAM + Java 21 SnapStart trên cả 3 OS dev (Windows, macOS, Linux)`
-  - *Giải thích:* Theo implementation plan, SnapStart cho Java 21 trên Lambda (Singapore `ap-southeast-1`) được lên kế hoạch đo lường và khảo sát chuyên sâu tại spike **BE-14** (W1) và hoàn thiện đường ống tại **BE-07** (W2–W3). Bản hello-world Webhook hiện tại tập trung thông suốt luồng build/deploy/Function URL công khai không bật SnapStart để giữ độ đơn giản tối đa và đảm bảo tương thích đa hệ điều hành dev.
+  - *Giải thích:* Theo implementation plan, SnapStart cho Java 21 trên Lambda (Singapore `ap-southeast-1`) được lên kế hoạch đo lường và khảo sát chuyên sâu tại spike **BE-14** (W1) và hoàn thiện đường ống tại **BE-07** (W2–W3). Bản WebhookHandler hiện tại tập trung thông suốt luồng build/deploy/Function URL công khai không bật SnapStart để giữ độ đơn giản tối đa và đảm bảo tương thích đa hệ điều hành dev.

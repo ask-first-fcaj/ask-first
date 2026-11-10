@@ -118,4 +118,38 @@ public class RateLimitRepo {
             return 1L;
         }
     }
+
+    /**
+     * Hoàn tác (trừ 1) counter khi tiến trình sau đó bị lỗi (vd. SQS gửi thất bại),
+     * tránh việc người dùng bị trừ quota oan khi hạ tầng gặp sự cố tạm thời.
+     */
+    public void rollback(String userId) {
+        if (client == null || userId == null || userId.isBlank()) {
+            return;
+        }
+        Instant now = clock.instant();
+        String hourWindow = HOUR_FORMAT.format(now);
+        String dayWindow = DAY_FORMAT.format(now);
+
+        decrementCounter("RATE#" + userId + "#" + hourWindow);
+        decrementCounter("RATE#" + userId + "#" + dayWindow);
+    }
+
+    private void decrementCounter(String pk) {
+        try {
+            UpdateItemRequest request = UpdateItemRequest.builder()
+                    .tableName(tableName)
+                    .key(Map.of(
+                            DynamoStoreService.ATTR_PK, AttributeValue.builder().s(pk).build(),
+                            DynamoStoreService.ATTR_SK, AttributeValue.builder().s("COUNTER").build()
+                    ))
+                    .updateExpression("ADD #cnt :minusOne")
+                    .expressionAttributeNames(Map.of("#cnt", "count"))
+                    .expressionAttributeValues(Map.of(":minusOne", AttributeValue.builder().n("-1").build()))
+                    .build();
+            client.updateItem(request);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Không hoàn tác được counter rate limit: {0}", e.toString());
+        }
+    }
 }

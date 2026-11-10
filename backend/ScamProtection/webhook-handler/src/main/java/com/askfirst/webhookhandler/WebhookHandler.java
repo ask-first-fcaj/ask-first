@@ -11,6 +11,10 @@ import com.askfirst.common.channel.model.InboundMessage;
 import com.askfirst.common.channel.model.TelegramCallbackQuery;
 import com.askfirst.common.store.AuditRepo;
 import com.askfirst.common.store.DynamoStoreService;
+import com.askfirst.common.store.GuardianRecord;
+import com.askfirst.common.store.GuardianRepo;
+import com.askfirst.common.store.InviteRecord;
+import com.askfirst.common.store.InviteRepo;
 import com.askfirst.common.store.RateLimitRepo;
 import com.askfirst.common.store.UserRecord;
 import com.askfirst.common.store.UserRepo;
@@ -23,11 +27,14 @@ import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
@@ -55,6 +62,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     private final UserRepo userRepo;
     private final AuditRepo auditRepo;
     private final RateLimitRepo rateLimitRepo;
+    private final GuardianRepo guardianRepo;
+    private final InviteRepo inviteRepo;
 
     /** Chống xử lý trùng cùng một update_id (Telegram retry). Null = không dedup (test/local). */
     private final DynamoStoreService dedup;
@@ -85,11 +94,13 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.userRepo = new UserRepo(enhanced, tableName);
         this.auditRepo = new AuditRepo(enhanced, tableName);
         this.rateLimitRepo = new RateLimitRepo(ddb, tableName);
+        this.guardianRepo = new GuardianRepo(enhanced, tableName);
+        this.inviteRepo = new InviteRepo(enhanced, tableName);
         this.dedup = DynamoStoreService.create(ddb, tableName);
     }
 
     public WebhookHandler(TelegramClient telegram, SqsClient sqs, String queueUrl, String secret) {
-        this(telegram, sqs, queueUrl, secret, null, null, null, DEFAULT_POLICY_SHA256);
+        this(telegram, sqs, queueUrl, secret, null, null, null, null, null, DEFAULT_POLICY_SHA256);
     }
 
     public WebhookHandler(
@@ -101,7 +112,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             AuditRepo auditRepo,
             RateLimitRepo rateLimitRepo,
             String policySha256) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, null, false);
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, null, null, policySha256, null, false);
     }
 
     public WebhookHandler(
@@ -114,7 +125,36 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             RateLimitRepo rateLimitRepo,
             String policySha256,
             DynamoStoreService dedup) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, dedup, false);
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, null, null, policySha256, dedup, false);
+    }
+
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            GuardianRepo guardianRepo,
+            InviteRepo inviteRepo,
+            String policySha256) {
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, guardianRepo, inviteRepo, policySha256, null, false);
+    }
+
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            GuardianRepo guardianRepo,
+            InviteRepo inviteRepo,
+            String policySha256,
+            DynamoStoreService dedup) {
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, guardianRepo, inviteRepo, policySha256, dedup, false);
     }
 
     private WebhookHandler(
@@ -125,6 +165,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             UserRepo userRepo,
             AuditRepo auditRepo,
             RateLimitRepo rateLimitRepo,
+            GuardianRepo guardianRepo,
+            InviteRepo inviteRepo,
             String policySha256,
             DynamoStoreService dedup,
             boolean localDevelopment) {
@@ -135,6 +177,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.userRepo = userRepo;
         this.auditRepo = auditRepo;
         this.rateLimitRepo = rateLimitRepo;
+        this.guardianRepo = guardianRepo;
+        this.inviteRepo = inviteRepo;
         this.policySha256 = (policySha256 != null && !policySha256.isBlank()) ? policySha256 : DEFAULT_POLICY_SHA256;
         this.adapter = new TelegramAdapter();
         this.dedup = dedup;
@@ -146,7 +190,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
      * Đây là đường DUY NHẤT được bỏ qua kiểm tra secret.
      */
     public static WebhookHandler forLocalDevelopment(TelegramClient telegram) {
-        return new WebhookHandler(telegram, null, null, null, null, null, null, DEFAULT_POLICY_SHA256, null, true);
+        return new WebhookHandler(telegram, null, null, null, null, null, null, null, null, DEFAULT_POLICY_SHA256, null, true);
     }
 
     private static String requireEnv(String name) {
@@ -322,6 +366,167 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                         "Dạ, cháu đã lưu cách xưng hô là <b>" + form + "</b> rồi ạ! Cháu sẽ xưng hô như vậy trong các câu trả lời sau nhé.");
             }
             return response(200, "CALLBACK_HANDLED");
+
+        // BE-28: Chấp nhận liên kết người thân từ người cao tuổi (Double Opt-in)
+        } else if (data != null && data.startsWith("g_acc:")) {
+            // data format: g_acc:<level>:<guardianUidShort>:<guardianChatId>
+            String[] parts = data.split(":");
+            int level = Integer.parseInt(parts[1]);
+            String guardianUid = "tg:" + parts[2];
+            long guardianChatId = Long.parseLong(parts[3]);
+
+            if (guardianRepo != null) {
+                GuardianRecord record = new GuardianRecord(userId, guardianUid);
+                record.setGuardianChatId(String.valueOf(guardianChatId));
+                record.setShareLevel(level);
+                record.setStatus("active");
+                record.setElderConsentAt(Instant.now().toString());
+                record.setGuardianConsentAt(Instant.now().toString());
+                guardianRepo.save(record);
+            }
+            if (auditRepo != null) {
+                auditRepo.recordEvent(userId, "GUARDIAN_LINKED", POLICY_VERSION, policySha256,
+                        "Linked with " + guardianUid + " at level " + level);
+            }
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã kết nối thành công!");
+                telegram.sendText(chatId, "✅ <b>Đã kết nối thành công với người thân ở Mức " + level + "!</b>\nTừ bây giờ con cháu sẽ cùng bảo vệ Bác khi có tin nhắn lừa đảo nguy hiểm.");
+                telegram.sendText(guardianChatId, "🎉 <b>Kết nối thành công!</b>\nNgười thân đã đồng ý liên kết ở Mức " + level + ". Bạn sẽ nhận được thông báo khi người thân gặp tin nhắn lừa đảo nguy hiểm.");
+            }
+            return response(200, "CALLBACK_HANDLED");
+
+        } else if (data != null && data.startsWith("g_dec:")) {
+            String[] parts = data.split(":");
+            String guardianUid = "tg:" + parts[1];
+            long guardianChatId = Long.parseLong(parts[2]);
+
+            if (auditRepo != null) {
+                auditRepo.recordEvent(userId, "GUARDIAN_DECLINED", POLICY_VERSION, policySha256, "Declined link with " + guardianUid);
+            }
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã từ chối");
+                telegram.sendText(chatId, "Dạ cháu đã từ chối yêu cầu kết nối rồi ạ.");
+                telegram.sendText(guardianChatId, "Rất tiếc, người thân chưa đồng ý liên kết vào lúc này.");
+            }
+            return response(200, "CALLBACK_HANDLED");
+
+        } else if (data != null && data.startsWith("g_unlink:")) {
+            String guardianUid = data.substring("g_unlink:".length());
+            if (guardianRepo != null) {
+                guardianRepo.updateStatus(userId, guardianUid, "revoked");
+            }
+            if (auditRepo != null) {
+                auditRepo.recordEvent(userId, "GUARDIAN_UNLINKED", POLICY_VERSION, policySha256, "Unlinked " + guardianUid);
+            }
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã huỷ kết nối");
+                telegram.sendText(chatId, "✅ Đã huỷ kết nối với người thân này rồi ạ.");
+            }
+            return response(200, "CALLBACK_HANDLED");
+
+        } else if ("guardian:create_invite".equals(data)) {
+            String inviteCode = generateInviteCode();
+            if (inviteRepo != null) {
+                inviteRepo.createInvite(inviteCode, userId, Instant.now().getEpochSecond() + (24 * 3600));
+            }
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã tạo mã kết nối!");
+                String msg =
+                        "Mã kết nối mới của Bác là: <code><b>" + inviteCode + "</b></code>\n\n" +
+                        "⏳ <i>(Mã có hiệu lực trong 24 giờ)</i>\n\n" +
+                        "Bác hãy gửi mã số này cho con cháu và bảo con cháu gõ:\n" +
+                        "<code>/ketnoi " + inviteCode + "</code> nhé!";
+                telegram.sendText(chatId, msg);
+            }
+            return response(200, "CALLBACK_HANDLED");
+
+        // BE-31: Rút đồng ý & Xóa dữ liệu theo Nghị định 356
+        } else if ("privacy:revoke_consent".equals(data)) {
+            if (userRepo != null) {
+                userRepo.revokeConsent(userId);
+            }
+            if (guardianRepo != null) {
+                try {
+                    for (GuardianRecord g : guardianRepo.listGuardians(userId)) {
+                        guardianRepo.updateStatus(userId, g.getGuardianUid(), "revoked");
+                    }
+                } catch (Exception ignored) {}
+            }
+            if (auditRepo != null) {
+                auditRepo.recordEvent(userId, "CONSENT_REVOKED", POLICY_VERSION, policySha256, "Revoked via /rutdongy");
+            }
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã rút đồng ý");
+                telegram.sendText(chatId, "Dạ cháu đã ghi nhận rút lại sự đồng ý của Bác rồi ạ. Cháu đã ngừng xử lý tin nhắn và huỷ mọi liên kết người thân. Khi nào cần dùng lại, Bác chỉ cần gõ /start nhé!");
+            }
+            return response(200, "CALLBACK_HANDLED");
+
+        } else if ("privacy:delete_data".equals(data)) {
+            if (userRepo != null) {
+                userRepo.deleteUser(userId);
+            }
+            if (guardianRepo != null) {
+                try {
+                    for (GuardianRecord g : guardianRepo.listGuardians(userId)) {
+                        guardianRepo.delete(userId, g.getGuardianUid());
+                    }
+                } catch (Exception ignored) {}
+            }
+            if (auditRepo != null) {
+                auditRepo.recordEvent("ANON#" + hashUserId(userId), "DATA_DELETED", POLICY_VERSION, policySha256, "User requested data deletion under ND 356");
+            }
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã xoá sạch dữ liệu");
+                telegram.sendText(chatId, "Dạ cháu đã xoá sạch toàn bộ dữ liệu cá nhân của Bác trên hệ thống rồi ạ! Cảm ơn Bác đã đồng hành cùng AskFirst.");
+            }
+            return response(200, "CALLBACK_HANDLED");
+
+        } else if ("privacy:cancel".equals(data)) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã huỷ bỏ");
+                telegram.sendText(chatId, "Dạ cháu đã giữ nguyên cài đặt của Bác rồi ạ.");
+            }
+            return response(200, "CALLBACK_HANDLED");
+
+        // BE-30: Phản hồi báo sai & Quyên góp mẫu
+        } else if ("feedback:wrong".equals(data)) {
+            if (auditRepo != null) {
+                auditRepo.recordEvent(userId, "FEEDBACK_WRONG", POLICY_VERSION, policySha256, "User flagged result as wrong");
+            }
+            String donatePrompt =
+                    "Dạ cháu cảm ơn Bác đã góp ý ạ! 🙏\n\n" +
+                    "Để giúp các kỹ sư hoàn thiện và huấn luyện bot thông minh hơn, Bác có đồng ý cho cháu lưu lại mẫu tin nhắn này không ạ?\n\n" +
+                    "• Cháu cam kết <b>đã che sạch toàn bộ thông tin cá nhân</b> (số điện thoại, tên riêng, tài khoản ngân hàng).\n" +
+                    "• Mẫu sẽ <b>tự động được xoá sau 30 ngày</b> theo đúng cam kết bảo vệ dữ liệu.";
+
+            Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
+                    List.of(
+                            new InlineButton("✅ Đồng ý đóng góp", "donate:agree"),
+                            new InlineButton("❌ Không, cảm ơn", "donate:decline")
+                    )
+            ));
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã ghi nhận góp ý");
+                telegram.sendText(chatId, donatePrompt, keyboard);
+            }
+            return response(200, "CALLBACK_HANDLED");
+
+        } else if ("donate:agree".equals(data)) {
+            if (auditRepo != null) {
+                auditRepo.recordEvent(userId, "DONATION_CONSENT_GIVEN", POLICY_VERSION, policySha256, "Agreed to donate masked sample (30-day lifecycle)");
+            }
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Cảm ơn Bác!");
+                telegram.sendText(chatId, "Dạ cháu cảm ơn Bác rất nhiều ạ! Mẫu đóng góp của Bác sẽ giúp bảo vệ thêm nhiều người cao tuổi và gia đình khác khỏi bẫy lừa đảo. ❤️");
+            }
+            return response(200, "CALLBACK_HANDLED");
+
+        } else if ("donate:decline".equals(data)) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã ghi nhận");
+                telegram.sendText(chatId, "Dạ cháu hiểu rồi ạ. Cháu sẽ không lưu lại mẫu tin nhắn này nhé.");
+            }
+            return response(200, "CALLBACK_HANDLED");
         }
 
         return response(200, "UNKNOWN_CALLBACK");
@@ -409,6 +614,71 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 telegram.sendText(chatId, emergencyMsg);
             }
             return response(200, "COMMAND_HANDLED");
+
+        // BE-28 / BE-36: Màn hình quản lý người thân & tạo mã kết nối
+        } else if (cmd.startsWith("/nguoithan")) {
+            String addressForm = getAddressForm(userId);
+            return handleGuardianManagementCommand(chatId, userId, addressForm, context);
+
+        // BE-28: Con cháu nhập mã kết nối kèm mã 6 số (/ketnoi 123456)
+        } else if (cmd.startsWith("/ketnoi")) {
+            String addressForm = getAddressForm(userId);
+            return handleConnectCommand(chatId, userId, text, addressForm, context);
+
+        // BE-36: Tra cứu tóm tắt lịch sử kiểm tra gần đây
+        } else if (cmd.startsWith("/lichsu")) {
+            String historyMsg =
+                    "📋 <b>LỊCH SỬ KIỂM TRA TIN NHẮN GẦN ĐÂY</b>\n\n" +
+                    "• Theo cam kết bảo vệ dữ liệu cá nhân (Nghị định 356), hệ thống <b>KHÔNG lưu trữ</b> nội dung tin nhắn cũ của Bác sau khi đã phân tích xong.\n" +
+                    "• Các lượt kiểm tra an toàn sẽ tự động xoá dữ liệu tạm trong vòng 10 phút.\n" +
+                    "• Nếu có bất kỳ nghi ngờ nào về một tin nhắn mới, Bác chỉ cần gửi thẳng vào đây để cháu kiểm tra lại bất cứ lúc nào nhé!";
+            if (telegram != null) {
+                telegram.sendText(chatId, historyMsg);
+            }
+            return response(200, "COMMAND_HANDLED");
+
+        // BE-31: Rút lại sự đồng ý theo Nghị định 356
+        } else if (cmd.startsWith("/rutdongy")) {
+            String addressForm = getAddressForm(userId);
+            String msg =
+                    "⚠️ <b>XÁC NHẬN RÚT LẠI SỰ ĐỒNG Ý (NGHỊ ĐỊNH 356)</b>\n\n" +
+                    addressForm + " ơi, nếu rút lại sự đồng ý:\n" +
+                    "• Cháu sẽ <b>ngừng ngay lập tức</b> việc phân tích tin nhắn và hình ảnh.\n" +
+                    "• Mọi liên kết người thân đang có sẽ tự động bị huỷ bỏ.\n\n" +
+                    addressForm + " có chắc chắn muốn rút đồng ý không ạ?";
+
+            Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
+                    List.of(
+                            new InlineButton("⚠️ Xác nhận rút đồng ý", "privacy:revoke_consent"),
+                            new InlineButton("Giữ nguyên sử dụng", "privacy:cancel")
+                    )
+            ));
+            if (telegram != null) {
+                telegram.sendText(chatId, msg, keyboard);
+            }
+            return response(200, "COMMAND_HANDLED");
+
+        // BE-31: Xoá sạch toàn bộ dữ liệu cá nhân theo Nghị định 356
+        } else if (cmd.startsWith("/xoadulieu")) {
+            String addressForm = getAddressForm(userId);
+            String msg =
+                    "🗑️ <b>YÊU CẦU XOÁ TOÀN BỘ DỮ LIỆU CÁ NHÂN (NGHỊ ĐỊNH 356)</b>\n\n" +
+                    addressForm + " ơi, khi thực hiện lệnh này:\n" +
+                    "• Hồ sơ người dùng và cách xưng hô sẽ bị xoá vĩnh viễn.\n" +
+                    "• Toàn bộ liên kết người thân và dữ liệu đóng góp sẽ bị xoá sạch.\n" +
+                    "• Hệ thống chỉ giữ lại 1 bản ghi kiểm toán ẩn danh theo luật định.\n\n" +
+                    addressForm + " có chắc chắn muốn xoá sạch toàn bộ dữ liệu không ạ?";
+
+            Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
+                    List.of(
+                            new InlineButton("🗑️ Xác nhận xoá sạch dữ liệu", "privacy:delete_data"),
+                            new InlineButton("Không, giữ lại", "privacy:cancel")
+                    )
+            ));
+            if (telegram != null) {
+                telegram.sendText(chatId, msg, keyboard);
+            }
+            return response(200, "COMMAND_HANDLED");
         }
 
         return response(200, "COMMAND_IGNORED");
@@ -421,6 +691,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             Context context) {
 
         String addressForm = getAddressForm(userId);
+
+        // BE-35: Tệp cài đặt độc hại .apk: Cảnh báo đỏ khẩn cấp ngay lập tức
+        if ("apk".equalsIgnoreCase(inbound.kind())) {
+            return handleApkDetection(inbound, chatId, userId, addressForm, context);
+        }
 
         // 1. Kiểm tra trạng thái Đồng ý điều khoản (Consent Check - BE-25)
         if (userRepo != null && !userRepo.hasValidConsent(userId, policySha256)) {
@@ -439,6 +714,16 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 telegram.sendText(chatId, promptConsent, keyboard);
             }
             return response(200, "CONSENT_REQUIRED");
+        }
+
+        // BE-35: Hướng dẫn chụp màn hình cho tệp tài liệu/media chưa hỗ trợ
+        if ("document".equalsIgnoreCase(inbound.kind()) || "unsupported_media".equalsIgnoreCase(inbound.kind())) {
+            String guideMsg = addressForm + " ơi, dạ hiện tại cháu chưa hỗ trợ đọc trực tiếp định dạng tệp này ạ.\n\n" +
+                    addressForm + " hãy mở tệp đó trên điện thoại, sau đó <b>CHỤP ẢNH MÀN HÌNH</b> rồi gửi ảnh vào đây để cháu kiểm tra dấu hiệu lừa đảo giúp " + addressForm.toLowerCase() + " nhé! 📸";
+            if (telegram != null) {
+                telegram.sendText(chatId, guideMsg);
+            }
+            return response(200, "UNSUPPORTED_MEDIA_GUIDED");
         }
 
         // 2. Kiểm tra đồng ý tin nhắn thoại (Voice Consent Check - BE-25)
@@ -503,11 +788,252 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                                 .build());
             } catch (Exception e) {
                 log(context, "Lỗi gửi message vào SQS: " + e);
+                if (rateLimitRepo != null) {
+                    rateLimitRepo.rollback(userId);
+                }
                 return response(500, "SQS_FAILED");
             }
         }
 
         return response(200, "OK");
+    }
+
+    private APIGatewayProxyResponseEvent handleApkDetection(
+            InboundMessage inbound,
+            long chatId,
+            String userId,
+            String addressForm,
+            Context context) {
+
+        log(context, "Phát hiện tệp cài đặt độc hại .apk từ user " + userId + " -> Chặn và phát cảnh báo đỏ");
+
+        String fileName = (inbound.media() != null && inbound.media().fileName() != null)
+                ? inbound.media().fileName()
+                : "tệp .apk";
+
+        if (auditRepo != null) {
+            auditRepo.recordEvent(userId, "APK_DETECTED", POLICY_VERSION, policySha256,
+                    "Blocked APK file: " + fileName);
+        }
+
+        String alertMsg =
+                "🚨🚨🚨 <b>CẢNH BÁO NGUY HIỂM KHẨN CẤP!</b> 🚨🚨🚨\n\n" +
+                addressForm + " ơi, tệp <code>" + fileName + "</code> là <b>TỆP CÀI ĐẶT ỨNG DỤNG ANDROID (.APK)</b>.\n\n" +
+                "⚠️ <b>TUYỆT ĐỐI KHÔNG BẤM CÀI ĐẶT TỆP NÀY VÀO ĐIỆN THOẠI!</b>\n\n" +
+                "Kẻ lừa đảo thường giả danh:\n" +
+                "• <b>Công an / Viện kiểm sát:</b> Dụ cài phần mềm 'Dịch vụ công', 'Bộ Công an' giả mạo.\n" +
+                "• <b>Cán bộ Thuế / Điện lực:</b> Dụ cài app để cập nhật mã số thuế hoặc giảm tiền điện.\n" +
+                "• <b>Ngân hàng:</b> Dụ cài app nâng cấp hạn mức, sinh trắc học.\n\n" +
+                "<i>Nếu cài đặt, kẻ gian sẽ chiếm toàn quyền điều khiển điện thoại, tự động đọc mã OTP và rút sạch tiền trong tài khoản ngân hàng của " + addressForm.toLowerCase() + "!</i>\n\n" +
+                "👉 <b>Hành động ngay:</b> Hãy xóa ngay tin nhắn chứa tệp này. Nếu đã lỡ bấm cài đặt, hãy <b>TẮT NGUỒN ĐIỆN THOẠI NGAY LẬP TỨC</b> và mượn máy khác gọi ngân hàng khóa tài khoản!";
+
+        if (telegram != null) {
+            telegram.sendText(chatId, alertMsg);
+        }
+
+        if (guardianRepo != null) {
+            try {
+                List<GuardianRecord> guardians = guardianRepo.listGuardians(userId);
+                for (GuardianRecord g : guardians) {
+                    if ("active".equals(g.getStatus()) && g.getGuardianChatId() != null) {
+                        try {
+                            long gChatId = Long.parseLong(g.getGuardianChatId());
+                            String gAlert =
+                                    "🚨 <b>CẢNH BÁO KHẨN CẤP CHO NGƯỜI THÂN!</b> 🚨\n\n" +
+                                    "Hệ thống phát hiện tài khoản người thân (ID: <code>" + userId + "</code>) vừa nhận được tệp cài đặt nguy hiểm (<code>" + fileName + "</code>) trên Telegram.\n\n" +
+                                    "⚠️ Có khả năng người thân đang bị kẻ xấu dẫn dụ cài mã độc chiếm quyền điều khiển điện thoại.\n\n" +
+                                    "👉 Bạn hãy gọi điện thoại ngay cho người thân để dặn <b>TUYỆT ĐỐI KHÔNG BẤM CÀI ĐẶT</b> nhé!";
+                            if (telegram != null) {
+                                telegram.sendText(gChatId, gAlert);
+                            }
+                        } catch (Exception e) {
+                            log(context, "Lỗi gửi cảnh báo tới guardian " + g.getGuardianUid() + ": " + e);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log(context, "Lỗi truy vấn người thân khi phát hiện APK: " + e);
+            }
+        }
+
+        return response(200, "APK_BLOCKED");
+    }
+
+    private APIGatewayProxyResponseEvent handleGuardianManagementCommand(
+            long chatId,
+            String userId,
+            String addressForm,
+            Context context) {
+
+        List<GuardianRecord> guardians = List.of();
+        if (guardianRepo != null) {
+            try {
+                guardians = guardianRepo.listGuardians(userId).stream()
+                        .filter(g -> "active".equals(g.getStatus()))
+                        .toList();
+            } catch (Exception e) {
+                log(context, "Lỗi lấy danh sách người thân: " + e);
+            }
+        }
+
+        if (guardians.isEmpty()) {
+            String msg =
+                    "👨‍👩‍👧‍👦 <b>QUẢN LÝ NGƯỜI THÂN ĐỒNG HÀNH</b>\n\n" +
+                    addressForm + " chưa kết nối với người thân nào ạ.\n\n" +
+                    "Khi kết nối với con cháu trong nhà:\n" +
+                    "• Khi " + addressForm.toLowerCase() + " gặp tin nhắn lừa đảo nguy hiểm, hệ thống sẽ tự động báo tin cho con cháu để hỗ trợ kịp thời.\n" +
+                    "• " + addressForm + " hoàn toàn làm chủ quyền riêng tư (chọn mức độ chia sẻ hoặc huỷ kết nối bất kỳ lúc nào).\n\n" +
+                    addressForm + " hãy bấm nút <b>Tạo mã kết nối</b> bên dưới để lấy mã gửi cho con cháu nhé!";
+
+            Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
+                    List.of(new InlineButton("➕ Tạo mã kết nối người thân", "guardian:create_invite"))
+            ));
+
+            if (telegram != null) {
+                telegram.sendText(chatId, msg, keyboard);
+            }
+        } else {
+            StringBuilder sb = new StringBuilder();
+            sb.append("👨‍👩‍👧‍👦 <b>DANH SÁCH NGƯỜI THÂN ĐỒNG HÀNH</b>\n\n");
+            sb.append(addressForm).append(" đang liên kết với ").append(guardians.size()).append(" người thân:\n\n");
+
+            List<List<InlineButton>> rows = new ArrayList<>();
+            for (GuardianRecord g : guardians) {
+                sb.append("• <b>Người thân:</b> ").append(g.getGuardianUid())
+                        .append(" <i>(Mức ").append(g.getShareLevel()).append(")</i>\n");
+                rows.add(List.of(
+                        new InlineButton("❌ Huỷ kết nối " + g.getGuardianUid(), "g_unlink:" + g.getGuardianUid())
+                ));
+            }
+            sb.append("\nBác có thể tạo thêm mã kết nối để thêm người thân khác:");
+            rows.add(List.of(new InlineButton("➕ Tạo mã kết nối mới", "guardian:create_invite")));
+
+            Map<String, Object> keyboard = TelegramClient.inlineKeyboard(rows);
+            if (telegram != null) {
+                telegram.sendText(chatId, sb.toString(), keyboard);
+            }
+        }
+
+        return response(200, "COMMAND_HANDLED");
+    }
+
+    private APIGatewayProxyResponseEvent handleConnectCommand(
+            long chatId,
+            String userId,
+            String text,
+            String addressForm,
+            Context context) {
+
+        String[] parts = text.trim().split("\\s+");
+        if (parts.length < 2) {
+            String msg = "Bạn vui lòng nhập kèm mã kết nối 6 chữ số do người thân cung cấp nhé!\n\nVí dụ: <code>/ketnoi 123456</code>";
+            if (telegram != null) {
+                telegram.sendText(chatId, msg);
+            }
+            return response(200, "CONNECT_COMMAND_NO_CODE");
+        }
+
+        String code = parts[1].trim();
+        if (inviteRepo == null) {
+            return response(200, "INVITE_REPO_NOT_CONFIGURED");
+        }
+
+        Optional<InviteRecord> opt = inviteRepo.getInvite(code);
+        if (opt.isEmpty()) {
+            if (telegram != null) {
+                telegram.sendText(chatId, "❌ Mã kết nối không chính xác hoặc không tồn tại. Vui lòng kiểm tra lại với người thân nhé!");
+            }
+            return response(200, "INVALID_INVITE");
+        }
+
+        InviteRecord invite = opt.get();
+        if ("used".equals(invite.getStatus())) {
+            if (telegram != null) {
+                telegram.sendText(chatId, "❌ Mã kết nối này đã được sử dụng rồi ạ. Vui lòng nhờ người thân tạo mã mới nhé!");
+            }
+            return response(200, "INVITE_ALREADY_USED");
+        }
+
+        if (invite.getExpiresAt() != null && invite.getExpiresAt() < Instant.now().getEpochSecond()) {
+            if (telegram != null) {
+                telegram.sendText(chatId, "❌ Mã kết nối đã hết hạn (24 giờ). Vui lòng nhờ người thân tạo mã mới nhé!");
+            }
+            return response(200, "INVITE_EXPIRED");
+        }
+
+        String elderUid = invite.getElderUid();
+        if (elderUid.equals(userId)) {
+            if (telegram != null) {
+                telegram.sendText(chatId, "❌ Bạn không thể tự kết nối với chính mình ạ!");
+            }
+            return response(200, "SELF_CONNECT");
+        }
+
+        boolean marked = inviteRepo.markUsed(code, userId);
+        if (!marked) {
+            if (telegram != null) {
+                telegram.sendText(chatId, "❌ Không thể sử dụng mã này (mã đã được dùng hoặc đã hết hạn).");
+            }
+            return response(200, "INVITE_CONSUME_FAILED");
+        }
+
+        long elderChatId;
+        try {
+            elderChatId = Long.parseLong(elderUid.replace("tg:", "").replace("USER#", ""));
+        } catch (NumberFormatException e) {
+            elderChatId = chatId;
+        }
+
+        String elderAddressForm = getAddressForm(elderUid);
+        String guardianUidRaw = userId.replace("tg:", "").replace("USER#", "");
+
+        String elderConfirmMsg =
+                "🔔 <b>YÊU CẦU KẾT NỐI TỪ NGƯỜI THÂN</b>\n\n" +
+                elderAddressForm + " ơi, tài khoản người thân (ID: <code>" + userId + "</code>) vừa nhập mã kết nối của " + elderAddressForm.toLowerCase() + ".\n\n" +
+                "Để bảo vệ quyền riêng tư, " + elderAddressForm.toLowerCase() + " vui lòng chọn mức độ chia sẻ thông tin:\n\n" +
+                "• <b>Mức 1:</b> Chỉ cảnh báo mức rủi ro (Nguy hiểm / Nghi ngờ).\n" +
+                "• <b>Mức 2 (Khuyên dùng):</b> Cảnh báo kèm tên thủ đoạn lừa đảo.\n" +
+                "• <b>Mức 3:</b> Xem đầy đủ tóm tắt nội dung tin nhắn bị nghi lừa đảo.";
+
+        Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
+                List.of(new InlineButton("🛡️ Mức 1 (Chỉ mức rủi ro)", "g_acc:1:" + guardianUidRaw + ":" + chatId)),
+                List.of(new InlineButton("⭐ Mức 2 (Rủi ro + Kịch bản)", "g_acc:2:" + guardianUidRaw + ":" + chatId)),
+                List.of(new InlineButton("📋 Mức 3 (Đầy đủ tóm tắt)", "g_acc:3:" + guardianUidRaw + ":" + chatId)),
+                List.of(new InlineButton("❌ Từ chối kết nối", "g_dec:" + guardianUidRaw + ":" + chatId))
+        ));
+
+        if (telegram != null) {
+            telegram.sendText(elderChatId, elderConfirmMsg, keyboard);
+            telegram.sendText(chatId, "✅ Đã gửi yêu cầu kết nối tới người thân! Vui lòng chờ người thân xác nhận trên Telegram của họ nhé.");
+        }
+
+        if (auditRepo != null) {
+            auditRepo.recordEvent(userId, "INVITE_REDEEMED", POLICY_VERSION, policySha256, "Redeemed invite from " + elderUid);
+        }
+
+        return response(200, "CONNECT_REQUEST_SENT");
+    }
+
+    private String generateInviteCode() {
+        int code = ThreadLocalRandom.current().nextInt(100_000, 1_000_000);
+        return String.valueOf(code);
+    }
+
+    private String hashUserId(String userId) {
+        if (userId == null) {
+            return "unknown";
+        }
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(userId.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 8; i++) {
+                sb.append(String.format("%02x", digest[i]));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            return Integer.toHexString(userId.hashCode());
+        }
     }
 
     private String getAddressForm(String userId) {

@@ -50,6 +50,15 @@ public class UserRepo {
         table.putItem(user);
     }
 
+    public void deleteUser(String userId) {
+        if (table == null || userId == null) {
+            return;
+        }
+        String pk = userId.startsWith("USER#") ? userId : "USER#" + userId;
+        Key key = Key.builder().partitionValue(pk).sortValue("PROFILE").build();
+        table.deleteItem(key);
+    }
+
     /**
      * Lấy user, chưa có thì tạo. Tạo bằng conditional put nên hai request đầu tiên song song
      * không ghi đè nhau: bên thua sẽ đọc lại bản của bên thắng.

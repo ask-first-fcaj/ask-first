@@ -56,6 +56,13 @@ public class DynamoStoreService {
     private final String tableName;
     private final DynamoDbTable<DedupRecord> dedupTable;
 
+    protected DynamoStoreService() {
+        this.enhancedClient = null;
+        this.standardClient = null;
+        this.tableName = null;
+        this.dedupTable = null;
+    }
+
     public DynamoStoreService(DynamoDbEnhancedClient enhancedClient, DynamoDbClient standardClient, String tableName) {
         this.enhancedClient = enhancedClient;
         this.standardClient = standardClient;
