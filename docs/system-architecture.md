@@ -958,7 +958,7 @@ ask-first/
 | Function | Đóng gói | Memory | Timeout | Trigger | Quyền IAM (tối thiểu) |
 |---|---|---|---|---|---|
 | `webhook` | zip, Java 21, SnapStart | 512 MB ⚠️ (Java cần nhiều RAM hơn Python; đo rồi chỉnh) | 5 giây | Function URL (auth NONE + secret header) | DynamoDB (Get/Put/Update/Delete/Query/BatchWrite), SQS SendMessage, SSM GetParameter, S3 Put/Delete/List `donated/*` |
-| `worker` | zip, Java 21, SnapStart | 512–1.024 MB ⚠️ | 120 giây | SQS (batch 1, max concurrency 5, ReportBatchItemFailures) | DynamoDB, `lambda:InvokeFunction` (chỉ ARN alias của `ai`), SQS SendMessage (followup), SSM |
+| `worker` | zip, Java 21, alias `live`; SnapStart là tham số `WorkerSnapStart` (mặc định None, chờ đo ở ADR-008) | 512–1.024 MB ⚠️ | 120 giây | SQS (batch 1, max concurrency 5, ReportBatchItemFailures) | DynamoDB, `lambda:InvokeFunction` (chỉ ARN alias của `ai`), SQS SendMessage (followup); token bot: dev đọc từ biến môi trường, deploy chính thức chuyển sang SSM |
 | `ai` | **container image**, Python 3.12 | **3.008–4.096 MB** (⚠️ tài khoản mới có thể bị giới hạn memory ✅ [A10], kiểm Service Quotas) | 90 giây | Chỉ được `worker` invoke (resource policy) | DynamoDB chỉ item `CACHE#*`/`URL#*` (`dynamodb:LeadingKeys`), `bedrock:InvokeModel` / `Converse` / `ApplyGuardrail` (chỉ đúng model ARN ở `ap-southeast-2`), S3 GetObject (`models/*`, `kb/*`), SSM GetParameter (bot token, để `getFile`) |
 | `api` (**MVP+**, chỉ khi làm Mini App) | zip, Java 21, SnapStart | 512 MB | 10 giây | Function URL + CORS (chỉ origin của Mini App) | DynamoDB, SSM |
 
