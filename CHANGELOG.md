@@ -6,6 +6,7 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 ## [Unreleased]
 
 ### Changed
+- `WebhookHandler`: khi có `BufferStore` thì ghi buffer và enqueue `AnalyzeJob` thay cho việc gửi nguyên `InboundMessage` vào SQS; không có `BufferStore` thì giữ đường cũ (cho test cũ và `LocalBotRunner`). Constructor Lambda luôn có `BufferStore`.
 - `TelegramClient`: `sendText(..., silent)` (tin nhắc người thân không kêu) và `editText(..., replyMarkup)` (sửa "⏳" kèm nút). Hai overload cũ giữ nguyên.
 - AI-20 (#17): **chốt Gate G2** trong ADR-003: đạt về độ chính xác (URL 17/18 = 94% sau `repair_urls`, CER 7.2% trên 16 ảnh độc lập), chọn RapidOCR; `repair_urls` bắt buộc trong pipeline; độ trễ trên Lambda chuyển thành điều kiện của AI-26/M2.
 - AI-20 (#17): AI1 soát lại nhãn 16 ảnh OCR độc lập (`eval/testocr/test_images.jsonl`), không sửa nhãn nào; ghi vào `docs/results/ocr-spike.md` mục 8 và ADR-003. Số G2 giữ nguyên.
@@ -22,6 +23,7 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - BE-03 (`infra/template.yaml`, `infra/README.md`): token bot và webhook secret chuyển sang SSM `SecureString`. Lambda đọc lúc khởi tạo qua `TELEGRAM_BOT_TOKEN_PARAM` và `TELEGRAM_WEBHOOK_SECRET_PARAM`, không còn đưa giá trị plaintext vào cấu hình Lambda. Lambda được cấp `ssm:GetParameter` cho `parameter/askfirst/<stage>/telegram/*` và `kms:Decrypt` qua SSM. Cần thêm `software.amazon.awssdk:ssm` vào `webhook-handler/pom.xml`.
 
 ### Added
+- BE-23 (`common/.../store/BufferStore`, `DynamoBufferStore`, `WebhookHandler`): gom tin theo ARCH §5.2: `seq` cấp bằng `ADD` nguyên tử, mỗi tin một item `BUFFER#<chat>/MSG#<seq>`, "⏳" chỉ cho tin đầu cụm, job `analyze` trễ 3 giây, worker bỏ job cũ, xoá buffer có điều kiện.
 - BE-27 (`worker/`): worker orchestration (`AnalyzeProcessor`, `FollowupProcessor`, `WorkerRunner`, `WorkerHandler` trả `SQSBatchResponse`): đọc buffer, gọi `ai.analyze`, báo người thân song song (ALERTLOCK, "sent" chỉ khi Telegram trả `message_id`), `ai.render`, sửa tin "⏳", ghi `CHECK#`, dọn buffer; `AiError` retryable thì SQS giao lại, fatal thì gửi câu suy giảm; job `followup` nhắc lại một lần sau 15 phút nếu chưa ai bấm "Tôi đã liên hệ"; job `answer` chỉ ghi log (multi-turn hoãn). 46 test unit với bản giả trong bộ nhớ. Chưa deploy. Thiết kế và giới hạn: `docs/decisions/ADR-009-worker-orchestration.md`.
 - `common/.../Ulid`, `TelegramApiException`: ULID cho `job_id`; lỗi Telegram mang mã HTTP để phân biệt lỗi vĩnh viễn (400/403/404) với tạm thời, vẫn là `IllegalStateException`.
 - BE-07 (`infra/template.yaml`, `infra/WORKER.md`): `WorkerFunction` (Timeout 120 giây, SQS batch 1, concurrency 5, `ReportBatchItemFailures`, quyền gọi `ai:live` và gửi SQS), alarm `JobsDlqAlarm` (SNS tuỳ chọn qua `AlarmTopicArn`), tham số `WorkerSnapStart` (mặc định `None`) với alias `live`, output `WorkerRoleArn` cho resource policy của `ai` (BE-06). Ở lần giao thứ 5 worker gửi câu "đang bận" cho người dùng. **Chưa deploy, chưa đo cold start**: `docs/decisions/ADR-008-cold-start-snapstart.md` để trống số đo.

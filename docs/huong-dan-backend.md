@@ -281,7 +281,7 @@ Phần này cung cấp sẵn tư duy và đoạn code mẫu để các bạn sin
 4.5s: Job 3 chạy ──> Thấy seq == max_seq (3 == 3)   ──> GOM CẢ 3 TIN ĐI PHÂN TÍCH 1 LẦN!
 ```
 
-**Code Java mẫu: Dùng Atomic Update trong DynamoDB để tăng số thứ tự `seq` an toàn:**
+**Code Java mẫu: Dùng Atomic Update trong DynamoDB để tăng số thứ tự `seq` an toàn** (bản chạy thật: `DynamoBufferStore.append`):
 
 ```java
 public int appendMessageToBuffer(String chatId, InboundMessage message) {
@@ -292,19 +292,30 @@ public int appendMessageToBuffer(String chatId, InboundMessage message) {
             "PK", AttributeValue.fromS("BUFFER#" + chatId),
             "SK", AttributeValue.fromS("META")
         ))
-        // Tăng max_seq thêm 1, nếu chưa có thì gán giá trị khởi tạo là 0
-        .updateExpression("ADD max_seq :inc SET items = list_append(if_not_exists(items, :empty_list), :new_item), ttl_ts = :ttl")
+        // ADD là nguyên tử: chưa có thì coi như 0. "ttl" là từ khóa của DynamoDB nên phải đặt bí danh #ttl
+        .updateExpression("ADD max_seq :one SET done_seq = if_not_exists(done_seq, :zero), #ttl = :ttl")
+        .expressionAttributeNames(Map.of("#ttl", "ttl"))
         .expressionAttributeValues(Map.of(
-            ":inc", AttributeValue.fromN("1"),
-            ":empty_list", AttributeValue.fromL(List.of()),
-            ":new_item", AttributeValue.fromL(List.of(AttributeValue.fromS(serializeJson(message)))),
+            ":one", AttributeValue.fromN("1"),
+            ":zero", AttributeValue.fromN("0"),
             ":ttl", AttributeValue.fromN(String.valueOf(Instant.now().getEpochSecond() + 600)) // 10 phút
         ))
-        .returnValues(ReturnValue.ALL_NEW)
+        .returnValues(ReturnValue.UPDATED_NEW)
         .build();
 
-    UpdateItemResponse response = dynamoDbClient.updateItem(request);
-    return Integer.parseInt(response.attributes().get("max_seq").n());
+    long seq = Long.parseLong(dynamoDbClient.updateItem(request).attributes().get("max_seq").n());
+
+    // Mỗi tin là một item riêng, KHÔNG nhét vào một list trong META: hai webhook chạy song song sẽ ghi đè nhau.
+    // seq đã cấp xong nên khóa SK = "MSG#" + seq (10 chữ số, có số 0 đứng đầu) không bao giờ trùng.
+    dynamoDbClient.putItem(PutItemRequest.builder()
+        .tableName("askfirst")
+        .item(Map.of(
+            "PK", AttributeValue.fromS("BUFFER#" + chatId),
+            "SK", AttributeValue.fromS(String.format("MSG#%010d", seq)),
+            "payload", AttributeValue.fromS(serializeJson(message)),
+            "ttl", AttributeValue.fromN(String.valueOf(Instant.now().getEpochSecond() + 600))))
+        .build());
+    return (int) seq;
 }
 ```
 
