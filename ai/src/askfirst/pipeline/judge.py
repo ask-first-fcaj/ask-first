@@ -36,7 +36,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from askfirst.domain.models import ForwardOrigin, Group, RiskyAction
 
-PROMPT_VERSION = "judge_v1"
+PROMPT_VERSION = "judge_v2"
 DEFAULT_PROMPT = Path(__file__).resolve().parents[4] / "prompts" / f"{PROMPT_VERSION}.md"
 
 # Mã kịch bản research-concept §2.2 (khớp eval/validate.py SCENARIOS). Khi kb/scenarios.yaml (AI-25) vào main
