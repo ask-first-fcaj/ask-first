@@ -1,0 +1,16 @@
+{
+  "update_id": 10005,
+  "message": {
+    "message_id": 105,
+    "from": { "id": 111111, "is_bot": false, "first_name": "Nguyen" },
+    "chat": { "id": 222222, "type": "private" },
+    "date": 1729000000,
+    "caption": "Ảnh chụp màn hình tin nhắn trúng thưởng",
+    "photo": [
+      { "file_id": "photo_sm_105", "file_unique_id": "u_sm_105", "file_size": 1200, "width": 90, "height": 90 },
+      { "file_id": "photo_lg_105", "file_unique_id": "u_lg_105", "file_size": 95000, "width": 1280, "height": 720 },
+      { "file_id": "photo_md_105", "file_unique_id": "u_md_105", "file_size": 15000, "width": 320, "height": 240 }
+    ]
+  }
+}
+
