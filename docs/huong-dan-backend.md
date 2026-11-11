@@ -476,7 +476,11 @@ Tuần 1 là tuần quan trọng nhất để xây móng. Hai bạn ngồi cạn
   * So sánh Secret Token bằng `MessageDigest.isEqual`.
   * Chống trùng lặp bằng `DEDUP#<update_id>`.
   * Phân luồng: Tin nhắn text/ảnh thì gửi tin `⏳` rồi ném vào SQS; lệnh như `/start` thì chuyển sang nhánh của BE2.
-* **BE-07 (W2–W3): Nối SQS vào Worker Lambda:** Cấu hình để SQS kích hoạt Lambda Worker (batch 1, concurrency 5, `ReportBatchItemFailures`, timeout 120 giây). `VisibilityTimeout = 720` giây, `maxReceiveCount = 5`, alarm DLQ (`JobsDlqAlarm`). Ở lần giao thứ 5 worker báo người dùng "đang bận". SnapStart là tham số `WorkerSnapStart` (mặc định None, bật sau khi đo cold start, ADR-008). Hướng dẫn deploy và test DLQ: `infra/WORKER.md`.
+* **BE-07 (W2–W3): Nối SQS vào Worker Lambda**  
+  Cấu hình SQS kích hoạt `WorkerFunction` (batch 1, concurrency 5, `ReportBatchItemFailures`, timeout 120 giây). `VisibilityTimeout = 720` giây, `maxReceiveCount = 5` → `jobs-dlq`.  
+  Thêm `WorkerDlqFunction` (timeout 30 giây, batch 1, concurrency 2) đọc `jobs-dlq` và báo người dùng "đang bận" (sửa tin ⏳ nếu còn, không thì gửi tin mới; không log body).  
+  Alarm `JobsDlqAlarm` dùng metric math `MAX(ApproximateNumberOfMessagesVisible, NumberOfMessagesReceived)`.  
+  SnapStart là tham số `WorkerSnapStart` (mặc định None, bật sau khi đo cold start, ADR-008).
 * **BE-24b (W2): Tạo các Repository cho Lane A:** Viết code thao tác database cho các bảng `CHECK#`, `BUFFER#`, `ALERT#`, `ALERTLOCK#`, `CONFIG#global/FLAGS` (`DEDUP#` đã có ở `DynamoStoreService`).
 * **BE-27 (W2–W3): Xử lý cốt lõi trong Worker:** Đọc tin nhắn từ SQS → Gọi AI lấy kết luận → Gọi AI lấy mẫu tin cảnh báo → Sửa tin nhắn tạm `⏳` thành kết quả.
 * **BE-23 (W3): Thuật toán Gom tin liên tiếp (Debounce):** Cài đặt logic gom tin trễ 3 giây như đã hướng dẫn ở [Mục 7.1](#71-bài-toán-1-gom-tin-debounce-khi-người-già-gửi-nhiều-tin-liên-tiếp).
