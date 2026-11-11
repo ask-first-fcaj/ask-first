@@ -18,8 +18,10 @@ import java.util.function.Consumer;
  * Repository managing User Profiles and Consents (BE-24, BE-25).
  * Single Table Design: PK=USER#<uid>, SK=PROFILE.
  *
- * Mọi thao tác cập nhật đều đọc-sửa-ghi có khóa lạc quan (xem {@link OptimisticUpdates}),
- * tạo mới dùng điều kiện attribute_not_exists(PK) nên request song song không đè dữ liệu của nhau.
+ * Mọi thao tác cập nhật đều đọc-sửa-ghi có khóa lạc quan (xem
+ * {@link OptimisticUpdates}),
+ * tạo mới dùng điều kiện attribute_not_exists(PK) nên request song song không
+ * đè dữ liệu của nhau.
  */
 public class UserRepo {
 
@@ -60,7 +62,8 @@ public class UserRepo {
     }
 
     /**
-     * Lấy user, chưa có thì tạo. Tạo bằng conditional put nên hai request đầu tiên song song
+     * Lấy user, chưa có thì tạo. Tạo bằng conditional put nên hai request đầu tiên
+     * song song
      * không ghi đè nhau: bên thua sẽ đọc lại bản của bên thắng.
      */
     public UserRecord getOrCreateUser(String userId, String chatId) {
@@ -76,14 +79,16 @@ public class UserRepo {
             putWithCondition(newUser, OptimisticUpdates.ifAbsent());
             return newUser;
         } catch (ConditionalCheckFailedException lostRace) {
-            return getUser(userId).orElseThrow(() ->
-                    new IllegalStateException("User vừa được tạo nhưng không đọc lại được", lostRace));
+            return getUser(userId).orElseThrow(
+                    () -> new IllegalStateException("User vừa được tạo nhưng không đọc lại được", lostRace));
         }
     }
 
     /**
-     * Ghi nhận đồng ý. Các mục đích trong {@code purposes} được GỘP vào mục đích hiện có,
-     * những mục đích không nằm trong tham số (guardian/voice/donate...) giữ nguyên giá trị cũ.
+     * Ghi nhận đồng ý. Các mục đích trong {@code purposes} được GỘP vào mục đích
+     * hiện có,
+     * những mục đích không nằm trong tham số (guardian/voice/donate...) giữ nguyên
+     * giá trị cũ.
      */
     public void updateConsent(String userId, String policySha256, String version, Map<String, Boolean> purposes) {
         update(userId, true, user -> {
@@ -99,8 +104,10 @@ public class UserRepo {
     }
 
     /**
-     * Thu hồi đồng ý (user bấm "Không đồng ý"): tắt mọi mục đích, bao gồm analyze, để bot ngừng xử lý nội dung.
-     * Bằng chứng đồng ý/từ chối vẫn nằm trong audit trail. User chưa có hồ sơ thì không cần làm gì.
+     * Thu hồi đồng ý (user bấm "Không đồng ý"): tắt mọi mục đích, bao gồm analyze,
+     * để bot ngừng xử lý nội dung.
+     * Bằng chứng đồng ý/từ chối vẫn nằm trong audit trail. User chưa có hồ sơ thì
+     * không cần làm gì.
      */
     public void revokeConsent(String userId) {
         update(userId, false, user -> {
@@ -120,8 +127,10 @@ public class UserRepo {
 
     /**
      * Checks if user has given active consent matching the current policy SHA256.
-     * According to ND 356: unconsented or outdated policy versions MUST NOT process user content.
-     * Không có hash policy để đối chiếu thì KHÔNG coi là đồng ý hợp lệ (fail-closed).
+     * According to ND 356: unconsented or outdated policy versions MUST NOT process
+     * user content.
+     * Không có hash policy để đối chiếu thì KHÔNG coi là đồng ý hợp lệ
+     * (fail-closed).
      */
     public boolean hasValidConsent(String userId, String requiredPolicySha256) {
         if (requiredPolicySha256 == null || requiredPolicySha256.isBlank()) {
@@ -143,7 +152,8 @@ public class UserRepo {
     }
 
     /**
-     * Checks if user has specifically consented to voice processing (ND 356 purpose-based consent).
+     * Checks if user has specifically consented to voice processing (ND 356
+     * purpose-based consent).
      */
     public boolean hasVoiceConsent(String userId) {
         Optional<UserRecord> opt = getUser(userId);
@@ -155,12 +165,14 @@ public class UserRepo {
     }
 
     /**
-     * Đọc-sửa-ghi có khóa lạc quan. {@code change} được áp lên bản mới nhất ở mỗi lần thử.
+     * Đọc-sửa-ghi có khóa lạc quan. {@code change} được áp lên bản mới nhất ở mỗi
+     * lần thử.
      *
-     * @param createIfMissing true: chưa có hồ sơ thì tạo mới rồi áp thay đổi; false: chưa có thì bỏ qua
+     * @param createIfMissing true: chưa có hồ sơ thì tạo mới rồi áp thay đổi;
+     *                        false: chưa có thì bỏ qua
      */
     private void update(String userId, boolean createIfMissing, Consumer<UserRecord> change) {
-        for (int attempt = 1; ; attempt++) {
+        for (int attempt = 1;; attempt++) {
             Optional<UserRecord> current = getUser(userId);
 
             UserRecord user;

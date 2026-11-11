@@ -12,7 +12,8 @@ import java.time.Instant;
 import java.util.Optional;
 
 /**
- * Repository managing Single-use Invite Codes for Guardian Linking (BE-24, ARCH §5.4, §7).
+ * Repository managing Single-use Invite Codes for Guardian Linking (BE-24, ARCH
+ * §5.4, §7).
  * Single Table Design: PK=INVITE#<code>, SK=META, TTL=24h.
  */
 public class InviteRepo {
@@ -71,7 +72,8 @@ public class InviteRepo {
         Expression condition = Expression.builder()
                 .expression("#st = :pending")
                 .putExpressionName("#st", "status")
-                .putExpressionValue(":pending", software.amazon.awssdk.services.dynamodb.model.AttributeValue.builder().s("pending").build())
+                .putExpressionValue(":pending",
+                        software.amazon.awssdk.services.dynamodb.model.AttributeValue.builder().s("pending").build())
                 .build();
 
         try {
@@ -90,4 +92,3 @@ public class InviteRepo {
         table.deleteItem(Key.builder().partitionValue(pk).sortValue("META").build());
     }
 }
-

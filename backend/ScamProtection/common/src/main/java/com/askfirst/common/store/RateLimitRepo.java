@@ -15,14 +15,17 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Repository managing Rate Limiting counters with DynamoDB atomic ADD (BE-24, BE-26, ARCH §7).
+ * Repository managing Rate Limiting counters with DynamoDB atomic ADD (BE-24,
+ * BE-26, ARCH §7).
  * Key format:
  * - Hour: RATE#<uid>#<yyyyMMddHH>
- * - Day:  RATE#<uid>#<yyyyMMdd>
+ * - Day: RATE#<uid>#<yyyyMMdd>
  * SK: COUNTER, TTL: 48 hours.
  *
- * Quyết định thiết kế (cần ghi vào ADR): khi DynamoDB lỗi, rate limit FAIL-OPEN - vẫn cho người dùng đi tiếp
- * thay vì chặn nhầm người cao tuổi đang cần kiểm tra tin lừa đảo. Đổi lại mỗi lần fail-open phải để lại log
+ * Quyết định thiết kế (cần ghi vào ADR): khi DynamoDB lỗi, rate limit FAIL-OPEN
+ * - vẫn cho người dùng đi tiếp
+ * thay vì chặn nhầm người cao tuổi đang cần kiểm tra tin lừa đảo. Đổi lại mỗi
+ * lần fail-open phải để lại log
  * WARN để lỗi hạ tầng không bị che giấu.
  */
 public class RateLimitRepo {
@@ -32,14 +35,16 @@ public class RateLimitRepo {
     public static final int DEFAULT_MAX_PER_HOUR = 30;
     public static final int DEFAULT_MAX_PER_DAY = 100;
     private static final ZoneId VIETNAM_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
-    private static final DateTimeFormatter HOUR_FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHH").withZone(VIETNAM_ZONE);
+    private static final DateTimeFormatter HOUR_FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHH")
+            .withZone(VIETNAM_ZONE);
     private static final DateTimeFormatter DAY_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd").withZone(VIETNAM_ZONE);
 
     private final DynamoDbClient client;
     private final String tableName;
     private final Clock clock;
 
-    public record RateLimitResult(boolean allowed, long hourCount, long dayCount, String reason) {}
+    public record RateLimitResult(boolean allowed, long hourCount, long dayCount, String reason) {
+    }
 
     protected RateLimitRepo() {
         this.client = null;
@@ -51,10 +56,13 @@ public class RateLimitRepo {
         this(client, tableName, Clock.systemUTC());
     }
 
-    /** Có tiêm Clock để test được các mốc giờ/ngày mà không phụ thuộc đồng hồ thật. */
+    /**
+     * Có tiêm Clock để test được các mốc giờ/ngày mà không phụ thuộc đồng hồ thật.
+     */
     public RateLimitRepo(DynamoDbClient client, String tableName, Clock clock) {
         this.client = client;
-        this.tableName = (tableName != null && !tableName.isBlank()) ? tableName : DynamoStoreService.DEFAULT_TABLE_NAME;
+        this.tableName = (tableName != null && !tableName.isBlank()) ? tableName
+                : DynamoStoreService.DEFAULT_TABLE_NAME;
         this.clock = clock;
     }
 
@@ -91,19 +99,16 @@ public class RateLimitRepo {
                     .tableName(tableName)
                     .key(Map.of(
                             DynamoStoreService.ATTR_PK, AttributeValue.builder().s(pk).build(),
-                            DynamoStoreService.ATTR_SK, AttributeValue.builder().s("COUNTER").build()
-                    ))
+                            DynamoStoreService.ATTR_SK, AttributeValue.builder().s("COUNTER").build()))
                     .updateExpression("ADD #cnt :one SET #ttl = if_not_exists(#ttl, :ttlVal), #uid = :userIdVal")
                     .expressionAttributeNames(Map.of(
                             "#cnt", "count",
                             "#ttl", "ttl",
-                            "#uid", "user_id"
-                    ))
+                            "#uid", "user_id"))
                     .expressionAttributeValues(Map.of(
                             ":one", AttributeValue.builder().n("1").build(),
                             ":ttlVal", AttributeValue.builder().n(String.valueOf(ttlEpoch)).build(),
-                            ":userIdVal", AttributeValue.builder().s(userId).build()
-                    ))
+                            ":userIdVal", AttributeValue.builder().s(userId).build()))
                     .returnValues(ReturnValue.UPDATED_NEW)
                     .build();
 
@@ -113,8 +118,10 @@ public class RateLimitRepo {
             }
             return 1L;
         } catch (Exception e) {
-            // Fail-open có chủ đích (xem Javadoc lớp). Không log userId/khóa để tránh lộ dữ liệu cá nhân.
-            LOG.log(Level.WARNING, "Rate limit không đếm được do lỗi DynamoDB ({0}) -> fail-open, cho phép request", e.toString());
+            // Fail-open có chủ đích (xem Javadoc lớp). Không log userId/khóa để tránh lộ dữ
+            // liệu cá nhân.
+            LOG.log(Level.WARNING, "Rate limit không đếm được do lỗi DynamoDB ({0}) -> fail-open, cho phép request",
+                    e.toString());
             return 1L;
         }
     }
@@ -141,8 +148,7 @@ public class RateLimitRepo {
                     .tableName(tableName)
                     .key(Map.of(
                             DynamoStoreService.ATTR_PK, AttributeValue.builder().s(pk).build(),
-                            DynamoStoreService.ATTR_SK, AttributeValue.builder().s("COUNTER").build()
-                    ))
+                            DynamoStoreService.ATTR_SK, AttributeValue.builder().s("COUNTER").build()))
                     .updateExpression("ADD #cnt :minusOne")
                     .expressionAttributeNames(Map.of("#cnt", "count"))
                     .expressionAttributeValues(Map.of(":minusOne", AttributeValue.builder().n("-1").build()))
@@ -152,4 +158,5 @@ public class RateLimitRepo {
             LOG.log(Level.WARNING, "Không hoàn tác được counter rate limit: {0}", e.toString());
         }
     }
+
 }

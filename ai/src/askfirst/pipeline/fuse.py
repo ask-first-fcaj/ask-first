@@ -36,7 +36,7 @@ MAX_EVIDENCE = 120
 COMBO_ANCHOR = "R_AUTHORITY"
 COMBO_PARTNERS = frozenset({"R_MONEY_TRANSFER", "R_SECRECY", "R_SAFE_ACCOUNT"})
 STRONG_URL = frozenset({"U_TYPOSQUAT", "U_APK_LINK", "U_TEXT_LINK_MISMATCH", "U_SAFEBROWSING_HIT"})
-# "G_PROMPT_ATTACK": mã giả định cho kết quả ApplyGuardrail (AI-08 chưa có); AI-08 phát tín hiệu đúng mã này.
+# "G_PROMPT_ATTACK": kết quả ApplyGuardrail (AI-08, ``pipeline/guard.py``).
 INJECTION = frozenset({"R_AI_INSTRUCTION", "G_PROMPT_ATTACK"})
 
 # Luật → hành động rủi ro mà tin đòi nạn nhân làm (ARCH §6.7 ``has_risky_action``: tiền/OTP/app/màn hình/bí mật).

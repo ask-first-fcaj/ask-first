@@ -20,38 +20,38 @@ import java.util.concurrent.ConcurrentHashMap;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests cho BE-28: Luồng mời người thân 2 chiều (double opt-in) - ARCH §5.4.
+ * Unit tests cho BE-28: Luồng mời người thân 2 chiều (double opt-in) - ARCH
+ * §5.4.
  *
  * Dùng fake in-memory repos và fake TelegramClient để test hoàn toàn độc lập,
  * không cần DynamoDB thật, không cần bot token thật.
  */
 class WebhookHandlerBE28Test {
 
-    private static final String SECRET        = "test-secret-123";
+    private static final String SECRET = "test-secret-123";
     private static final String POLICY_SHA256 = "aabbccdd";
-    private static final String ELDER_UID     = "tg:111";
-    private static final long   ELDER_CHAT_ID = 111L;
-    private static final String RELATIVE_UID  = "tg:222";
-    private static final long   RELATIVE_CHAT_ID = 222L;
+    private static final String ELDER_UID = "tg:111";
+    private static final long ELDER_CHAT_ID = 111L;
+    private static final String RELATIVE_UID = "tg:222";
+    private static final long RELATIVE_CHAT_ID = 222L;
 
     // ── Fake in-memory repos ──────────────────────────────────────────────────
-    private FakeGuardianRepo  guardianRepo;
-    private FakeInviteRepo    inviteRepo;
-    private FakeAuditRepo     auditRepo;
+    private FakeGuardianRepo guardianRepo;
+    private FakeInviteRepo inviteRepo;
+    private FakeAuditRepo auditRepo;
     private FakeTelegramClient telegramClient;
-    private WebhookHandler     handler;
+    private WebhookHandler handler;
 
     @BeforeEach
     void setUp() {
-        guardianRepo  = new FakeGuardianRepo();
-        inviteRepo    = new FakeInviteRepo();
-        auditRepo     = new FakeAuditRepo();
+        guardianRepo = new FakeGuardianRepo();
+        inviteRepo = new FakeInviteRepo();
+        auditRepo = new FakeAuditRepo();
         telegramClient = new FakeTelegramClient();
 
         handler = new WebhookHandler(
                 telegramClient, null, null,
-                SECRET, guardianRepo, inviteRepo, auditRepo, POLICY_SHA256
-        );
+                SECRET, guardianRepo, inviteRepo, auditRepo, POLICY_SHA256);
     }
 
     // ── Test 1: /nguoithan khi chưa có người thân nào ────────────────────────
@@ -254,6 +254,66 @@ class WebhookHandlerBE28Test {
         assertTrue(msg.contains("/ketnoi"), "Phải hướng dẫn cú pháp");
     }
 
+    // ── Test 11: /start g_<code> → tự động kết nối (deep link flow) ──────────
+    @Test
+    @DisplayName("BE-28: /start g_123456 → tự động xử lý như /ketnoi 123456")
+    void testDeepLinkStartValid() {
+        // Chuẩn bị mã mời hợp lệ
+        InviteRecord invite = new InviteRecord("123456", ELDER_UID,
+                Instant.now().getEpochSecond() + 86400);
+        invite.setStatus("pending");
+        inviteRepo.store.put("INVITE#123456", invite);
+
+        // Người thân bấm deep link → Telegram gửi /start g_123456
+        APIGatewayProxyRequestEvent req = buildMessageRequest(RELATIVE_CHAT_ID, "/start g_123456");
+        APIGatewayProxyResponseEvent res = handler.handleRequest(req, fakeContext());
+
+        // Phải xử lý y hệt /ketnoi 123456
+        assertEquals(200, res.getStatusCode());
+        assertEquals("INVITE_REDEEMED", res.getBody());
+        assertEquals("used", inviteRepo.store.get("INVITE#123456").getStatus());
+        assertEquals(RELATIVE_UID, inviteRepo.store.get("INVITE#123456").getUsedByUid());
+    }
+
+    // ── Test 12: /start g_<code> mã không hợp lệ ─────────────────────────────
+    @Test
+    @DisplayName("BE-28: /start g_999999 mã không tồn tại → báo không hợp lệ")
+    void testDeepLinkStartInvalid() {
+        APIGatewayProxyRequestEvent req = buildMessageRequest(RELATIVE_CHAT_ID, "/start g_999999");
+        APIGatewayProxyResponseEvent res = handler.handleRequest(req, fakeContext());
+
+        assertEquals(200, res.getStatusCode());
+        assertEquals("INVALID_INVITE", res.getBody());
+    }
+
+    // ── Test 13: Tạo mã khi có botUsername → nút share thay thế hướng dẫn thủ công
+    // ──
+    @Test
+    @DisplayName("BE-28: Tạo mã với botUsername cấu hình → tin nhắn có deep link, không cần /ketnoi text")
+    void testCreateInviteWithDeepLink() {
+        // Tạo handler với botUsername
+        WebhookHandler handlerWithBot = new WebhookHandler(
+                telegramClient, null, null,
+                SECRET, guardianRepo, inviteRepo, auditRepo, POLICY_SHA256, "AskFirstBot"
+        );
+
+        APIGatewayProxyRequestEvent req = buildCallbackRequest(ELDER_CHAT_ID, "guardian:create_invite");
+        APIGatewayProxyResponseEvent res = handlerWithBot.handleRequest(req, fakeContext());
+
+        assertEquals(200, res.getStatusCode());
+        assertEquals("INVITE_CREATED", res.getBody());
+
+        // Mã vẫn được lưu
+        assertEquals(1, inviteRepo.store.size());
+        InviteRecord invite = inviteRepo.store.values().iterator().next();
+        assertTrue(invite.getCode().matches("\\d{6}"), "Mã phải đúng 6 chữ số");
+
+        // Tin nhắn phải chứa mã và mention đến deep link / share
+        String msgText = telegramClient.sentMessages.get(0).text;
+        assertTrue(msgText.contains(invite.getCode()), "Tin nhắn phải hiện mã mời");
+        assertTrue(msgText.contains("bấm nút"), "Tin nhắn phải hướng dẫn bấm nút share");
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
     private APIGatewayProxyRequestEvent buildMessageRequest(long chatId, String text) {
         String body = """
@@ -278,20 +338,68 @@ class WebhookHandlerBE28Test {
 
     private Context fakeContext() {
         return new Context() {
-            @Override public String getAwsRequestId()       { return "test-req"; }
-            @Override public String getLogGroupName()        { return "test-group"; }
-            @Override public String getLogStreamName()       { return "test-stream"; }
-            @Override public String getFunctionName()        { return "test-fn"; }
-            @Override public String getFunctionVersion()     { return "1"; }
-            @Override public String getInvokedFunctionArn() { return "arn:test"; }
-            @Override public com.amazonaws.services.lambda.runtime.CognitoIdentity getIdentity() { return null; }
-            @Override public com.amazonaws.services.lambda.runtime.ClientContext getClientContext() { return null; }
-            @Override public int getRemainingTimeInMillis()  { return 30_000; }
-            @Override public int getMemoryLimitInMB()        { return 512; }
-            @Override public com.amazonaws.services.lambda.runtime.LambdaLogger getLogger() {
+            @Override
+            public String getAwsRequestId() {
+                return "test-req";
+            }
+
+            @Override
+            public String getLogGroupName() {
+                return "test-group";
+            }
+
+            @Override
+            public String getLogStreamName() {
+                return "test-stream";
+            }
+
+            @Override
+            public String getFunctionName() {
+                return "test-fn";
+            }
+
+            @Override
+            public String getFunctionVersion() {
+                return "1";
+            }
+
+            @Override
+            public String getInvokedFunctionArn() {
+                return "arn:test";
+            }
+
+            @Override
+            public com.amazonaws.services.lambda.runtime.CognitoIdentity getIdentity() {
+                return null;
+            }
+
+            @Override
+            public com.amazonaws.services.lambda.runtime.ClientContext getClientContext() {
+                return null;
+            }
+
+            @Override
+            public int getRemainingTimeInMillis() {
+                return 30_000;
+            }
+
+            @Override
+            public int getMemoryLimitInMB() {
+                return 512;
+            }
+
+            @Override
+            public com.amazonaws.services.lambda.runtime.LambdaLogger getLogger() {
                 return new com.amazonaws.services.lambda.runtime.LambdaLogger() {
-                    @Override public void log(String message) { System.out.print(message); }
-                    @Override public void log(byte[] message) { System.out.print(new String(message)); }
+                    @Override
+                    public void log(String message) {
+                        System.out.print(message);
+                    }
+
+                    @Override
+                    public void log(byte[] message) {
+                        System.out.print(new String(message));
+                    }
                 };
             }
         };
@@ -301,31 +409,41 @@ class WebhookHandlerBE28Test {
     static class FakeGuardianRepo extends GuardianRepo {
         final Map<String, GuardianRecord> store = new ConcurrentHashMap<>();
 
-        @Override public void save(GuardianRecord r) {
+        @Override
+        public void save(GuardianRecord r) {
             store.put(r.getPk() + "|" + r.getSk(), r);
         }
-        @Override public Optional<GuardianRecord> getGuardian(String elderUid, String gUid) {
+
+        @Override
+        public Optional<GuardianRecord> getGuardian(String elderUid, String gUid) {
             return store.values().stream()
                     .filter(r -> (elderUid.equals(r.getElderUid()) || elderUid.equals(r.getPk())
                             || ("USER#" + elderUid).equals(r.getPk()))
                             && (gUid.equals(r.getGuardianUid()) || gUid.equals(r.getSk())
-                            || ("GUARDIAN#" + gUid).equals(r.getSk())))
+                                    || ("GUARDIAN#" + gUid).equals(r.getSk())))
                     .findFirst();
         }
-        @Override public List<GuardianRecord> listGuardians(String elderUid) {
+
+        @Override
+        public List<GuardianRecord> listGuardians(String elderUid) {
             return store.values().stream()
                     .filter(r -> elderUid.equals(r.getElderUid())
                             || ("USER#" + elderUid).equals(r.getPk())
                             || elderUid.equals(r.getPk()))
                     .toList();
         }
-        @Override public void delete(String elderUid, String gUid) {
-            store.entrySet().removeIf(e ->
-                    (elderUid.equals(e.getValue().getElderUid()) || ("USER#" + elderUid).equals(e.getValue().getPk()))
-                    && (gUid.equals(e.getValue().getGuardianUid()) || ("GUARDIAN#" + gUid).equals(e.getValue().getSk()))
-            );
+
+        @Override
+        public void delete(String elderUid, String gUid) {
+            store.entrySet()
+                    .removeIf(e -> (elderUid.equals(e.getValue().getElderUid())
+                            || ("USER#" + elderUid).equals(e.getValue().getPk()))
+                            && (gUid.equals(e.getValue().getGuardianUid())
+                                    || ("GUARDIAN#" + gUid).equals(e.getValue().getSk())));
         }
-        @Override public void updateShareLevel(String elderUid, String gUid, int level) {
+
+        @Override
+        public void updateShareLevel(String elderUid, String gUid, int level) {
             getGuardian(elderUid, gUid).ifPresent(r -> r.setShareLevel(level));
         }
     }
@@ -333,19 +451,25 @@ class WebhookHandlerBE28Test {
     static class FakeInviteRepo extends InviteRepo {
         final Map<String, InviteRecord> store = new ConcurrentHashMap<>();
 
-        @Override public void createInvite(String code, String elderUid, long ttl) {
+        @Override
+        public void createInvite(String code, String elderUid, long ttl) {
             InviteRecord r = new InviteRecord(code, elderUid, ttl);
             r.setStatus("pending");
             store.put("INVITE#" + code, r);
         }
-        @Override public Optional<InviteRecord> getInvite(String code) {
+
+        @Override
+        public Optional<InviteRecord> getInvite(String code) {
             String key = code.startsWith("INVITE#") ? code : "INVITE#" + code;
             return Optional.ofNullable(store.get(key));
         }
-        @Override public boolean markUsed(String code, String usedByUid) {
+
+        @Override
+        public boolean markUsed(String code, String usedByUid) {
             String key = code.startsWith("INVITE#") ? code : "INVITE#" + code;
             InviteRecord r = store.get(key);
-            if (r == null || !"pending".equals(r.getStatus())) return false;
+            if (r == null || !"pending".equals(r.getStatus()))
+                return false;
             r.setStatus("used");
             r.setUsedByUid(usedByUid);
             return true;
@@ -353,29 +477,41 @@ class WebhookHandlerBE28Test {
     }
 
     static class FakeAuditRepo extends AuditRepo {
-        record AuditEntry(String userId, String event, String details) {}
+        record AuditEntry(String userId, String event, String details) {
+        }
+
         final List<AuditEntry> events = new ArrayList<>();
 
-        @Override public void recordEvent(String userId, String event, String ver, String sha, String details) {
+        @Override
+        public void recordEvent(String userId, String event, String ver, String sha, String details) {
             events.add(new AuditEntry(userId, event, details));
         }
     }
 
     static class FakeTelegramClient extends TelegramClient {
-        record SentMsg(long chatId, String text) {}
+        record SentMsg(long chatId, String text) {
+        }
+
         final List<SentMsg> sentMessages = new ArrayList<>();
 
-        FakeTelegramClient() { super("fake:token"); }
+        FakeTelegramClient() {
+            super("fake:token");
+        }
 
-        @Override public int sendText(long chatId, String text) {
+        @Override
+        public int sendText(long chatId, String text) {
             sentMessages.add(new SentMsg(chatId, text));
             return 1;
         }
-        @Override public int sendText(long chatId, String text, Map<String, Object> replyMarkup) {
+
+        @Override
+        public int sendText(long chatId, String text, Map<String, Object> replyMarkup) {
             sentMessages.add(new SentMsg(chatId, text));
             return 1;
         }
-        @Override public void sendMessage(long chatId, String text) {
+
+        @Override
+        public void sendMessage(long chatId, String text) {
             sentMessages.add(new SentMsg(chatId, text));
         }
     }

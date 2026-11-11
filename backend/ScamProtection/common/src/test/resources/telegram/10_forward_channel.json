@@ -1,0 +1,21 @@
+{
+  "update_id": 10010,
+  "message": {
+    "message_id": 110,
+    "from": { "id": 111111, "is_bot": false, "first_name": "Nguyen" },
+    "chat": { "id": 222222, "type": "private" },
+    "date": 1729000000,
+    "text": "Tin nhắn chuyển tiếp từ kênh",
+    "forward_origin": {
+      "type": "channel",
+      "date": 1728990000,
+      "chat": {
+        "id": -100123456789,
+        "title": "Kênh Cảnh Báo",
+        "type": "channel"
+      },
+      "message_id": 4321
+    }
+  }
+}
+

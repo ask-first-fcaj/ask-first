@@ -29,16 +29,20 @@ import java.time.Instant;
 import java.util.Optional;
 
 /**
- * Service demonstrating DynamoDB Enhanced Client operations for single-table design (BE-14, ARCH §7).
+ * Service demonstrating DynamoDB Enhanced Client operations for single-table
+ * design (BE-14, ARCH §7).
  * Implements atomic conditional write for deduplication (BE-22).
  *
- * Schema khớp infra/template.yaml: PK/SK (hoa), GSI1 (GSI1PK/GSI1SK), TTL trên attr "ttl".
+ * Schema khớp infra/template.yaml: PK/SK (hoa), GSI1 (GSI1PK/GSI1SK), TTL trên
+ * attr "ttl".
  */
 public class DynamoStoreService {
 
     /**
-     * Chỉ dùng cho local/test. Môi trường chạy thật (Lambda) phải truyền tên bảng từ biến môi trường
-     * DYNAMODB_TABLE_NAME (xem WebhookHandler). Giá trị theo quy ước askfirst-&lt;stage&gt; của template.
+     * Chỉ dùng cho local/test. Môi trường chạy thật (Lambda) phải truyền tên bảng
+     * từ biến môi trường
+     * DYNAMODB_TABLE_NAME (xem WebhookHandler). Giá trị theo quy ước
+     * askfirst-&lt;stage&gt; của template.
      */
     public static final String DEFAULT_TABLE_NAME = "askfirst-dev";
 
@@ -56,18 +60,15 @@ public class DynamoStoreService {
     private final String tableName;
     private final DynamoDbTable<DedupRecord> dedupTable;
 
-    protected DynamoStoreService() {
-        this.enhancedClient = null;
-        this.standardClient = null;
-        this.tableName = null;
-        this.dedupTable = null;
-    }
-
     public DynamoStoreService(DynamoDbEnhancedClient enhancedClient, DynamoDbClient standardClient, String tableName) {
         this.enhancedClient = enhancedClient;
         this.standardClient = standardClient;
         this.tableName = (tableName != null && !tableName.isBlank()) ? tableName : DEFAULT_TABLE_NAME;
-        this.dedupTable = enhancedClient.table(this.tableName, DEDUP_SCHEMA);
+
+        // enhancedClient == null chỉ xảy ra trong test (bản giả ghi đè
+        // tryAcquireDedup/deleteDedup)
+        this.dedupTable = enhancedClient != null ? enhancedClient.table(this.tableName, DEDUP_SCHEMA) : null;
+
     }
 
     public static DynamoStoreService create(DynamoDbClient client, String tableName) {
@@ -86,10 +87,12 @@ public class DynamoStoreService {
     }
 
     /**
-     * Creates the single-table DynamoDB table if it does not already exist, then makes sure TTL is enabled.
+     * Creates the single-table DynamoDB table if it does not already exist, then
+     * makes sure TTL is enabled.
      * Schema (ARCH §7, BE-24):
      * - PK (String, HASH), SK (String, RANGE)
-     * - GSI1: GSI1PK (HASH), GSI1SK (RANGE), projection ALL (vd. WARD_OF#&lt;guardian&gt; -> USER#&lt;elder&gt;)
+     * - GSI1: GSI1PK (HASH), GSI1SK (RANGE), projection ALL (vd.
+     * WARD_OF#&lt;guardian&gt; -> USER#&lt;elder&gt;)
      * - TTL attribute: ttl
      * - BillingMode: PAY_PER_REQUEST
      */
@@ -104,22 +107,18 @@ public class DynamoStoreService {
                             attributeDefinition(ATTR_PK),
                             attributeDefinition(ATTR_SK),
                             attributeDefinition(ATTR_GSI1_PK),
-                            attributeDefinition(ATTR_GSI1_SK)
-                    )
+                            attributeDefinition(ATTR_GSI1_SK))
                     .keySchema(
                             keySchemaElement(ATTR_PK, KeyType.HASH),
-                            keySchemaElement(ATTR_SK, KeyType.RANGE)
-                    )
+                            keySchemaElement(ATTR_SK, KeyType.RANGE))
                     .globalSecondaryIndexes(
                             GlobalSecondaryIndex.builder()
                                     .indexName(GSI1_NAME)
                                     .keySchema(
                                             keySchemaElement(ATTR_GSI1_PK, KeyType.HASH),
-                                            keySchemaElement(ATTR_GSI1_SK, KeyType.RANGE)
-                                    )
+                                            keySchemaElement(ATTR_GSI1_SK, KeyType.RANGE))
                                     .projection(Projection.builder().projectionType(ProjectionType.ALL).build())
-                                    .build()
-                    )
+                                    .build())
                     .build();
 
             try {
@@ -169,17 +168,17 @@ public class DynamoStoreService {
      * Atomically tries to acquire a dedup lock using conditional write.
      * Condition: attribute_not_exists(PK).
      *
-     * @param updateId Telegram update_id
+     * @param updateId        Telegram update_id
      * @param ttlEpochSeconds TTL epoch seconds (e.g. now + 86400 for 24h)
-     * @return true if write succeeded (first time seen), false if already exists (duplicate!)
+     * @return true if write succeeded (first time seen), false if already exists
+     *         (duplicate!)
      */
     public boolean tryAcquireDedup(String updateId, long ttlEpochSeconds) {
         DedupRecord record = new DedupRecord(
                 updateId,
                 ttlEpochSeconds,
                 Instant.now().toString(),
-                "PROCESSED"
-        );
+                "PROCESSED");
 
         // Tên attribute phân biệt hoa/thường: phải là PK (không phải pk)
         Expression condition = Expression.builder()
