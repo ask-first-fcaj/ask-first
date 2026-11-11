@@ -35,6 +35,21 @@
 
 Chạy trên máy dev ở Việt Nam tới `ap-southeast-2`. **Chưa đo trên Lambda.**
 
+### Chạy lại sau #138 (2026-11-11)
+
+Nhánh `fix/ai-138-judge-enum-la` (đã có backup gpt-oss-120b). Judge bỏ giá trị `requested_actions` ngoài enum và sửa `"quote": "a", "b"` thay vì loại cả câu trả lời.
+
+| Chỉ số | Trước | Sau |
+|---|---|---|
+| Recall (30 mẫu lừa đảo) | 86,7% | 93,3% |
+| Đúng mã kịch bản | 50% | 61,8% |
+| Rơi về `rules_only` | 3/34 | 0/34 |
+| Báo nhầm (4 mẫu lành tính) | 1/4 | 0/4 |
+| Độ trễ p50 / p95 | 2,26 / 4,17 s | 1,85 / 3,77 s |
+| Chi phí cả bộ | 0,0122 USD | 0,0115 USD |
+
+`hd-rt-12`, `21`, `30` chạy 3 lượt riêng: cả 9 lượt đi đường judge, 0 lỗi JSON, không cần backup. Trước khi sửa JSON, chạy riêng `hd-rt-12` 11 lượt: judge lỗi cùng một dạng cả hai lần hỏi ở 9 lượt. Phần lớn được backup cứu, nhưng có 2 lượt rơi về `rules_only`. Lần trước chạy ở nhánh chưa có backup, nên cột "Trước" và "Sau" không chỉ khác nhau ở #138. `hd-rt-07`, `hd-rt-28` vẫn UNSURE (nguyên nhân bên dưới, không thuộc #138).
+
 ## Mẫu bị dưới mức nhãn và nguyên nhân
 
 | Mẫu | Cần | Bot | Nguyên nhân |

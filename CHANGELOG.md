@@ -76,6 +76,7 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 
 
 ### Fixed
+- #138: judge **không còn bỏ cả câu trả lời vì lỗi nhỏ**, trước đây pipeline rơi về `rules_only`. Giá trị `requested_actions` ngoài enum (vd `call_number`) bị bỏ lúc parse, ghi mã `action_unknown`. `"quote": "a", "b"` (nhiều chuỗi trong một trường) giữ chuỗi đầu, ghi mã `json_repaired`; chỉ sửa đúng dạng này và chỉ khi `json.loads` đã lỗi. Chạy lại bộ `hard` (34 mẫu) trên Bedrock: `rules_only` 3/34 → 0/34, recall 86,7% → 93,3%, đúng mã kịch bản 50% → 61,8% (lần trước chạy ở nhánh chưa có backup). Chưa thêm `call_number` vào enum, vì đó là sửa contract và cần 1 BE + 1 AI duyệt.
 - `infra/README.md`: hướng dẫn tạo SSM khớp template (`SecureString` cho token và webhook secret, `String` cho `policy_sha256`); bỏ bước "hello world" trong bảng tài nguyên và bước kiểm tra sai (`{"message": ...}`); kiểm tra Function URL bằng 401 khi thiếu secret và 200 `IGNORED` khi đúng secret; sửa lệnh PowerShell nằm trong khối bash; sửa typo `UpdateTimeToLive` trong danh sách IAM.
 - `infra/verify-dev.sh` và `verify-dev.ps1`: kiểm tra biến `TELEGRAM_BOT_TOKEN_PARAM` và `TELEGRAM_WEBHOOK_SECRET_PARAM` thay vì hai biến cũ.
 - `scripts/set_webhook.py`: secret bắt buộc và đúng định dạng (không còn tùy chọn bỏ qua); `--drop-pending` mặc định tắt; thêm `my_chat_member` vào `allowed_updates`; báo lỗi khi Telegram trả `ok=false`.
