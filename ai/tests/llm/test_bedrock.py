@@ -108,3 +108,9 @@ def test_budget_counts_every_timeout_and_backoff():
 def test_repo_config_retries_judge_once_and_backup_never():
     c = BedrockClient.from_file()
     assert (c.max_attempts("judge"), c.max_attempts("backup")) == (2, 1)
+
+
+def test_repo_config_backup_is_gpt_oss_and_priced():
+    c = BedrockClient.from_file()
+    assert c.model_id("backup") == "openai.gpt-oss-120b-1:0"   # ADR-002, AI1 duyệt 2026-11-11
+    assert c.cost_usd(c.model_id("backup"), 1_000_000, 1_000_000) > 0   # có giá thì eval/CloudWatch mới tính đúng chi phí

@@ -2,6 +2,7 @@
 
     AWS_PROFILE=<profile> uv run python ../eval/benchmark_models.py                  # mọi ứng viên, mọi file eval/datasets/*.jsonl
     AWS_PROFILE=<profile> uv run python ../eval/benchmark_models.py --only qwen3-32b --limit 5
+    GEMINI_API_KEY=<key> uv run python ../eval/benchmark_models.py --only gemini-3-8-flash   # mốc tham chiếu, không cần AWS
 
 Mỗi ứng viên chạy cùng RealPipeline thật (luật, URL intel, judge, fuse) với ``judge.model_id`` thay bằng model đó và
 **không có model dự phòng** (``backup.model_id`` để trống), để số đo là của riêng model đó. Các ứng viên chạy song song,
@@ -31,6 +32,7 @@ import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import run_eval  # noqa: E402
+from gemini_client import GeminiClient  # noqa: E402
 
 from askfirst.llm.bedrock import BedrockClient, LLMError  # noqa: E402
 from askfirst.pipeline import build_pipeline  # noqa: E402
@@ -46,6 +48,11 @@ CANDIDATES: dict[str, dict[str, Any]] = {
                      "max_tokens": 800, "timeout_s": 12},
     "gemma-3-12b": {"model_id": "google.gemma-3-12b-it", "price": {"in": 0.0927, "out": 0.2987}},
     "claude-haiku-5-5": {"model_id": "au.anthropic.claude-haiku-5-5", "price": None},
+    # Mốc tham chiếu thay Claude Haiku (AccessDenied): Gemini API, không qua Bedrock, cần GEMINI_API_KEY. Chỉ để so chất lượng,
+    # không phải ứng viên production. Giá chuẩn trang giá Gemini API ngày 2026-11-11 (giá giới thiệu tới 2026-12-31).
+    # max_tokens gồm cả token suy nghĩ của Gemini.
+    "gemini-3-8-flash": {"provider": "gemini", "model_id": "gemini-3.8-flash", "price": {"in": 0.75, "out": 3.75},
+                         "max_tokens": 2000, "timeout_s": 20},
 }
 
 
@@ -118,7 +125,9 @@ def call_stats(rec: Recorder) -> dict[str, Any]:
 def run_candidate(name: str, cand: dict[str, Any], base_cfg: dict[str, Any], samples: list[dict]) -> dict[str, Any]:
     pipeline = build_pipeline("real", run_eval.CONFIG_DIR, run_eval.LocalArtifacts(run_eval.REPO / "ai" / "artifacts"),
                               run_eval.MemoryKV())
-    rec = Recorder(BedrockClient(config=candidate_config(base_cfg, cand)), cand.get("extra_fields"))
+    cfg = candidate_config(base_cfg, cand)
+    client = GeminiClient(config=cfg) if cand.get("provider") == "gemini" else BedrockClient(config=cfg)
+    rec = Recorder(client, cand.get("extra_fields"))
     pipeline.llm = rec
     started = time.perf_counter()
     results = run_eval.run(pipeline, samples, f"bench:{name}")

@@ -71,6 +71,9 @@ Giá on-demand "standard" ở `ap-southeast-2` theo AWS Price List API (2026-11-
 1. **Model:** điền `judge.model_id = qwen.qwen3-32b-v1:0` vào `ai/config/models.yaml`. Gọi qua Converse, không viết adapter `bedrock-mantle`.
 2. **Thinking:** giữ `thinking: false` bằng cách **không gửi** `reasoning_effort`. Không cần `/no_think` hay `additionalModelRequestFields`. Nếu có code nào bật `reasoning_effort` thì phải đo lại độ trễ: thinking làm số token gấp khoảng 2,6 lần và chậm hơn khoảng 0,8 s.
 3. **JSON:** giữ cách hiện tại là prompt, rồi `parse_judgement`, rồi hỏi lại một lần (AI-04, AI-07). Có thể thêm `outputConfig` `json_schema` làm lớp chặn thứ hai. AI-04 quyết việc này sau khi đo ≥ 98% trên bộ v0. Không dùng tool ép buộc.
+   - **AI-04 (#40) chốt, 2026-11-11: chưa bật `outputConfig`.** Trên bộ v0, chỉ dùng prompt đã cho JSON hợp lệ 99% (99/100 lời gọi, ADR-002), đạt ngưỡng ≥ 98%. Lời gọi hỏng còn có `parse_judgement`, hỏi lại một lần và `post_check` đỡ. Hỏi lại xong vẫn hỏng thì pipeline về `rules_only` và nâng sàn UNSURE.
+   - Lý do chưa bật: `outputConfig` mới thử 5 lần (5/5). Chưa đo nó trên 100 mẫu, chưa biết nó ảnh hưởng gì tới độ trễ và tới chất lượng lời giải thích. Thêm nó vào cũng là thêm một nhánh request cần test.
+   - Bật lại khi JSON hợp lệ trên bộ v1 (AI-10) hoặc trên log production xuống dưới 98%. Lúc đó chạy `eval/benchmark_models.py` với ứng viên có `outputConfig` để so cùng bộ.
 
 ## Hạn chế, chưa đo
 
