@@ -348,7 +348,7 @@ Pipeline chỉ làm việc với `InboundMessage` và `Verdict`. Muốn thêm Za
 - **Vì sao media không đi qua payload:** invoke đồng bộ giới hạn payload 6 MB ⚠️, voice và ảnh Telegram có thể tới 20 MB; base64 còn làm to thêm khoảng 33%. Truyền link tải thì link chứa bot token, không được để lọt vào payload hay log. Nên `ai` nhận `file_id` rồi tự gọi `getFile`.
 - **Vì sao cache nằm ở `ai`:** fingerprint cần nội dung đã normalize (text + mọi `file_unique_id` + URL, §6.2). Để Java tính thì hai bên phải viết trùng logic normalize bằng hai ngôn ngữ. `ai` có quyền DynamoDB chỉ trên các item `CACHE#`/`URL#` (IAM `dynamodb:LeadingKeys`, §9.3).
 - **Lỗi:** `ai` luôn trả JSON. Lỗi tạm (Bedrock throttle, tải Telegram lỗi) → `{"error": {"kind": "retryable"}}`, Java để SQS retry. Hết thời gian hoặc lỗi không phục hồi → Java gọi `render` với `maintenance=true` hoặc gửi câu suy giảm cố định. Lỗi runtime của Lambda (`FunctionError`) Java coi như `retryable`.
-- **Dev local:** `PIPELINE_IMPL=stub` cho `ai` trả verdict cố định theo bảng (implementation-plan §3.5), để BE làm end-to-end từ tuần 1 khi AI chưa xong. Java test dùng `FakeAiClient` đọc fixture JSON trong `contracts/fixtures/`.
+- **Dev local:** `PIPELINE_IMPL=stub` cho `ai` trả verdict cố định theo bảng (implementation-plan §3.5), để BE làm end-to-end từ tuần 1 khi AI chưa xong. Java test worker dùng bản giả `AiClient` trong bộ nhớ (`Fakes.FakeAi`); `AiContractTest` và `LambdaAiClientTest` đọc fixture JSON trong `contracts/fixtures/` để giữ record Java khớp contract.
 
 ---
 
@@ -917,7 +917,7 @@ ask-first/
 │       ├── handler/   WebhookHandler, WorkerHandler, (ApiHandler — MVP+)
 │       ├── channel/   ChannelAdapter, TelegramAdapter, (ZaloAdapter — phase 2)
 │       ├── store/     DynamoStore (Enhanced Client): buffer, profile, guardian, check, alert, flags
-│       ├── ai/        AiClient (InvokeFunction), FakeAiClient (test)
+│       ├── ai/        AiClient, LambdaAiClient (InvokeFunction), AiContract (record viết tay, ADR-000b)
 │       ├── notify/    GuardianNotifier, FollowupScheduler
 │       └── command/   /start, /nguoithan, /lichsu, /caidat, /rutdongy, /xoadulieu, callback router
 ├── ai/                          # Python 3.12, uv
