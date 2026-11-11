@@ -19,6 +19,7 @@ from askfirst.llm.guardrail import GuardResult
 from askfirst.local_models.ocr import ExtractedText
 from askfirst.pipeline import build_pipeline
 from askfirst.pipeline import real as P
+from askfirst.pipeline import retrieve as RAG
 from askfirst.pipeline.judge import PROMPT_VERSION
 
 CONFIG_DIR = pathlib.Path(__file__).resolve().parents[2] / "config"
@@ -338,6 +339,61 @@ def test_factory_wires_lazy_ocr_from_artifacts():
 
     p = build_pipeline("real", CONFIG_DIR, Store(), None)
     assert p.ocr.version == "ppocrv6-small-rapidocr3.10.0" and p.ocr._engine is None
+    assert p.retriever is not None and p.retriever.version == ""   # RAG cũng nạp lười, ở lần tìm đầu
+
+
+# ---------------------------------------------------------------- RAG (INT-03)
+
+def _alert(code: str, i: int) -> dict:
+    return {"kind": "alert", "code": code, "id": f"A{i:03d}", "title": f"Cảnh báo {i}", "summary": f"Tóm tắt chiêu {code}.",
+            "url": f"https://congan.x.gov.vn/{i}", "publisher": "Công an tỉnh X", "date": "2026-04-09"}
+
+
+class FakeRag:
+    version = "kb-test"
+
+    def __init__(self, fail: bool = False):
+        self.fail, self.seen = fail, []
+
+    def search(self, text: str) -> RAG.Retrieved:
+        self.seen.append(text)
+        if self.fail:
+            raise FileNotFoundError("kb_index")
+        card = {"kind": "card", "code": "N1.1", "title": "Giả công an", "description": "Mô tả.", "red_flags": ["đòi chuyển tiền"]}
+        ranked = [_alert("N1.4", 1), _alert("N1.1", 2), _alert("N1.1", 3)]
+        return RAG.Retrieved([card], ranked[:1], ranked)
+
+
+def rag_pipe(judge: Boto, rag: FakeRag, rules=P.no_rules) -> P.RealPipeline:
+    p = pipe(judge, rules=rules)
+    p.retriever = rag
+    return p
+
+
+def test_rag_feeds_prompt_and_cites_alerts_of_the_verdict_scenario():
+    judge, rag = Boto(answer()), FakeRag()
+    v = rag_pipe(judge, rag).analyze(bundle(SCAM), ctx())
+    prompt = judge.requests[0]["messages"][0]["content"][0]["text"]
+    assert "<related_scenarios>\n- N1.1: Giả công an." in prompt and "Tóm tắt chiêu N1.4." in prompt
+    assert "0912" not in rag.seen[0]   # tìm trên bản đã mask
+    assert v.scenario == "N1.1" and [c.url for c in v.citations] == ["https://congan.x.gov.vn/2", "https://congan.x.gov.vn/3"]
+    assert v.versions["kb_index"] == "kb-test" and "rag" in v.latency_ms
+
+
+def test_rag_runs_on_fast_path_too():
+    v = rag_pipe(Boto(), FakeRag(), rules=Rules(COMBO)).analyze(bundle(SCAM), ctx())
+    assert v.path == "fast" and v.citations[0].url == "https://congan.x.gov.vn/2"
+
+
+def test_rag_off_or_broken_falls_back_to_card_sources(caplog):
+    off = m.AnalyzeContext(check_id="01J0", user_id="tg:42", flags=m.Flags(feature_rag=False), deadline_s=85.0)
+    for rag, c in ((FakeRag(), off), (FakeRag(fail=True), ctx())):
+        judge = Boto(answer())
+        v = rag_pipe(judge, rag).analyze(bundle(SCAM), c)
+        assert "<related_scenarios>" not in judge.requests[0]["messages"][0]["content"][0]["text"]
+        assert v.level == "DANGEROUS" and "kb_index" not in v.versions
+        assert v.citations and "congan.x.gov.vn" not in v.citations[0].url   # nguồn của thẻ N1.1 trong kb/scenarios.yaml
+    assert '"error": "FileNotFoundError"' in caplog.text and "kb_index" not in caplog.text   # không log message lỗi
 
 
 # ---------------------------------------------------------------- Guard (AI-08)
