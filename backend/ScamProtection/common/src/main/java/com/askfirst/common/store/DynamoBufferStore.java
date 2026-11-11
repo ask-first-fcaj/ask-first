@@ -135,8 +135,6 @@ public final class DynamoBufferStore implements BufferStore {
 
     @Override
     public boolean finish(String chatId, long seq) {
-        // Thứ tự quan trọng: xóa MSG (chỉ đến seq) TRƯỚC, đổi META SAU. Tin mới đến giữa chừng mang
-        // seq > seq nên không bị xóa nhầm, và META chỉ bị reset khi chắc chắn không còn tin mới.
         deleteMessagesUpTo(chatId, seq);
         try {
             client.deleteItem(DeleteItemRequest.builder()
@@ -155,10 +153,11 @@ public final class DynamoBufferStore implements BufferStore {
                         .conditionExpression("attribute_exists(PK) AND done_seq < :seq")
                         .expressionAttributeValues(Map.of(":seq", n(seq)))
                         .build());
+                return false;
             } catch (ConditionalCheckFailedException alreadyDone) {
-                // đã xong từ lần trước hoặc buffer đã mất: không sao
+                // Retry / đã xóa hẳn: true nếu buffer không còn
+                return state(chatId).isEmpty();
             }
-            return false;
         }
     }
 
