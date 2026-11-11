@@ -10,7 +10,10 @@ Ghép các stage đã có (normalize/signals AI-23, mask AI-22, judge AI-04/AI-0
 sau chữ của tin rồi đi chung các stage trên với nguồn ``anh_chup``. URL lấy từ cả bản OCR gốc lẫn bản đã sửa (ARCH §6.3).
 Ảnh lỗi khi đọc chỉ bị bỏ qua; không còn chữ nào thì trả ``unreadable``. Chưa có VLM fallback khi ``mean_conf`` thấp (AI-27).
 
-Chưa có: ASR (voice không kèm chữ trả ``unreadable``), Retrieve (AI-24b), Guard (AI-08), ghép câu trả lời lượt hỏi thêm
+Guard (AI-08, ``guard.guard_signals``): chỉ gọi Bedrock Guardrails khi tin sẽ tới LLM; phát hiện prompt attack thì thêm
+``G_PROMPT_ATTACK`` (fuse nâng mức tối thiểu lên UNSURE). ``guard=None`` (mặc định, hoặc ``guardrail.id`` trống) thì bỏ qua.
+
+Chưa có: ASR (voice không kèm chữ trả ``unreadable``), Retrieve (AI-24b), ghép câu trả lời lượt hỏi thêm
 vào prompt (AI-12, hoãn; lượt 2 chỉ chặn hỏi tiếp).
 
 Không bao giờ raise vì lỗi model/mạng (judge tự xuống chế độ chỉ chạy luật). Không log nội dung (plan §3.1).
@@ -27,6 +30,7 @@ from typing import Protocol
 
 from askfirst.domain import models as m
 from askfirst.pipeline import fuse as F
+from askfirst.pipeline import guard as G
 from askfirst.pipeline import judge as J
 from askfirst.pipeline import respond as R
 from askfirst.pipeline.mask import mask
@@ -131,8 +135,9 @@ class RealPipeline:
     def __init__(self, llm: JudgeLLM, system_prompt: str, *, normalize: Callable[[str], str] = default_normalize,
                  rules: Rules = no_rules, rules_version: str = "none", url_intel: UrlSignals = no_url_intel,
                  roles: tuple[str, str] = ("judge", "backup"), thresholds: F.Thresholds = F.DEFAULT_THRESHOLDS,
-                 ocr: Ocr | None = None) -> None:
+                 ocr: Ocr | None = None, guard: G.PromptGuard | None = None) -> None:
         self.llm = llm
+        self.guard = guard
         self.ocr = ocr
         self.system_prompt = system_prompt
         self.normalize = normalize
@@ -194,6 +199,11 @@ class RealPipeline:
 
         res = J.JudgeResult(None)
         if not F.is_fast_path(signals):
+            if ctx.flags.llm_enabled:
+                guard_hits, guard_ms = G.guard_signals(self.guard, masked)
+                signals += guard_hits
+                if guard_ms is not None:
+                    latency["guard"] = guard_ms
             t = time.perf_counter()
             user_message = J.build_user_message(masked, source="anh_chup" if seen else "van_ban",
                                                 forward_origin=bundle.forward_origin, rule_signals=[s.code for s in signals])
