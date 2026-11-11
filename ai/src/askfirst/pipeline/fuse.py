@@ -48,6 +48,8 @@ RULE_ACTIONS: dict[str, RiskyAction] = {
     "R_INSTALL_APP": "install_app",
     "U_APK_LINK": "install_app",
     "R_SECRECY": "keep_secret",
+    "R_CARD_PHOTO": "share_id_card",
+    "R_ID_CARD_REQUEST": "share_id_card",
 }
 _ACTION_ORDER: tuple[RiskyAction, ...] = (
     "transfer_money", "share_otp", "share_password", "install_app",
