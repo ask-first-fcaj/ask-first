@@ -19,6 +19,37 @@ QUEUE_URL=$(awsl sqs create-queue --queue-name webhookQueue \
 QUEUE_ARN=$(awsl sqs get-queue-attributes --queue-url "$QUEUE_URL" \
   --attribute-names QueueArn --query Attributes.QueueArn --output text)
 
+# --- Biến bắt buộc (không có giá trị giả) -----------------------------------
+: "${TELEGRAM_BOT_TOKEN:?Thiếu TELEGRAM_BOT_TOKEN trong .env}"
+: "${TELEGRAM_WEBHOOK_SECRET:?Thiếu TELEGRAM_WEBHOOK_SECRET trong .env (handler từ chối mọi request nếu không có secret)}"
+
+# Policy SHA-256: ưu tiên giá trị trong .env, nếu không có thì tính từ docs/privacy-policy.md
+if [ -z "${POLICY_SHA256:-}" ]; then
+  [ -f docs/privacy-policy.md ] || { echo "Thiếu POLICY_SHA256 trong .env và không thấy docs/privacy-policy.md"; exit 1; }
+  if command -v sha256sum >/dev/null 2>&1; then
+    POLICY_SHA256=$(sha256sum docs/privacy-policy.md | cut -d' ' -f1)
+  else
+    POLICY_SHA256=$(shasum -a 256 docs/privacy-policy.md | cut -d' ' -f1)
+  fi
+  echo "POLICY_SHA256 tính từ docs/privacy-policy.md: $POLICY_SHA256"
+fi
+
+# --- Bảng DynamoDB: cùng schema với infra/template.yaml (ARCH §7) -----------
+# Tên bảng lấy từ env, mặc định theo quy ước askfirst-<stage> của template (không còn askfirst-main)
+TABLE_NAME=${DYNAMODB_TABLE_NAME:-askfirst-dev}
+# LocalStack chỉ dùng cho dev: xóa bảng cũ để không bị kẹt schema pk/sk chữ thường của lần chạy trước
+awsl dynamodb delete-table --table-name "$TABLE_NAME" >/dev/null 2>&1 || true
+awsl dynamodb wait table-not-exists --table-name "$TABLE_NAME" >/dev/null 2>&1 || true
+awsl dynamodb create-table --table-name "$TABLE_NAME" \
+  --attribute-definitions AttributeName=PK,AttributeType=S AttributeName=SK,AttributeType=S \
+                          AttributeName=GSI1PK,AttributeType=S AttributeName=GSI1SK,AttributeType=S \
+  --key-schema AttributeName=PK,KeyType=HASH AttributeName=SK,KeyType=RANGE \
+  --global-secondary-indexes 'IndexName=GSI1,KeySchema=[{AttributeName=GSI1PK,KeyType=HASH},{AttributeName=GSI1SK,KeyType=RANGE}],Projection={ProjectionType=ALL}' \
+  --billing-mode PAY_PER_REQUEST >/dev/null
+awsl dynamodb wait table-exists --table-name "$TABLE_NAME"
+awsl dynamodb update-time-to-live --table-name "$TABLE_NAME" \
+  --time-to-live-specification Enabled=true,AttributeName=ttl >/dev/null
+
 deploy() {  # tên | handler | jar | biến môi trường
   awsl lambda delete-function --function-name "$1" >/dev/null 2>&1 || true
   awsl lambda create-function --function-name "$1" --runtime java21 \
@@ -29,7 +60,7 @@ deploy() {  # tên | handler | jar | biến môi trường
 
 deploy webhook-handler "com.askfirst.webhookhandler.WebhookHandler::handleRequest" \
   "webhook-handler/target/webhook-handler-$VERSION.jar" \
-  "Variables={WEBHOOK_QUEUE_URL=$QUEUE_URL,TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN,TELEGRAM_WEBHOOK_SECRET=$TELEGRAM_WEBHOOK_SECRET,AWS_ENDPOINT_URL=$INTERNAL}"
+  "Variables={WEBHOOK_QUEUE_URL=$QUEUE_URL,TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN,TELEGRAM_WEBHOOK_SECRET=$TELEGRAM_WEBHOOK_SECRET,POLICY_SHA256=$POLICY_SHA256,AWS_ENDPOINT_URL=$INTERNAL,DYNAMODB_TABLE_NAME=$TABLE_NAME}"
 
 deploy worker "com.askfirst.worker.WorkerHandler::handleRequest" \
   "worker/target/worker-$VERSION.jar" \
