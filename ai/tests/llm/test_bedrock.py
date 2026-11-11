@@ -87,3 +87,30 @@ def test_unknown_price_gives_zero_cost():
 def test_real_client_does_not_retry_inside_botocore():
     c = BedrockClient(config=CONFIG)._client("judge")  # builds a boto3 client, no network call
     assert c.meta.config.retries["total_max_attempts"] == 1
+
+
+def test_max_attempts_per_role_from_config():
+    cfg = CONFIG | {"judge": CONFIG["judge"] | {"max_attempts": 2}}
+    fake = Fake(err("ThrottlingException"), err("ThrottlingException"), OK)
+    with pytest.raises(LLMError) as e:
+        BedrockClient(config=cfg, clients={"judge": fake}, sleep=lambda s: None).converse("judge", [])
+    assert e.value.retryable and len(fake.calls) == 2
+
+
+def test_budget_counts_every_timeout_and_backoff():
+    cfg = CONFIG | {"judge": CONFIG["judge"] | {"max_attempts": 2}, "backup": CONFIG["backup"] | {"max_attempts": 1}}
+    c = BedrockClient(config=cfg)
+    assert c.budget_s("judge") == 8 * 2 + 1.0          # một lần backoff, tối đa 0,5 × 2
+    assert c.budget_s("backup") == 8
+    assert BedrockClient(config=CONFIG).budget_s("judge") == 8 * 3 + 1.0 + 2.0
+
+
+def test_repo_config_retries_judge_once_and_backup_never():
+    c = BedrockClient.from_file()
+    assert (c.max_attempts("judge"), c.max_attempts("backup")) == (2, 1)
+
+
+def test_repo_config_backup_is_gpt_oss_and_priced():
+    c = BedrockClient.from_file()
+    assert c.model_id("backup") == "openai.gpt-oss-120b-1:0"   # ADR-002, AI1 duyệt 2026-11-11
+    assert c.cost_usd(c.model_id("backup"), 1_000_000, 1_000_000) > 0   # có giá thì eval/CloudWatch mới tính đúng chi phí

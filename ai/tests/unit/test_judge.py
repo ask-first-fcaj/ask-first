@@ -51,11 +51,67 @@ def test_parse_rejects_non_json(raw):
         J.parse_judgement(raw)
 
 
-@pytest.mark.parametrize("bad", [{"group": "N9"}, {"confidence": "rất cao"}, {"requested_actions": ["pay"]}, {"risk_score": "cao"}])
+@pytest.mark.parametrize("bad", [{"group": "N9"}, {"confidence": "rất cao"}, {"requested_actions": "click_link"},
+                                 {"requested_actions": [1]}, {"risk_score": "cao"}])
 def test_parse_rejects_wrong_schema(bad):
     with pytest.raises(J.JudgeParseError) as e:
         J.parse_judgement(json.dumps(_j(**bad)))
     assert "sai schema" in str(e.value)
+
+
+def test_parse_drops_unknown_action_instead_of_rejecting():
+    # #138: hd-rt-21/30 trả "call_number" (ngoài enum) → trước đây cả câu trả lời bị loại, rơi về rules_only.
+    j = J.parse_judgement(json.dumps(_j(requested_actions=["click_link", "call_number"])))
+    assert j.requested_actions == ["click_link"]
+    pc = J.post_check(j, TEXT)
+    assert pc.judgement.requested_actions == ["click_link"] and "action_unknown" in pc.fixes
+
+
+def test_parse_all_unknown_actions_gives_empty_list():
+    j = J.parse_judgement(json.dumps(_j(requested_actions=["pay", "call_number"])))
+    assert j.requested_actions == [] and "action_unknown" in J.post_check(j, TEXT).fixes
+
+
+def test_known_actions_have_no_unknown_fix():
+    j = J.parse_judgement(json.dumps(_j(requested_actions=["click_link", "none"])))
+    assert "action_unknown" not in J.post_check(j, TEXT).fixes
+
+
+def _extra_quote_raw() -> str:
+    # #138 hd-rt-12: Qwen3 nhét hai chuỗi vào "quote" (lặp lại ở temperature 0) → JSON sai cú pháp cả hai lần hỏi.
+    good = json.dumps(_j(), ensure_ascii=False)
+    q = '"quote": "nộp phạt tại dichvucong-vn[.]com"'
+    assert q in good
+    return good.replace(q, q + ', "trong hôm nay", "chưa xử lý"')
+
+
+def test_parse_repairs_extra_quote_strings():
+    j = J.parse_judgement(_extra_quote_raw())
+    assert j.signals[0].quote == "nộp phạt tại dichvucong-vn[.]com"
+    pc = J.post_check(j, TEXT)
+    assert "json_repaired" in pc.fixes and pc.rejected_quotes == 0
+
+
+def test_valid_json_has_no_repair_fix():
+    assert "json_repaired" not in J.post_check(J.parse_judgement(json.dumps(_j())), TEXT).fixes
+
+
+@pytest.mark.parametrize("raw", [
+    '{"group": "N1", "scenario": "N1.4", "risk_score": 70,}',          # dấu phẩy thừa: không sửa, hỏi lại model
+    '{"group": "N1", "short_explanation": "a", "b"}',                   # chuỗi thừa ngoài "quote": không sửa
+])
+def test_parse_does_not_repair_other_syntax_errors(raw):
+    with pytest.raises(J.JudgeParseError, match="sai cú pháp"):
+        J.parse_judgement(raw)
+
+
+def test_repair_keeps_following_keys():
+    # Chuỗi sau dấu phẩy có ":" theo sau là khoá kế tiếp, không được bỏ.
+    raw = json.dumps(_j(signals=[{"quote": "nộp phạt tại dichvucong-vn[.]com", "code": "U_TYPOSQUAT"}]),
+                     ensure_ascii=False).replace('[.]com", "code"', '[.]com", "trong hôm nay", "code"')
+    j = J.parse_judgement(raw)
+    assert j.signals[0].code == "U_TYPOSQUAT" and j.signals[0].quote == "nộp phạt tại dichvucong-vn[.]com"
+    assert j._json_repaired
 
 
 def test_parse_error_does_not_echo_content():
@@ -274,6 +330,18 @@ def test_judge_falls_back_to_backup_after_two_bad_json():
     assert r.model_role == "backup" and r.json_errors == 2 and r.calls == 3
 
 
+def test_judge_keeps_answer_with_unknown_action():
+    out = json.dumps(_j(requested_actions=["click_link", "call_number"]), ensure_ascii=False)
+    r = _run(FakeLLM({"judge": [out]}))
+    assert r.model_role == "judge" and r.json_errors == 0 and r.calls == 1
+    assert r.judgement.requested_actions == ["click_link"] and "action_unknown" in r.fixes
+
+
+def test_judge_keeps_answer_with_extra_quote_strings():
+    r = _run(FakeLLM({"judge": [_extra_quote_raw()]}))
+    assert r.model_role == "judge" and r.json_errors == 0 and r.calls == 1 and "json_repaired" in r.fixes
+
+
 def test_judge_falls_back_to_backup_on_client_error():
     r = _run(FakeLLM({"judge": [RuntimeError("ThrottlingException")], "backup": [GOOD]}))
     assert r.model_role == "backup" and r.llm_errors == 1
@@ -289,3 +357,93 @@ def test_judge_applies_post_check_and_turn():
     r = _run(FakeLLM({"judge": [out]}), turn=2)
     assert r.judgement.scenario == "OTHER" and r.judgement.followup_question is None
     assert {"scenario_unknown", "followup_turn2"} <= set(r.fixes)
+
+
+# ------------------------------------------------------------------ cascade (AI-07, ARCH §6.9)
+
+LOW = json.dumps(_j(confidence="low"), ensure_ascii=False)
+BENIGN = json.dumps(_j(group="N0", scenario="N0", risk_score=10, signals=[], requested_actions=["none"]), ensure_ascii=False)
+
+
+def test_judge_result_from_primary_is_not_escalated():
+    r = _run(FakeLLM({"judge": [GOOD]}))
+    assert not r.escalated and r.escalation is None and r.skipped is None
+
+
+def test_client_error_escalates_to_backup():
+    r = _run(FakeLLM({"judge": [RuntimeError("ThrottlingException")], "backup": [GOOD]}))
+    assert r.escalated and r.escalation == "error"
+
+
+def test_two_bad_json_escalate_with_reason_json():
+    r = _run(FakeLLM({"judge": ["x", "y"], "backup": [GOOD]}))
+    assert r.escalated and r.escalation == "json"
+
+
+def test_low_confidence_escalates_and_backup_wins():
+    llm = FakeLLM({"judge": [LOW], "backup": [GOOD]})
+    r = _run(llm)
+    assert [c[0] for c in llm.calls] == ["judge", "backup"]
+    assert r.escalated and r.escalation == "low_confidence" and r.judgement.confidence == "high"
+    assert r.calls == 2 and r.cost_usd == pytest.approx(0.002)
+
+
+@pytest.mark.parametrize(("rule_score", "escalate"), [(80, True), (100, True), (79, False)])
+def test_rule_conflict_escalates_only_when_rules_are_sure(rule_score, escalate):
+    llm = FakeLLM({"judge": [BENIGN], "backup": [GOOD]})
+    r = J.judge(llm, "SYS", J.build_user_message(TEXT), TEXT, rule_score=rule_score)
+    assert r.escalated is escalate
+    assert r.escalation == ("rule_conflict" if escalate else None)
+
+
+def test_llm_score_at_threshold_is_not_a_conflict():
+    edge = json.dumps(_j(risk_score=J.ESCALATE_LLM_MAX), ensure_ascii=False)
+    r = J.judge(FakeLLM({"judge": [edge]}), "SYS", "u", TEXT, rule_score=100)
+    assert not r.escalated and r.escalation is None
+
+
+@pytest.mark.parametrize("backup", [[RuntimeError("ThrottlingException")], ["x", "y"]])
+def test_failed_escalation_keeps_primary_answer(backup):
+    r = _run(FakeLLM({"judge": [LOW], "backup": backup}))
+    assert r.judgement is not None and r.judgement.confidence == "low"
+    assert r.model_role == "judge" and not r.escalated and r.escalation == "low_confidence"
+
+
+def test_both_models_throttled_gives_rules_only():
+    throttle = RuntimeError("ThrottlingException")
+    r = _run(FakeLLM({"judge": [throttle], "backup": [throttle]}))
+    assert r.judgement is None and r.llm_errors == 2 and r.escalation == "error"
+
+
+def test_kill_switch_never_calls_llm():
+    llm = FakeLLM({})
+    r = J.judge(llm, "SYS", "u", TEXT, llm_enabled=False)
+    assert r.judgement is None and r.skipped == "llm_disabled" and llm.calls == []
+
+
+def test_no_time_for_primary_skips_llm():
+    llm = FakeLLM({})
+    r = J.judge(llm, "SYS", "u", TEXT, can_call=lambda role: False)
+    assert r.judgement is None and r.skipped == "deadline" and llm.calls == []
+
+
+def test_no_time_for_backup_keeps_primary_answer():
+    llm = FakeLLM({"judge": [LOW]})
+    r = J.judge(llm, "SYS", "u", TEXT, can_call=lambda role: role == "judge")
+    assert r.judgement is not None and r.model_role == "judge" and r.skipped == "deadline"
+    assert [c[0] for c in llm.calls] == ["judge"]
+
+
+def test_no_time_for_backup_after_error_gives_rules_only():
+    r = J.judge(FakeLLM({"judge": [RuntimeError("x")]}), "SYS", "u", TEXT, can_call=lambda role: role == "judge")
+    assert r.judgement is None and r.skipped == "deadline" and r.escalation == "error"
+
+
+def test_deadline_check_compares_time_left_with_role_budget():
+    now = [100.0]
+    can = J.deadline_check(60, {"judge": 17, "backup": 13}, margin_s=5, clock=lambda: now[0])
+    assert can("judge") and can("backup")       # còn 55 giây
+    now[0] += 40                                # còn 15 giây
+    assert not can("judge") and can("backup")
+    now[0] += 3                                 # còn 12 giây
+    assert not can("backup")

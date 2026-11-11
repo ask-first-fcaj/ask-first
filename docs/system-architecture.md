@@ -645,9 +645,10 @@ Tổng p95 cho ảnh khi Lambda đã warm: khoảng 3 giây (gom tin) cộng 5�
 | Tín hiệu | Cách làm | Ghi chú |
 |---|---|---|
 | Nguồn URL | **Gộp URL từ 3 nơi:** (1) regex trên text; (2) `entities` loại `url`; (3) `entities` loại `text_link` (URL thật nằm ở `entity.url`, không nằm trong chữ hiển thị). Với `text_link`, **luôn chấm theo URL thật**, không theo chữ hiển thị (xlsx BR-010). OCR từ ảnh thì chỉ có nguồn (1) | Thiếu nguồn (2)-(3) là bỏ sót kiểu lừa "chữ ghi dichvucong.gov.vn, link trỏ domain giả" |
-| `U_TEXT_LINK_MISMATCH` | `text_link` mà **chữ hiển thị trông như một domain/URL** nhưng domain đó **khác eTLD+1** của `entity.url`; hoặc chữ hiển thị nhắc thương hiệu/cơ quan trong `brands.yaml` còn URL thật không thuộc allowlist | Tín hiệu rất mạnh, sàn 80 (§6.4 phần tổ hợp cứng) |
+| `U_TEXT_LINK_MISMATCH` | `text_link` mà **chữ hiển thị là một tên miền thật** (có hậu tố công khai, không tính "Tp.HCM") **thuộc allowlist hoặc mang tên thương hiệu**, nhưng **khác eTLD+1** của `entity.url`. Chữ chỉ nhắc thương hiệu mà không ghi tên miền thì là `U_BRAND_UNVERIFIED`; link thật là kho ứng dụng chính thức (Google Play, App Store) thì bỏ qua | Tín hiệu rất mạnh, sàn 80 (§6.4 phần tổ hợp cứng) |
 | `U_OFFICIAL` | So khớp **chính xác domain gốc** với allowlist: `dichvucong.gov.vn`, `*.gov.vn`, domain ngân hàng chính thức… (`kb/allowlist.yaml`) | So **eTLD+1**, không so chuỗi con. `dichvucong.gov.vn.abc.com` không phải chính thức |
-| `U_TYPOSQUAT` | Levenshtein ≤ 2 so với danh sách thương hiệu, hoặc chứa token thương hiệu nhưng không phải domain chính thức (`dichvucong-vn.com`, `dichvuconggov.vn`) | Danh sách thương hiệu: DVC, VNeID, các ngân hàng lớn, EVN, nhà mạng, Shopee… |
+| `U_TYPOSQUAT` | Host mượn tên thương hiệu **kèm dấu hiệu giả**: tên thương hiệu làm subdomain của tên miền lạ, ghép gạch nối (`dichvucong-vn.com`), Levenshtein ≤ 1–2 (`vietconbank`), chữ trông giống/leet, tên cơ quan nhà nước ghép chữ ngoài `.gov.vn` (`dichvuconggov.vn`), TLD rẻ (`techcombank.cfd`), hoặc tên miền chèn trước `@` | Danh sách thương hiệu: DVC, VNeID, các ngân hàng lớn, EVN, nhà mạng, Shopee… (`kb/brands.yaml`) |
+| `U_BRAND_UNVERIFIED` | Host mang đúng tên thương hiệu, không có dấu hiệu giả, nhưng chưa có trong allowlist (`shopee.com`); hoặc `text_link` có chữ nhắc thương hiệu mà link thật không chính thức | Tín hiệu **yếu** (15 điểm, không nâng sàn) vì allowlist chưa đủ tên miền thật của các thương hiệu |
 | `U_PUNYCODE` | Có `xn--` hoặc ký tự homoglyph (Cyrillic `а` thay `a`) | |
 | `U_SHORTENER` | bit.ly, tinyurl…; **mở rộng** bằng HEAD, tối đa 5 redirect, timeout 2 giây | **Chống SSRF:** chỉ cho `http(s)`; resolve DNS rồi **chặn IP private, loopback, link-local và metadata 169.254.169.254**; không tải body; không chạy JS |
 | `U_NEW_DOMAIN` | Tuổi domain < 90 ngày, lấy qua RDAP | ⚠️ RDAP cho `.vn` chưa kiểm; không lấy được thì bỏ qua |
@@ -661,7 +662,8 @@ Kết quả URL intel được cache theo `URL#sha256` trong 24 giờ.
 
 - **Scenario cards** (khoảng 20 kịch bản trong taxonomy: mã, mô tả, mẫu câu, red flags, lời khuyên, nguồn): được embed sẵn. Mỗi lượt chỉ đưa **top-4 card liên quan** vào prompt, thay vì nhồi cả taxonomy. Prompt vì thế ngắn (khoảng 2,5K token), rẻ và nhanh hơn, mà **không phụ thuộc vào prompt caching** (tính năng chưa chắc có với model open-weight ⚠️). Riêng card `N0` (lành tính) **luôn được đưa vào**, để model có điểm so sánh và tránh báo nhầm.
 - **Corpus cảnh báo chính thức** (bocongan.gov.vn, cổng công an tỉnh, nhandan.vn…): mỗi tài liệu chỉ lưu **tóm tắt do team viết lại kèm URL và ngày**, không lưu nguyên văn (tránh vấn đề bản quyền). Dùng để **trích dẫn** ("Công an Nghệ An đã cảnh báo chiêu này ngày …").
-- **Embedding local:** `multilingual-e5-small` dạng ONNX int8 (hoặc model embedding tiếng Việt nếu benchmark tốt hơn). Script `scripts/build_index.py` embed corpus và cards rồi ghi `index.npy` cùng `meta.json` lên S3. `ai` tải về lúc cold start (500 tài liệu × 384 chiều ≈ 0,8 MB), tính cosine bằng numpy.
+- **Embedding local:** `multilingual-e5-small` dạng ONNX int8 (hoặc model embedding tiếng Việt nếu benchmark tốt hơn). Script `ai/scripts/build_index.py` embed corpus và cards rồi ghi `index.npy` cùng `meta.json` lên S3. `ai` tải về lúc cold start (500 tài liệu × 384 chiều ≈ 0,8 MB), tính cosine bằng numpy.
+- **Đã làm ở AI-29:** corpus nằm ở `kb/alerts.yaml` (103 bài, mỗi bài một mã kịch bản). Điểm của một mã = trung bình cosine của 3 mục giống tin nhất trong thẻ và các cảnh báo của mã đó (chỉ dùng thẻ thì Recall@4 trên `real_scam` chỉ 65,8%; cách này 92,1%). Số đo và cách dựng lại: CHANGELOG AI-29, `ai/MODELS.md`.
 - **Đường nâng cấp:** corpus > 10.000 tài liệu thì chuyển sang S3 Vectors (giữ nguyên interface `Retriever`).
 
 ### 6.6 Stage Judge: LLM phân loại có cấu trúc
@@ -933,7 +935,7 @@ ask-first/
 │       │              retrieve.py, guard.py, judge.py, fuse.py, respond.py
 │       ├── cache/     dynamo.py # chỉ CACHE#, URL#
 │       └── llm/       bedrock.py # Converse (+ mantle adapter nếu cần): retry, timeout, cascade, cost accounting
-├── prompts/       judge_v1.md
+├── prompts/       judge_v1.md, judge_v2.md (đang dùng)
 ├── kb/            scenarios.yaml, rules.yaml, allowlist.yaml, brands.yaml, hotlines.yaml, templates/
 ├── eval/          datasets/, run_eval.py, judge_explanations.py, report.md
 ├── scripts/       build_index.py, upload_models.py, set_webhook.py, set_commands.py, flags.py   # script vận hành, Python, chạy trên cả 3 OS
