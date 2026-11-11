@@ -10,7 +10,7 @@
 **Judge giữ Qwen3 32B, tắt thinking** (`qwen.qwen3-32b-v1:0`, đã điền trong `ai/config/models.yaml` từ AI-02). Đây là ứng viên duy nhất đạt cả hai ngưỡng eval gate (recall ≥ 90%, báo nhầm ≤ 10%). Nó cũng nhanh nhất, và rẻ thứ hai.
 
 - **Không bật thinking:** recall chỉ tăng 1 mẫu, còn báo nhầm tăng từ 10% lên 45%, độ trễ gần gấp đôi.
-- **Backup:** đề xuất `gpt-oss-120b`, vì recall 100% và đúng mức 95%. Model này báo nhầm 25%, nhưng backup chỉ chạy khi judge lỗi. Lúc đó pipeline vẫn nâng sàn UNSURE khi model không chắc, nên báo nhầm của backup ít ảnh hưởng hơn. **Chưa điền** `backup.model_id` trong PR này: điền vào thì pipeline bắt đầu gọi model thứ hai khi judge throttle, cần AI1 duyệt riêng và cấp quyền IAM (BE-05).
+- **Backup: `gpt-oss-120b`** (`openai.gpt-oss-120b-1:0`), AI1 duyệt và điền vào `ai/config/models.yaml` ngày 2026-11-11. Lý do chọn: recall 100% và đúng mức 95% khi chạy một mình. Model này báo nhầm 25% khi chạy một mình, nhưng trong cascade nó không làm tăng báo nhầm (xem mục *Đo cascade có backup* bên dưới). Backup được gọi trong hai trường hợp: judge lỗi/throttle/timeout/JSON hỏng, và **leo thang** khi judge trả `confidence=low` hoặc mâu thuẫn với luật. Khi leo thang, câu trả lời của backup thay câu của judge. **Còn thiếu quyền IAM** `bedrock:Converse` trên model này cho Lambda `ai` (BE-05). Khi chưa có quyền, lời gọi backup lỗi và pipeline giữ câu của judge (trường hợp leo thang) hoặc chạy chỉ luật (trường hợp judge lỗi), giống như lúc chưa điền.
 - **Claude Haiku 5.5 không đo được:** mọi lời gọi trả `AccessDeniedException` (99/99), vì account chưa được cấp quyền dùng model Anthropic trên Bedrock. Dòng của Haiku trong bảng dưới chỉ là kết quả `rules_only`, không phải chất lượng của model.
 - **Mốc tham chiếu thay Haiku: Gemini 3.8 Flash** (`gemini-3.8-flash`, gọi Gemini API trực tiếp, không qua Bedrock), đo ngày 2026-11-11. Model đạt recall 100%, báo nhầm 0%, đúng mức 100%, đúng kịch bản 70%. Như vậy Qwen3 32B còn cách mốc 4 tin báo nhầm (10% so với 0%) và 23 điểm % đúng kịch bản; khoảng cách này là phần prompt/luật còn có thể cải thiện. **Không đổi quyết định:** Gemini chỉ là mốc so sánh. Đưa nó vào production nghĩa là tin của người dùng ra khỏi AWS, phải sửa ADR-001 và kiến trúc. Ngoài ra nó đắt gấp khoảng 5 lần (0,001575 so với 0,000318 USD/mẫu) và chậm gấp khoảng 2,3 lần (p95 3,86 so với 1,67 s).
 
@@ -44,6 +44,21 @@
 - **Đúng kịch bản:** trùng mã kịch bản (vd `N1.1`) của nhãn.
 - **JSON hợp lệ:** tỉ lệ lời gọi trả JSON parse được. Qwen3 32B đạt 99%, nên đạt luôn điều kiện "JSON hợp lệ ≥ 98% trên bộ v0" của AI-04.
 - **Chi phí:** Qwen3 32B tốn khoảng 0,32 USD cho 1.000 lượt kiểm. Tổng benchmark tốn khoảng 0,15 USD.
+
+## Đo cascade có backup (2026-11-11)
+
+Chạy `RealPipeline` với cấu hình production (`judge` thử lại 1 lần, `backup` 1 lần) trên 150 mẫu của eval v0, chấm trên 100 mẫu có nhãn. Hai cấu hình chạy cùng lúc, chỉ khác `backup.model_id`.
+
+| Cấu hình | Recall | Báo nhầm | Đúng mức | Đúng kịch bản | Mẫu p50 / p95 (s) | USD/mẫu | Leo thang | Lỗi gọi |
+|---|---|---|---|---|---|---|---|---|
+| Qwen3 32B, backup trống | 98,3% | 15,0% (6/40) | 93,0% | 47,0% | 1,33 / 1,71 | 0,000313 | 20 lần (backup trống nên giữ câu judge) | 0 |
+| Qwen3 32B + gpt-oss-120b | 98,3% | 15,0% (6/40) | 93,0% | 48,0% | 1,35 / 4,43 | 0,000397 | 19 lần gọi backup | 0 |
+
+- **Mức cảnh báo không đổi ở mẫu nào** (0/150 mẫu đổi `level`). Đúng kịch bản tăng 1 điểm % (47 → 48%).
+- **Giá:** tăng khoảng 27% (thêm 0,000084 USD/mẫu). **Độ trễ:** p95 tăng từ 1,71 lên 4,43 s, vì khoảng 20% mẫu leo thang. Vẫn trong ngân sách p95 ≤ 15 s (ARCH §2).
+- **Lợi ích chính** là khi judge lỗi hoặc bị throttle: có backup thì vẫn có câu trả lời của LLM thay vì chạy chỉ luật. Lượt chạy này judge không lỗi lần nào, nên phần này **chưa đo được**.
+- **Báo nhầm 15% ở cả hai cấu hình, cao hơn 10% của bảng kết quả ở trên** (cùng 100 mẫu, cùng prompt). Hai lượt cách nhau vài giờ, code pipeline không đổi. Chưa rõ nguyên nhân (not verified): có thể Qwen3 trên Bedrock không ổn định dù `temperature` 0. Nếu đúng vậy thì Qwen3 32B **chưa chắc đạt** ngưỡng báo nhầm ≤ 10% của gate. Cần chạy lại vài lượt để đo độ dao động, rồi xử lý ở AI-13.
+- Tỉ lệ leo thang khoảng 20%, gấp đôi mức ước tính 10% trong ARCH §6.9. Chi phí tháng tăng tương ứng.
 
 ## Rủi ro và việc còn lại
 
