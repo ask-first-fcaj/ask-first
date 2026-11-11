@@ -11,7 +11,8 @@
 
 - **Không bật thinking:** recall chỉ tăng 1 mẫu, còn báo nhầm tăng từ 10% lên 45%, độ trễ gần gấp đôi.
 - **Backup:** đề xuất `gpt-oss-120b`, vì recall 100% và đúng mức 95%. Model này báo nhầm 25%, nhưng backup chỉ chạy khi judge lỗi. Lúc đó pipeline vẫn nâng sàn UNSURE khi model không chắc, nên báo nhầm của backup ít ảnh hưởng hơn. **Chưa điền** `backup.model_id` trong PR này: điền vào thì pipeline bắt đầu gọi model thứ hai khi judge throttle, cần AI1 duyệt riêng và cấp quyền IAM (BE-05).
-- **Claude Haiku 5.5 không đo được:** mọi lời gọi trả `AccessDeniedException` (99/99), vì account chưa được cấp quyền dùng model Anthropic trên Bedrock. Dòng của Haiku trong bảng dưới chỉ là kết quả `rules_only`, không phải chất lượng của model. Muốn có mốc tham chiếu thì cần mở quyền truy cập model Anthropic trên account, rồi chạy lại `--only claude-haiku-5-5`.
+- **Claude Haiku 5.5 không đo được:** mọi lời gọi trả `AccessDeniedException` (99/99), vì account chưa được cấp quyền dùng model Anthropic trên Bedrock. Dòng của Haiku trong bảng dưới chỉ là kết quả `rules_only`, không phải chất lượng của model.
+- **Mốc tham chiếu thay Haiku: Gemini 3.8 Flash** (`gemini-3.8-flash`, gọi Gemini API trực tiếp, không qua Bedrock), đo ngày 2026-11-11. Model đạt recall 100%, báo nhầm 0%, đúng mức 100%, đúng kịch bản 70%. Như vậy Qwen3 32B còn cách mốc 4 tin báo nhầm (10% so với 0%) và 23 điểm % đúng kịch bản; khoảng cách này là phần prompt/luật còn có thể cải thiện. **Không đổi quyết định:** Gemini chỉ là mốc so sánh. Đưa nó vào production nghĩa là tin của người dùng ra khỏi AWS, phải sửa ADR-001 và kiến trúc. Ngoài ra nó đắt gấp khoảng 5 lần (0,001575 so với 0,000318 USD/mẫu) và chậm gấp khoảng 2,3 lần (p95 3,86 so với 1,67 s).
 
 ## Cách đo
 
@@ -35,6 +36,9 @@
 | gpt-oss-120b | 100% | 25,0% | 95,0% | 51,0% | 96,1% | 3,38 / 5,10 | 5,10 | 0,000518 | 0 |
 | gemma-3-12b | 98,3% | 25,0% | 89,0% | 52,0% | 98,0% | 4,50 / 6,21 | 6,38 | 0,000168 | 0 |
 | claude-haiku-5-5 | (AccessDenied, chỉ rules) | | | | n/a | n/a | 0,67 | 0 | 99 |
+| *gemini-3-8-flash (mốc, Gemini API)* | *100%* | *0,0%* | *100%* | *70,0%* | *100%* | *3,04 / 3,86* | *3,85* | *0,001575* | *0* |
+
+- **Dòng Gemini** chạy riêng, sau 5 dòng trên, cùng 100 mẫu và cùng prompt: `GEMINI_API_KEY=<key> uv run python ../eval/benchmark_models.py --only gemini-3-8-flash`. Bật thinking mức `low` (mặc định của `eval/gemini_client.py`); token suy nghĩ tính vào output. Giá tính theo bảng giá chuẩn của Gemini API ngày 2026-11-11: 0,75 / 3,75 USD cho 1M token vào / ra. Đây là giá giới thiệu tới 2026-12-31, từ 2027-01-01 tăng gấp đôi ([nguồn](https://ai.google.dev/gemini-api/docs/pricing)). **Chỉ dùng key Gemini ở paid tier.** Theo trang giá, nội dung gửi qua free tier được Google dùng để cải thiện sản phẩm. Bộ v0 có 22 mẫu `ai_drafted`, nên không được đưa sang đó. Chỉ gửi bộ eval tự soạn, không bao giờ gửi tin của người dùng. Lời giải thích của Gemini **không** có trong phiếu chấm tay `docs/results/g1-grading.md`, để không đổi phiếu team đang chấm.
 
 - **Đúng mức:** mức của verdict nằm trong khoảng `min_level`…`max_level` của nhãn.
 - **Đúng kịch bản:** trùng mã kịch bản (vd `N1.1`) của nhãn.
