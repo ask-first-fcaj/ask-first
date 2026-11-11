@@ -1,6 +1,6 @@
 # ADR-002: Gate G1, chọn model judge
 
-- **Trạng thái:** Chấp nhận phần chọn model (2026-11-11). Ngưỡng báo nhầm chưa đạt ổn định, chuyển cho AI-13. Phần chấm tay tiếng Việt 20 mẫu đang chờ team, chưa có điểm.
+- **Trạng thái:** Chấp nhận phần chọn model (2026-11-11). Ngưỡng báo nhầm chưa đạt ổn định, chuyển cho AI-13. Chấm tay tiếng Việt 20 mẫu xong: Qwen3 32B 4,30/5, không đổi quyết định.
 - **Ngày:** 2026-11-11
 - **Người quyết định:** AI1
 - **Task:** AI-03, issue #38. Dựa trên ADR-001 (AI-02).
@@ -74,9 +74,25 @@ Chạy thêm 3 lượt Qwen3 32B (backup trống, cấu hình production) trên 
   - đo lại trên bộ v1 300 mẫu (AI-10) để mẫu số báo nhầm lớn hơn;
   - chạy gate ít nhất 2 lượt ở 2 thời điểm khác nhau và báo khoảng, không báo một con số.
 
+## Chấm tay tiếng Việt (20 mẫu, 2026-11-11)
+
+Phiếu `docs/results/g1-grading.md`: 20 mẫu ngẫu nhiên (seed 3), mỗi mẫu có lời giải thích của 4 model sinh bằng `judge_v1`, tên model ẩn sau chữ cái. Thang 1–5: tự nhiên, dễ hiểu với người lớn tuổi, đúng trọng tâm. Điểm dưới đây tính từ bảng giải mã cuối phiếu.
+
+| Ứng viên | Điểm TB | Trung vị | Số câu ≥ 4 | Số câu ≤ 2 | TB theo split (bn / bs / hd / rs) |
+|---|---|---|---|---|---|
+| qwen3-32b-thinking | 4,90 | 5 | 20/20 | 0 | 4,75 / 5,0 / 5,0 / 4,9 |
+| **qwen3-32b** | **4,30** | 5 | 15/20 | 2 | 3,0 / 5,0 / 4,0 / 4,6 |
+| gemma-3-12b | 3,70 | 5 | 13/20 | 6 | 2,0 / 3,0 / 4,0 / 4,6 |
+| gpt-oss-120b | 2,85 | 1,5 | 9/20 | 11 | 1,0 / 2,0 / 5,0 / 3,5 |
+
+- **So từng mẫu với Qwen3 32B:** hơn Gemma 3 12B 5 mẫu, kém 2; hơn gpt-oss-120b 9 mẫu, kém 2; kém bản thinking 5 mẫu, hoà 15.
+- **Không đổi quyết định.** Qwen3 32B tắt thinking đứng thứ 2. Bản thinking viết hay hơn (hơn 0,6 điểm), nhưng báo nhầm 45% và chậm gần gấp đôi, nên không dùng làm judge được.
+- **Phần lớn điểm thấp là do lỗi xưng hô của `judge_v1`.** Câu mở đầu "Bác thấy…/Bác xem…" biến người dùng thành người nói. 17 câu như vậy (gpt-oss-120b 9, Gemma 3 12B 7, Qwen3 32B 1), 16 câu bị chấm 1. `judge_v2` đã sửa lỗi này (CHANGELOG, mục `judge_v2`). Phiếu này chấm lời giải thích của v1, chưa chấm lại trên v2.
+- **gpt-oss-120b viết tiếng Việt kém nhất** (2,85), mà nó là backup và thay câu của judge khi leo thang (khoảng 20% mẫu, mục *Đo cascade có backup*). Cần xem lại lời giải thích của backup sau `judge_v2` ở AI-11.
+- **Giới hạn:** 20 mẫu, mỗi lời giải thích chỉ có 1 điểm (không có nhiều người chấm để so độ đồng thuận), nên chênh dưới khoảng 0,5 điểm chưa đủ chắc.
+
 ## Rủi ro và việc còn lại
 
 - **Báo nhầm nằm đúng ngưỡng gate và đã trượt 1 mẫu ở lượt chiều** (sáng 2/20 = 10%, chiều 3/20 = 15%, xem mục *Đo độ dao động*). Bộ v1 300 mẫu (AI-10) sẽ cho số chắc hơn, và AI-13 tinh chỉnh ngưỡng cùng trọng số `U_OFFICIAL` trên bộ đó.
 - **Đúng kịch bản thấp ở mọi model** (46–52%), nghĩa là model hay gán nhầm mã kịch bản chi tiết. Điều này không ảnh hưởng tới cảnh báo, nhưng ảnh hưởng tới nguồn trích dẫn theo kịch bản. Việc này để cho AI-11 (chấm chất lượng lời giải thích) và việc chỉnh prompt.
-- **Chấm tay tiếng Việt:** 20 mẫu ngẫu nhiên (seed 3) nằm ở `docs/results/g1-grading.md`. Mỗi mẫu có lời giải thích của 4 model, tên model được ẩn sau chữ cái, bảng giải mã ở cuối file. Team chấm 1–5 rồi ghi điểm trung bình vào ADR này. Nếu Qwen3 32B thua rõ thì mở lại quyết định.
 - **Độ trễ trên Lambda** chưa đo. Số ở trên đo từ máy dev, và gồm cả đường mạng Việt Nam ↔ Sydney.
