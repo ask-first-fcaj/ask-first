@@ -40,6 +40,34 @@ Plan ghi ONNX int8. `fetch_ocr_models.py --int8` lượng tử hoá động (`qu
 `OCR bench` so với fp32 trên cùng ảnh. Kết quả (2026-11-03, `docs/results/ocr-spike.md` mục 10): int8 chép đúng URL
 15/32 và 9/18, so với 31/32 và 17/18 của fp32, và còn chậm hơn. **Production dùng fp32** (ADR-003); `--int8` giữ lại chỉ để đo.
 
-## `embedder`, `kb_index`
+## `embedder`: `e5-small-qint8-614241f` (AI-29, ARCH §6.5)
 
-Chưa có (khung G0).
+`intfloat/multilingual-e5-small` bản ONNX int8 do chính tác giả đưa lên repo model, dùng qua
+`askfirst.local_models.embedder.E5Embedder` (mean pooling, chuẩn hoá L2, 384 chiều, tiền tố `query: `/`passage: `).
+
+| File | File gốc (commit `614241f622f53c4eeff9890bdc4f31cfecc418b3`) | sha256 |
+|---|---|---|
+| `model.onnx` | [`onnx/model_qint8_avx512_vnni.onnx`](https://huggingface.co/intfloat/multilingual-e5-small/blob/614241f622f53c4eeff9890bdc4f31cfecc418b3/onnx/model_qint8_avx512_vnni.onnx) (113 MB) | `dd476dd0c2514e9b9be83aeb3853fac0763e0bdf4a71645407587d77c48a2d88` |
+| `sentencepiece.bpe.model` | [`onnx/sentencepiece.bpe.model`](https://huggingface.co/intfloat/multilingual-e5-small/blob/614241f622f53c4eeff9890bdc4f31cfecc418b3/onnx/sentencepiece.bpe.model) | `cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865` |
+
+- sha256 khớp mã LFS do Hugging Face API trả về cho đúng commit trên (kiểm 2026-11-11).
+- **License trọng số: MIT** (trường `license: mit` trong model card ở commit trên). License code: `sentencepiece` 0.2.3
+  Apache-2.0 (PyPI), `onnxruntime` 1.31.0 MIT.
+- Tokenizer: dùng `sentencepiece` (không có dependency phụ) thay cho `tokenizers` (cài thêm 17 gói, gồm cả
+  `huggingface-hub`). Đối chiếu với `onnx/tokenizer.json` của model trên chữ của 138 mẫu eval và vài chuỗi Unicode lạ: 137/138 ra
+  đúng dãy id. Mẫu còn lại khác cách cắt chuỗi 10 chữ số 0 (`0000|000000` so với `000000|0000`), trong pipeline thật
+  số tài khoản đã bị mask trước khi embed.
+- int8 so với bản fp32 (`onnx/model.onnx`) trên 40 đoạn văn: cosine giữa hai vector nhỏ nhất 0.9933, trung bình 0.9955.
+- Tên file có `avx512_vnni` vì cấu hình lượng tử hoá của Optimum; file vẫn chạy trên CPU không có VNNI (máy đo là
+  laptop Windows). Tốc độ trên CPU của Lambda chưa đo.
+
+```bash
+uv run python scripts/fetch_embedder.py out/embedder
+```
+
+## `kb_index` (AI-29)
+
+Không tải từ ngoài: `uv run python scripts/build_index.py out/embedder out/kb_index` dựng `index.npy` (124 × 384
+float32, 186 KB) và `meta.json` từ `kb/scenarios.yaml` + `kb/alerts.yaml`, in sha256 để ghi vào `artifacts.yaml`.
+Chạy lại trên cùng máy ra đúng sha256 cũ; máy khác có thể lệch ở chữ số cuối của float, khi đó ghi sha256 của bản đã
+upload. Mục `kb_index` trong `artifacts.yaml` còn để trống cho tới khi upload lên S3 (INT-03).
