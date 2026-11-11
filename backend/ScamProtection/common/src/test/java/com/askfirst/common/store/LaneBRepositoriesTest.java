@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Không có catch-all nào cho pass: nếu Docker có, test phải chạy thật và thất bại thật khi sai.
  * Điều này bảo đảm "43/43 pass" thực sự chứng minh được conditional write, rate limit, invite, audit (BE-24).
  */
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 class LaneBRepositoriesTest {
 
     private static final String TABLE_NAME = "askfirst-lane-b-test";
