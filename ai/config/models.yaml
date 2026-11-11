@@ -1,8 +1,14 @@
-# Empty skeleton (G0). Copy model IDs from the Bedrock console in AI-02, do not guess.
+# Model IDs come from `aws bedrock list-foundation-models` in ap-southeast-2 (AI-02, 2026-11-11), do not guess.
 bedrock_region: ap-southeast-2
 # Cascade (ARCH §6.2 step 8, §6.9): judge retries once, then backup (gpt-oss-120b) once, then rules only.
-judge: {model_id: "", max_tokens: 600, temperature: 0, thinking: false, timeout_s: 8, max_attempts: 2}
-backup: {model_id: "", max_tokens: 800, temperature: 0, timeout_s: 12, max_attempts: 1}
+judge: {model_id: "qwen.qwen3-32b-v1:0", max_tokens: 600, temperature: 0, thinking: false, timeout_s: 8, max_attempts: 2}
+# backup: gpt-oss-120b, approved by AI1 2026-11-11 (ADR-002). Lambda needs Converse on this model (BE-05); without it the backup
+# call fails and judge() keeps the judge answer or falls back to rules only.
+backup: {model_id: "openai.gpt-oss-120b-1:0", max_tokens: 800, temperature: 0, timeout_s: 12, max_attempts: 1}
 vlm: {model_id: "", max_tokens: 600, timeout_s: 10}
-guardrail: {id: "", version: "1"}
-pricing_usd_per_1m: {}
+# AI-08: created by scripts/create_guardrail.py (2026-11-11), tier STANDARD via apac.guardrail.v1:0.
+guardrail: {id: "halnbo330na8", version: "1", timeout_s: 3}   # đo red-team: p50 ~0,7–0,85 s, p95 ~2 s
+# USD per 1M tokens, AWS Price List API ap-southeast-2 on-demand "standard" (2026-11-11); only "mantle" usagetypes are listed.
+pricing_usd_per_1m:
+  "qwen.qwen3-32b-v1:0": {in: 0.1545, out: 0.618}
+  "openai.gpt-oss-120b-1:0": {in: 0.1545, out: 0.618}

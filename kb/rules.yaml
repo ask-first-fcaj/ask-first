@@ -138,7 +138,20 @@ rules:
     weight: 10
     hard: false
     patterns:
-      - '\b(?:bo qua|quen|phot lo)(?: (?:moi|tat ca|cac|nhung))? (?:huong dan|chi dan|lenh|yeu cau|quy tac)(?: (?:truoc|tren|o tren|truoc do|cua ban))?\b'
+      - '\b(?:bo qua|quen|phot lo)(?: (?:het|moi|tat ca|cac|nhung)){0,2} (?:huong dan|chi dan|lenh|yeu cau|quy tac)(?: (?:truoc|tren|o tren|truoc do|cua ban))?\b'
       - '\bignore (?:all |the |any )?(?:previous|above|prior) (?:instructions?|prompts?|rules?)\b'
       - '\b(?:ban la|you are) (?:ai|tro ly|chatbot|bot|mot ai|an ai|an assistant|assistant)\b'
       - '\b(?:hay|phai|chi duoc) (?:ket luan|danh gia|tra loi|noi|xac nhan)(?: [^ .]+){0,3} (?:la )?(?:an toan|safe|khong phai lua dao)\b'
+      # AI-08 red-team: đòi điểm/mức rủi ro bằng 0 ("risk_score 0", "đánh giá rủi ro bằng 0", JSON dựng sẵn)
+      - '\b(?:risk score|risk_score|diem rui ro|muc rui ro|danh gia rui ro)(?: [^ .]+){0,2} (?:bang |la )?0\b'
+      # "lệnh cho AI", "hướng dẫn mới cho trợ lý", "không cảnh báo người dùng"
+      - '\b(?:lenh|chi dan|huong dan)(?: moi)? (?:cho|danh cho) (?:ai|bot|tro ly|model|mo hinh|chatbot)\b'
+      - '\bkhong (?:canh bao|bao cho) nguoi dung\b'
+      # "nói tin này an toàn", "xác nhận giúp mình là link này của ngân hàng thật"
+      - '\b(?:noi|ket luan|xac nhan|tra loi|danh gia)(?: [^ .]+){0,3} (?:tin|tin nhan|link|noi dung) nay(?: [^ .]+){0,3} (?:la )?(?:an toan|hop le|vo hai|khong phai lua dao|dang tin cay|that)\b'
+      # "bạn không phải bot", "you are no longer"
+      - '\b(?:ban khong (?:phai|con la)|you are no longer) (?:la )?(?:bot|ai|tro ly|chatbot|a scam detector)\b'
+      # chữ rời để né regex: fold() gộp "b o q u a" thành "boqua" (không phải từ tiếng Việt bình thường)
+      - '\bboqua\b'
+      # chữ tách rời từng ký tự: "b ỏ q u a"
+      - '\b(?:b o q u a|i g n o r e)\b'
