@@ -1,13 +1,13 @@
 # ADR-002: Gate G1, chọn model judge
 
-- **Trạng thái:** Chấp nhận phần số đo (2026-11-11). Phần chấm tay tiếng Việt 20 mẫu đang chờ team, chưa có điểm.
+- **Trạng thái:** Chấp nhận phần chọn model (2026-11-11). Ngưỡng báo nhầm chưa đạt ổn định, chuyển cho AI-13. Phần chấm tay tiếng Việt 20 mẫu đang chờ team, chưa có điểm.
 - **Ngày:** 2026-11-11
 - **Người quyết định:** AI1
 - **Task:** AI-03, issue #38. Dựa trên ADR-001 (AI-02).
 
 ## Quyết định
 
-**Judge giữ Qwen3 32B, tắt thinking** (`qwen.qwen3-32b-v1:0`, đã điền trong `ai/config/models.yaml` từ AI-02). Đây là ứng viên duy nhất đạt cả hai ngưỡng eval gate (recall ≥ 90%, báo nhầm ≤ 10%). Nó cũng nhanh nhất, và rẻ thứ hai.
+**Judge giữ Qwen3 32B, tắt thinking** (`qwen.qwen3-32b-v1:0`, đã điền trong `ai/config/models.yaml` từ AI-02). Ở lượt benchmark buổi sáng, đây là ứng viên duy nhất đạt cả hai ngưỡng eval gate (recall ≥ 90%, báo nhầm ≤ 10%). Ở 5 lượt chạy buổi chiều, model **trượt ngưỡng báo nhầm đúng 1 mẫu** (3/20 = 15%, xem mục *Đo độ dao động*). Vẫn giữ Qwen3 32B vì các ứng viên khác báo nhầm ≥ 25%; AI-13 phải kéo báo nhầm về ≤ 10% trước khi coi Gate G1 là đạt hẳn. Model này cũng nhanh nhất, và rẻ thứ hai.
 
 - **Không bật thinking:** recall chỉ tăng 1 mẫu, còn báo nhầm tăng từ 10% lên 45%, độ trễ gần gấp đôi.
 - **Backup: `gpt-oss-120b`** (`openai.gpt-oss-120b-1:0`), AI1 duyệt và điền vào `ai/config/models.yaml` ngày 2026-11-11. Lý do chọn: recall 100% và đúng mức 95% khi chạy một mình. Model này báo nhầm 25% khi chạy một mình, nhưng trong cascade nó không làm tăng báo nhầm (xem mục *Đo cascade có backup* bên dưới). Backup được gọi trong hai trường hợp: judge lỗi/throttle/timeout/JSON hỏng, và **leo thang** khi judge trả `confidence=low` hoặc mâu thuẫn với luật. Khi leo thang, câu trả lời của backup thay câu của judge. **Còn thiếu quyền IAM** `bedrock:Converse` trên model này cho Lambda `ai` (BE-05). Khi chưa có quyền, lời gọi backup lỗi và pipeline giữ câu của judge (trường hợp leo thang) hoặc chạy chỉ luật (trường hợp judge lỗi), giống như lúc chưa điền.
