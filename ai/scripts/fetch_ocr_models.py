@@ -32,22 +32,23 @@ def sha256(p: Path) -> str:
         return hashlib.file_digest(f, "sha256").hexdigest()
 
 
-def expected(manifest: Path = MANIFEST, name: str = "ocr") -> dict[str, str]:
+def expected(manifest: Path = MANIFEST, name: str = "ocr", sources: dict[str, str] = SOURCES) -> dict[str, str]:
     entry = next(e for e in yaml.safe_load(manifest.read_text(encoding="utf-8")) if e["name"] == name)
-    if set(entry["files"]) != set(SOURCES):
-        raise SystemExit(f"artifacts.yaml `{name}` và SOURCES lệch nhau: {sorted(entry['files'])} / {sorted(SOURCES)}")
+    if set(entry["files"]) != set(sources):
+        raise SystemExit(f"artifacts.yaml `{name}` và SOURCES lệch nhau: {sorted(entry['files'])} / {sorted(sources)}")
     return entry["files"]
 
 
-def fetch(out: Path) -> None:
+def fetch(out: Path, name: str = "ocr", base: str = BASE, sources: dict[str, str] = SOURCES) -> None:
+    """Cũng dùng cho artifact khác (`fetch_embedder.py`): `sources` = tên file trong artifact -> đường dẫn sau `base`."""
     out.mkdir(parents=True, exist_ok=True)
-    for fname, sha in expected().items():
+    for fname, sha in expected(name=name, sources=sources).items():
         f = out / fname
         if f.exists() and sha256(f) == sha:
             print(f"có sẵn {fname}")
             continue
         part = f.with_name(f.name + ".part")
-        urllib.request.urlretrieve(BASE + SOURCES[fname], part)
+        urllib.request.urlretrieve(base + sources[fname], part)
         if sha256(part) != sha:
             part.unlink()
             raise SystemExit(f"{fname}: sai sha256, không dùng file này")

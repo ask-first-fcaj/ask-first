@@ -870,6 +870,7 @@ suffixes: [gov.vn]
 - `allowlist.yaml`: mục có thể có `evidence: redirect` khi chỉ có bằng chứng là tên miền chuyển hướng về trang chính thức.
 - `checklist.yaml`: danh sách `{id, title, steps[]}`; mỗi bước có `id`, `phase`, `action`, `detail`, `sources`, `verified_at`, và `hotline_ref`: `id` trong `hotlines.yaml`, `null` (bước không cần gọi), hoặc giá trị đặc biệt `bank_of_victim` (ngân hàng của nạn nhân, không có số cố định; cách hiển thị do SH-08 quyết). `action` và `detail` không được chứa số điện thoại.
 - `rules.yaml` (AI-23): engine ở `ai/src/askfirst/pipeline/signals.py`, pattern chạy trên `normalize.fold()` của bản đã mask. Mỗi luật có `code`, `weight`, `hard`, `patterns`, và tuỳ chọn `requires` (phải khớp thêm), `unless` (khớp thì bỏ luật), `negatable` (bỏ đoạn khớp có từ phủ định đứng trước, ví dụ "không bao giờ yêu cầu cung cấp mã OTP"), `url` (`required` / `forbidden` / `hard` = thành luật cứng khi tin có URL), `unless_codes`. Không có `hard_floor`, `combos`, `explain`: sàn và tổ hợp nằm ở `fuse.py`, câu giải thích ở `kb/templates/signals.j2`.
+- `alerts.yaml` (AI-29, corpus RAG): danh sách `{id, scenario, title, summary, url, publisher, date, tier?, verified_at}`; `scenario` là mã lừa đảo (không N0/OTHER), `date` là ngày đăng của bài, `title`/`summary` do team viết lại; host của `url` không thuộc `.gov.vn`/allowlist thì phải có `tier: media`.
 
 > Pattern trong `rules.yaml` ở trên chỉ là **ví dụ về định dạng**; AI2 viết pattern thật ở AI-23 và mỗi luật phải có test dương và test âm.
 
