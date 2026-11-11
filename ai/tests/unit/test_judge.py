@@ -51,11 +51,67 @@ def test_parse_rejects_non_json(raw):
         J.parse_judgement(raw)
 
 
-@pytest.mark.parametrize("bad", [{"group": "N9"}, {"confidence": "rất cao"}, {"requested_actions": ["pay"]}, {"risk_score": "cao"}])
+@pytest.mark.parametrize("bad", [{"group": "N9"}, {"confidence": "rất cao"}, {"requested_actions": "click_link"},
+                                 {"requested_actions": [1]}, {"risk_score": "cao"}])
 def test_parse_rejects_wrong_schema(bad):
     with pytest.raises(J.JudgeParseError) as e:
         J.parse_judgement(json.dumps(_j(**bad)))
     assert "sai schema" in str(e.value)
+
+
+def test_parse_drops_unknown_action_instead_of_rejecting():
+    # #138: hd-rt-21/30 trả "call_number" (ngoài enum) → trước đây cả câu trả lời bị loại, rơi về rules_only.
+    j = J.parse_judgement(json.dumps(_j(requested_actions=["click_link", "call_number"])))
+    assert j.requested_actions == ["click_link"]
+    pc = J.post_check(j, TEXT)
+    assert pc.judgement.requested_actions == ["click_link"] and "action_unknown" in pc.fixes
+
+
+def test_parse_all_unknown_actions_gives_empty_list():
+    j = J.parse_judgement(json.dumps(_j(requested_actions=["pay", "call_number"])))
+    assert j.requested_actions == [] and "action_unknown" in J.post_check(j, TEXT).fixes
+
+
+def test_known_actions_have_no_unknown_fix():
+    j = J.parse_judgement(json.dumps(_j(requested_actions=["click_link", "none"])))
+    assert "action_unknown" not in J.post_check(j, TEXT).fixes
+
+
+def _extra_quote_raw() -> str:
+    # #138 hd-rt-12: Qwen3 nhét hai chuỗi vào "quote" (lặp lại ở temperature 0) → JSON sai cú pháp cả hai lần hỏi.
+    good = json.dumps(_j(), ensure_ascii=False)
+    q = '"quote": "nộp phạt tại dichvucong-vn[.]com"'
+    assert q in good
+    return good.replace(q, q + ', "trong hôm nay", "chưa xử lý"')
+
+
+def test_parse_repairs_extra_quote_strings():
+    j = J.parse_judgement(_extra_quote_raw())
+    assert j.signals[0].quote == "nộp phạt tại dichvucong-vn[.]com"
+    pc = J.post_check(j, TEXT)
+    assert "json_repaired" in pc.fixes and pc.rejected_quotes == 0
+
+
+def test_valid_json_has_no_repair_fix():
+    assert "json_repaired" not in J.post_check(J.parse_judgement(json.dumps(_j())), TEXT).fixes
+
+
+@pytest.mark.parametrize("raw", [
+    '{"group": "N1", "scenario": "N1.4", "risk_score": 70,}',          # dấu phẩy thừa: không sửa, hỏi lại model
+    '{"group": "N1", "short_explanation": "a", "b"}',                   # chuỗi thừa ngoài "quote": không sửa
+])
+def test_parse_does_not_repair_other_syntax_errors(raw):
+    with pytest.raises(J.JudgeParseError, match="sai cú pháp"):
+        J.parse_judgement(raw)
+
+
+def test_repair_keeps_following_keys():
+    # Chuỗi sau dấu phẩy có ":" theo sau là khoá kế tiếp, không được bỏ.
+    raw = json.dumps(_j(signals=[{"quote": "nộp phạt tại dichvucong-vn[.]com", "code": "U_TYPOSQUAT"}]),
+                     ensure_ascii=False).replace('[.]com", "code"', '[.]com", "trong hôm nay", "code"')
+    j = J.parse_judgement(raw)
+    assert j.signals[0].code == "U_TYPOSQUAT" and j.signals[0].quote == "nộp phạt tại dichvucong-vn[.]com"
+    assert j._json_repaired
 
 
 def test_parse_error_does_not_echo_content():
@@ -272,6 +328,18 @@ def test_judge_falls_back_to_backup_after_two_bad_json():
     llm = FakeLLM({"judge": ["x", "y"], "backup": [GOOD]})
     r = _run(llm)
     assert r.model_role == "backup" and r.json_errors == 2 and r.calls == 3
+
+
+def test_judge_keeps_answer_with_unknown_action():
+    out = json.dumps(_j(requested_actions=["click_link", "call_number"]), ensure_ascii=False)
+    r = _run(FakeLLM({"judge": [out]}))
+    assert r.model_role == "judge" and r.json_errors == 0 and r.calls == 1
+    assert r.judgement.requested_actions == ["click_link"] and "action_unknown" in r.fixes
+
+
+def test_judge_keeps_answer_with_extra_quote_strings():
+    r = _run(FakeLLM({"judge": [_extra_quote_raw()]}))
+    assert r.model_role == "judge" and r.json_errors == 0 and r.calls == 1 and "json_repaired" in r.fixes
 
 
 def test_judge_falls_back_to_backup_on_client_error():

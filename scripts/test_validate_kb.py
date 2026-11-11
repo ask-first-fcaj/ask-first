@@ -25,6 +25,8 @@ BRAND = {"name": "Vietcombank", "tokens": ["vietcombank", "vcb"], "official_doma
 STEP = {"id": "s1", "phase": "0-5", "action": "Gọi ngân hàng", "detail": "Nói bị lừa.", "hotline_ref": "vcb",
         "sources": [{"url": "https://bocongan.gov.vn/x", "publisher": "Bộ Công an"}], "verified_at": TODAY}
 CHECKLIST = {"id": "bilua_30p", "title": "30 phút đầu", "steps": [STEP]}
+ALERT = {"id": "A001", "scenario": "N1.4", "title": "Phạt nguội giả", "summary": "Tin nhắn báo phạt nguội kèm link giả.",
+         "url": "https://congan.nghean.gov.vn/x", "publisher": "Công an tỉnh Nghệ An", "date": "2026-04-29", "verified_at": TODAY}
 
 
 def with_(base, **kw):
@@ -193,3 +195,22 @@ def test_hotline_without_allowlist_is_error_not_skipped():
 
 def test_checklist_ref_with_no_known_hotlines_is_error_not_skipped():
     assert has(v.v_checklist([CHECKLIST], set()), "không có trong hotlines.yaml")
+
+
+# --- alerts (corpus RAG) ---
+def test_alert_ok_and_media_source_needs_tier():
+    assert v.v_alerts([ALERT], ALLOW) == []
+    press = with_(ALERT, url="https://vnexpress.net/x")
+    assert has(v.v_alerts([press], ALLOW), "tier: media")
+    assert v.v_alerts([with_(press, tier="media")], ALLOW) == []
+
+
+def test_alert_rejects_non_scam_code_duplicates_and_phone():
+    assert has(v.v_alerts([with_(ALERT, scenario="N0")], ALLOW), "mã lừa đảo")
+    assert has(v.v_alerts([ALERT, with_(ALERT, id="A002")], ALLOW), "trùng url")
+    assert has(v.v_alerts([with_(ALERT, summary="Gọi lại số 0912 345 678.")], ALLOW), "số điện thoại")
+
+
+def test_alert_needs_publication_date():
+    assert has(v.v_alerts([with_(ALERT, date=None)], ALLOW), "thiếu 'date'")
+    assert has(v.v_alerts([with_(ALERT, date="29/04/2026")], ALLOW), "YYYY-MM-DD")

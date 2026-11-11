@@ -139,7 +139,7 @@ void handleAnalyze(AnalyzeJob job, Context lambdaCtx) {
 
     List<AlertResult> alerts = new ArrayList<>();
     List<Guardian> guardians = store.activeGuardians(job.userId());      // status=active và consent.purposes.guardian = true
-    if (verdict.getShouldAlert() && !guardians.isEmpty() && store.lockAlert(job.userId(), verdict.getKichBan())) {  // ALERTLOCK 30'
+    if (verdict.getShouldAlert() && !guardians.isEmpty() && store.lockAlert(job.userId(), verdict.getScenario())) {  // ALERTLOCK 30'
         List<GuardianAlertContext> gctx = guardians.stream()
             .map(g -> new GuardianAlertContext(Ulid.next(), profile.displayName(), g.shareLevel(), Instant.now())).toList();
         List<OutMessage> outs = ai.call(new RenderGuardianAlertsRequest(verdict, gctx))   // AI, cùng thứ tự
@@ -153,7 +153,7 @@ void handleAnalyze(AnalyzeJob job, Context lambdaCtx) {
     }
 
     ReplyPlan plan = ai.call(new RenderRequest(verdict, new RenderContext(                    // AI
-        job.jobId(), profile.xungHo(), !guardians.isEmpty(), alerts, !flags.getLlmEnabled()))).getRender();
+        job.jobId(), profile.addressForm(), !guardians.isEmpty(), alerts, !flags.getLlmEnabled()))).getRender();
     telegram.editOrSend(job.chatId(), buf.placeholderId(), plan.getMessages().get(0));       // sửa tin "⏳"
     plan.getMessages().stream().skip(1).forEach(m -> telegram.send(job.chatId(), m));
 
@@ -870,6 +870,7 @@ suffixes: [gov.vn]
 - `allowlist.yaml`: mục có thể có `evidence: redirect` khi chỉ có bằng chứng là tên miền chuyển hướng về trang chính thức.
 - `checklist.yaml`: danh sách `{id, title, steps[]}`; mỗi bước có `id`, `phase`, `action`, `detail`, `sources`, `verified_at`, và `hotline_ref`: `id` trong `hotlines.yaml`, `null` (bước không cần gọi), hoặc giá trị đặc biệt `bank_of_victim` (ngân hàng của nạn nhân, không có số cố định; cách hiển thị do SH-08 quyết). `action` và `detail` không được chứa số điện thoại.
 - `rules.yaml` (AI-23): engine ở `ai/src/askfirst/pipeline/signals.py`, pattern chạy trên `normalize.fold()` của bản đã mask. Mỗi luật có `code`, `weight`, `hard`, `patterns`, và tuỳ chọn `requires` (phải khớp thêm), `unless` (khớp thì bỏ luật), `negatable` (bỏ đoạn khớp có từ phủ định đứng trước, ví dụ "không bao giờ yêu cầu cung cấp mã OTP"), `url` (`required` / `forbidden` / `hard` = thành luật cứng khi tin có URL), `unless_codes`. Không có `hard_floor`, `combos`, `explain`: sàn và tổ hợp nằm ở `fuse.py`, câu giải thích ở `kb/templates/signals.j2`.
+- `alerts.yaml` (AI-29, corpus RAG): danh sách `{id, scenario, title, summary, url, publisher, date, tier?, verified_at}`; `scenario` là mã lừa đảo (không N0/OTHER), `date` là ngày đăng của bài, `title`/`summary` do team viết lại; host của `url` không thuộc `.gov.vn`/allowlist thì phải có `tier: media`.
 
 > Pattern trong `rules.yaml` ở trên chỉ là **ví dụ về định dạng**; AI2 viết pattern thật ở AI-23 và mỗi luật phải có test dương và test âm.
 

@@ -662,7 +662,8 @@ Kết quả URL intel được cache theo `URL#sha256` trong 24 giờ.
 
 - **Scenario cards** (khoảng 20 kịch bản trong taxonomy: mã, mô tả, mẫu câu, red flags, lời khuyên, nguồn): được embed sẵn. Mỗi lượt chỉ đưa **top-4 card liên quan** vào prompt, thay vì nhồi cả taxonomy. Prompt vì thế ngắn (khoảng 2,5K token), rẻ và nhanh hơn, mà **không phụ thuộc vào prompt caching** (tính năng chưa chắc có với model open-weight ⚠️). Riêng card `N0` (lành tính) **luôn được đưa vào**, để model có điểm so sánh và tránh báo nhầm.
 - **Corpus cảnh báo chính thức** (bocongan.gov.vn, cổng công an tỉnh, nhandan.vn…): mỗi tài liệu chỉ lưu **tóm tắt do team viết lại kèm URL và ngày**, không lưu nguyên văn (tránh vấn đề bản quyền). Dùng để **trích dẫn** ("Công an Nghệ An đã cảnh báo chiêu này ngày …").
-- **Embedding local:** `multilingual-e5-small` dạng ONNX int8 (hoặc model embedding tiếng Việt nếu benchmark tốt hơn). Script `scripts/build_index.py` embed corpus và cards rồi ghi `index.npy` cùng `meta.json` lên S3. `ai` tải về lúc cold start (500 tài liệu × 384 chiều ≈ 0,8 MB), tính cosine bằng numpy.
+- **Embedding local:** `multilingual-e5-small` dạng ONNX int8 (hoặc model embedding tiếng Việt nếu benchmark tốt hơn). Script `ai/scripts/build_index.py` embed corpus và cards rồi ghi `index.npy` cùng `meta.json` lên S3. `ai` tải về lúc cold start (500 tài liệu × 384 chiều ≈ 0,8 MB), tính cosine bằng numpy.
+- **Đã làm ở AI-29:** corpus nằm ở `kb/alerts.yaml` (103 bài, mỗi bài một mã kịch bản). Điểm của một mã = trung bình cosine của 3 mục giống tin nhất trong thẻ và các cảnh báo của mã đó (chỉ dùng thẻ thì Recall@4 trên `real_scam` chỉ 65,8%; cách này 92,1%). Số đo và cách dựng lại: CHANGELOG AI-29, `ai/MODELS.md`.
 - **Đường nâng cấp:** corpus > 10.000 tài liệu thì chuyển sang S3 Vectors (giữ nguyên interface `Retriever`).
 
 ### 6.6 Stage Judge: LLM phân loại có cấu trúc
@@ -934,7 +935,7 @@ ask-first/
 │       │              retrieve.py, guard.py, judge.py, fuse.py, respond.py
 │       ├── cache/     dynamo.py # chỉ CACHE#, URL#
 │       └── llm/       bedrock.py # Converse (+ mantle adapter nếu cần): retry, timeout, cascade, cost accounting
-├── prompts/       judge_v1.md
+├── prompts/       judge_v1.md, judge_v2.md (đang dùng)
 ├── kb/            scenarios.yaml, rules.yaml, allowlist.yaml, brands.yaml, hotlines.yaml, templates/
 ├── eval/          datasets/, run_eval.py, judge_explanations.py, report.md
 ├── scripts/       build_index.py, upload_models.py, set_webhook.py, set_commands.py, flags.py   # script vận hành, Python, chạy trên cả 3 OS

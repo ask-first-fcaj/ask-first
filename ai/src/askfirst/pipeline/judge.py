@@ -14,6 +14,10 @@ Hậu kiểm (ARCH §6.6):
 * ``quote`` của mỗi tín hiệu phải là chuỗi con của tin đã gửi cho model (so trên bản NFKC, chữ thường, gộp
   khoảng trắng); không phải thì bỏ và đếm vào ``rejected_quotes`` (chỉ số "trích dẫn bị loại" của eval).
 * ``scenario`` phải có trong taxonomy, không thì gán ``OTHER``; ``group`` lấy theo tiền tố của ``scenario``.
+* ``requested_actions`` có giá trị ngoài enum (vd ``call_number``) thì bỏ giá trị đó lúc parse, ghi mã
+  ``action_unknown``, giữ phần còn lại của câu trả lời (#138). Thêm hành động mới vào enum là sửa contract.
+* ``quote`` bị nhét nhiều chuỗi (``"quote": "a", "b"``, JSON sai cú pháp) thì giữ chuỗi đầu, bỏ chuỗi thừa, ghi mã
+  ``json_repaired`` (#138). Chỉ sửa đúng dạng này và chỉ khi ``json.loads`` đã lỗi; lỗi khác vẫn hỏi lại model.
 * ``short_explanation``: bỏ câu có URL, số điện thoại, hotline hoặc từ cấm; lẫn tiếng Anh/chữ Hán hoặc không
   dấu thì thay cả đoạn bằng giải thích ghép từ template. Cắt còn 280 ký tự.
 * ``followup_question``: lượt 2 không được hỏi thêm (ARCH §6.12); câu có URL/số/từ cấm thì bỏ.
@@ -30,13 +34,13 @@ import unicodedata
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, get_args
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, PrivateAttr, ValidationError
 
 from askfirst.domain.models import ForwardOrigin, Group, RiskyAction
 
-PROMPT_VERSION = "judge_v1"
+PROMPT_VERSION = "judge_v2"
 DEFAULT_PROMPT = Path(__file__).resolve().parents[4] / "prompts" / f"{PROMPT_VERSION}.md"
 
 # Mã kịch bản research-concept §2.2 (khớp eval/validate.py SCENARIOS). Khi kb/scenarios.yaml (AI-25) vào main
@@ -50,6 +54,7 @@ MAX_EXPLANATION = 280
 MAX_FOLLOWUP = 200
 ESCALATE_RULE_MIN = 80   # luật chắc là lừa đảo…
 ESCALATE_LLM_MAX = 30    # …mà LLM cho điểm thấp: mâu thuẫn, hỏi model dự phòng
+ACTIONS = frozenset((*get_args(RiskyAction), "none"))
 
 # Schema cho structured outputs của Bedrock (Converse outputConfig.textFormat). ⚠️ Chưa kiểm Qwen3 32B có hỗ trợ
 # không (G1); trong lúc chờ, judge() parse + validate bằng Pydantic và hỏi lại một lần.
@@ -90,6 +95,8 @@ class Judgement(BaseModel):
     requested_actions: list[RiskyAction | Literal["none"]]
     short_explanation: str
     followup_question: str | None
+    _unknown_actions: int = PrivateAttr(default=0)   # số giá trị ngoài enum đã bỏ lúc parse (#138)
+    _json_repaired: bool = PrivateAttr(default=False)   # đã bỏ chuỗi thừa sau "quote" lúc parse (#138)
 
 
 class JudgeParseError(ValueError):
@@ -160,6 +167,23 @@ def build_user_message(text: str, *, source: Literal["van_ban", "anh_chup", "gio
 # ------------------------------------------------------------------ parse
 
 _THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
+# "quote": "a", "b"[, "c"]: chuỗi đứng sau dấu phẩy mà không có ":" theo sau thì không phải khoá, luôn là JSON sai.
+_JSTR = r'"(?:[^"\\]|\\.)*"'
+_EXTRA_QUOTES = re.compile(rf'("quote"\s*:\s*{_JSTR})(?:\s*,\s*{_JSTR}(?!\s*:))+')
+
+
+def _loads(body: str) -> tuple[Any, bool]:
+    """``json.loads``; lỗi cú pháp thì thử bỏ chuỗi thừa sau ``"quote"`` một lần. Trả ``(data, đã_sửa)``."""
+    try:
+        return json.loads(body), False
+    except json.JSONDecodeError as e:
+        fixed = _EXTRA_QUOTES.sub(r"\1", body)
+        if fixed == body:
+            raise JudgeParseError(f"JSON sai cú pháp ở vị trí {e.pos}") from None
+    try:
+        return json.loads(fixed), True
+    except json.JSONDecodeError as e:
+        raise JudgeParseError(f"JSON sai cú pháp ở vị trí {e.pos}") from None
 
 
 def parse_judgement(raw: str) -> Judgement:
@@ -168,17 +192,22 @@ def parse_judgement(raw: str) -> Judgement:
     start, end = body.find("{"), body.rfind("}")
     if start < 0 or end <= start:
         raise JudgeParseError("không có đối tượng JSON")
-    try:
-        data = json.loads(body[start:end + 1])
-    except json.JSONDecodeError as e:
-        raise JudgeParseError(f"JSON sai cú pháp ở vị trí {e.pos}") from None
+    data, repaired = _loads(body[start:end + 1])
     if not isinstance(data, dict):
         raise JudgeParseError("JSON không phải đối tượng")
+    actions, unknown = data.get("requested_actions"), 0
+    if isinstance(actions, list):
+        # Chỉ bỏ chuỗi lạ (model tự đặt tên hành động); sai kiểu (số, không phải list) vẫn là sai schema.
+        kept = [a for a in actions if not isinstance(a, str) or a in ACTIONS]
+        unknown = len(actions) - len(kept)
+        data["requested_actions"] = kept
     try:
-        return Judgement.model_validate(data)
+        j = Judgement.model_validate(data)
     except ValidationError as e:
         errs = "; ".join(f"{'.'.join(str(x) for x in err['loc'])}: {err['type']}" for err in e.errors()[:5])
         raise JudgeParseError(f"sai schema ({errs})") from None
+    j._unknown_actions, j._json_repaired = unknown, repaired
+    return j
 
 
 # ------------------------------------------------------------------ hậu kiểm
@@ -270,6 +299,10 @@ def post_check(j: Judgement, text: str, *, turn: int = 1, taxonomy: frozenset[st
         fixes.append("group_from_scenario")
 
     actions = list(dict.fromkeys(a for a in j.requested_actions if a != "none"))
+    if j._json_repaired:
+        fixes.append("json_repaired")
+    if j._unknown_actions:
+        fixes.append("action_unknown")
 
     explanation = j.short_explanation.strip()
     if is_bad_language(explanation):

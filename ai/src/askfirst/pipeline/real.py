@@ -13,8 +13,8 @@ sau chữ của tin rồi đi chung các stage trên với nguồn ``anh_chup``.
 Guard (AI-08, ``guard.guard_signals``): chỉ gọi Bedrock Guardrails khi tin sẽ tới LLM; phát hiện prompt attack thì thêm
 ``G_PROMPT_ATTACK`` (fuse nâng mức tối thiểu lên UNSURE). ``guard=None`` (mặc định, hoặc ``guardrail.id`` trống) thì bỏ qua.
 
-Chưa có: ASR (voice không kèm chữ trả ``unreadable``), Retrieve (AI-24b), ghép câu trả lời lượt hỏi thêm
-vào prompt (AI-12, hoãn; lượt 2 chỉ chặn hỏi tiếp).
+Chưa có: ASR (voice không kèm chữ trả ``unreadable``), Retrieve (module ``retrieve.py`` có từ AI-29, nối vào đây ở INT-03),
+ghép câu trả lời lượt hỏi thêm vào prompt (AI-12, hoãn; lượt 2 chỉ chặn hỏi tiếp).
 
 Không bao giờ raise vì lỗi model/mạng (judge tự xuống chế độ chỉ chạy luật). Không log nội dung (plan §3.1).
 """
