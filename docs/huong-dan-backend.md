@@ -373,9 +373,9 @@ backend/target/generated-sources/.../vn/askfirst/contract/ (Tự sinh các class
 * Khi chạy `./mvnw generate-sources` (hoặc `./mvnw verify`), Maven sẽ tự sinh ra các file như `Verdict.java`, `InboundMessage.java`, `OutMessage.java`.
 * **Tuyệt đối không sửa tay các file trong thư mục `generated`!** Muốn sửa trường nào, 2 team ngồi lại sửa file gốc `models.py` của AI rồi build lại.
 
-### 8.1 Chạy thử nghiệm với `FakeAiClient` (Không cần chờ team AI)
-Nếu tuần đầu team AI chưa làm xong model, bạn vẫn kiểm thử được toàn bộ hệ thống bằng `FakeAiClient`:
-* Khi test, `FakeAiClient` sẽ đọc sẵn các file JSON mẫu trong thư mục `contracts/fixtures/analyze/`.
+### 8.1 Chạy thử nghiệm không cần Lambda `ai` thật
+Test của worker không gọi AWS: `AiClient` là interface nên test dùng bản giả trong bộ nhớ (`Fakes.FakeAi` trong `worker/src/test`), còn `LambdaAiClientTest` chạy `LambdaAiClient` với một `LambdaInvoker` giả trả JSON lấy từ fixtures:
+* `AiContractTest` đọc các file JSON mẫu trong `contracts/fixtures/` và kiểm record Java không sinh field nào ngoài contract (Python từ chối field lạ).
 * Chứa chữ "otp", "chuyển khoản" → Trả về kết quả mẫu `DANGEROUS`.
 * Chứa chữ "alo", "chào bot" → Trả lời xã giao `smalltalk`.
 * Nhờ cơ chế này, **Backend hoàn toàn tự lập và kiểm thử trơn tru ngay từ tuần thứ 2!**
@@ -425,7 +425,7 @@ Thay vì chia "người làm database, người làm API" kiểu cũ, dự án c
 │ • Webhook phân loại tin cần kiểm tra          │  │ • Tạo & cấu hình Telegram Bot (Dev/Prod)      │
 │ • Xếp hàng SQS và xử lý hàng đợi (Worker)     │  │ • Bộ chuyển đổi dữ liệu Telegram Adapter      │
 │ • Bộ gom tin nhắn liên tiếp (Debounce)        │  │ • Cấu trúc nền tảng DynamoDB Single-Table     │
-│ • Gọi Lambda AI (AiClient, FakeAiClient)      │  │ • Luồng đăng ký, hỏi ý kiến (Consent)         │
+│ • Gọi Lambda AI (AiClient)                    │  │ • Luồng đăng ký, hỏi ý kiến (Consent)         │
 │ • Gửi cảnh báo khẩn cấp tới con cháu          │  │ • Quản lý liên kết người thân (Mời/Hủy)       │
 │ • Đo lường hiệu năng, SnapStart, Cold Start   │  │ • Giới hạn tần suất gọi bot (Rate Limit)      │
 │ • Thiết lập Kill Switch tắt AI khi gặp sự cố  │  │ • Xóa dữ liệu cá nhân theo yêu cầu pháp lý    │
@@ -470,7 +470,7 @@ Tuần 1 là tuần quan trọng nhất để xây móng. Hai bạn ngồi cạn
 
 ### Giai đoạn 1: Khung kết nối cơ bản (W1 – W3)
 * **BE-05 (W1): Bật quyền truy cập Bedrock ở Sydney (`ap-southeast-2`):** Đăng nhập console AWS, gửi yêu cầu kích hoạt các model AI (Qwen, Nova Lite) để team AI có tài nguyên dùng.
-* **BE-05b (W1–W2): Tạo class Java từ Schema (`AiClient`):** Thiết lập `jsonschema2pojo-maven-plugin` trong `pom.xml`. Viết class `AiClient` gọi Lambda AI và class `FakeAiClient` trả về dữ liệu mẫu để test.
+* **BE-05b (W1–W2): Tạo class Java từ Schema (`AiClient`):** Class Java của contract viết tay trong `AiContract` (không dùng plugin jsonschema2pojo, xem ADR-000b). `AiClient` + `LambdaAiClient` gọi Lambda AI; test đối chiếu với `contracts/fixtures/` bằng `AiContractTest`.
 * **BE-22 (W2): Xây dựng Lambda Webhook Handler:** 
   * Tiếp nhận request POST từ Telegram Function URL.
   * So sánh Secret Token bằng `MessageDigest.isEqual`.
@@ -586,7 +586,7 @@ Các buổi họp kỹ thuật chéo giữa 2 bạn Backend và 2 bạn AI:
 ### 16.1 Làm sao để lập trình và test trên máy mà KHÔNG TỐN TIỀN AWS?
 Là sinh viên, bạn không thể cứ mỗi lần sửa 1 dòng code lại deploy lên AWS để test vì vừa lâu vừa sợ tốn tiền. Hãy dùng **3 bí kíp dev local** này:
 
-1. **Test nghiệp vụ gọi AI:** Dùng `FakeAiClient`. Nó tự đọc file JSON mẫu có sẵn trong máy bạn, không tốn 1 xu gọi AWS Bedrock.
+1. **Test nghiệp vụ gọi AI:** Dùng `Fakes.FakeAi` (bản giả `AiClient` trong bộ nhớ) và fixtures trong `contracts/fixtures/`, không tốn 1 xu gọi AWS Bedrock.
 2. **Test Database:** Dùng thư viện `Testcontainers` trong Java. Mỗi khi chạy test, nó tự bật 1 database DynamoDB ảo trong Docker máy bạn, chạy xong tự xóa sạch:
    ```java
    @Testcontainers

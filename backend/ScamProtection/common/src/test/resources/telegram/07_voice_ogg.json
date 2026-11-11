@@ -1,0 +1,17 @@
+{
+  "update_id": 10007,
+  "message": {
+    "message_id": 107,
+    "from": { "id": 111111, "is_bot": false, "first_name": "Nguyen" },
+    "chat": { "id": 222222, "type": "private" },
+    "date": 1729000000,
+    "voice": {
+      "file_id": "voice_107_id",
+      "file_unique_id": "u_voice_107",
+      "mime_type": "audio/ogg",
+      "duration": 22,
+      "file_size": 45000
+    }
+  }
+}
+

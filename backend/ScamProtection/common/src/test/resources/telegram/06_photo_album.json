@@ -1,0 +1,15 @@
+{
+  "update_id": 10006,
+  "message": {
+    "message_id": 106,
+    "from": { "id": 111111, "is_bot": false, "first_name": "Nguyen" },
+    "chat": { "id": 222222, "type": "private" },
+    "date": 1729000000,
+    "media_group_id": "album_987654321",
+    "caption": "Ảnh 1 trong album bằng chứng lừa đảo",
+    "photo": [
+      { "file_id": "photo_alb_106", "file_unique_id": "u_alb_106", "file_size": 88000, "width": 1024, "height": 768 }
+    ]
+  }
+}
+

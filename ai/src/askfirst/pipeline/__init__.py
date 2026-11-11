@@ -22,6 +22,7 @@ def build_pipeline(impl: str, config_dir: pathlib.Path, artifacts: ArtifactStore
     if impl == "real":
         # The factory is the one place that builds the LLM client and the local models: the stages only see protocols.
         from askfirst.llm.bedrock import BedrockClient
+        from askfirst.llm.guardrail import BedrockGuardrail
         from askfirst.local_models.ocr import RapidOcr
         from askfirst.pipeline.judge import load_system_prompt
         from askfirst.pipeline.real import RealPipeline
@@ -30,5 +31,6 @@ def build_pipeline(impl: str, config_dir: pathlib.Path, artifacts: ArtifactStore
         ocr = RapidOcr(artifacts, version=artifact_version(config_dir / "artifacts.yaml", "ocr"))
         rules = RuleEngine.from_file(KB_DIR / "rules.yaml")
         return RealPipeline(BedrockClient.from_file(config_dir / "models.yaml"), load_system_prompt(),
-                            rules=rules, rules_version=rules.version, url_intel=url_intel(), ocr=ocr)
+                            rules=rules, rules_version=rules.version, url_intel=url_intel(), ocr=ocr,
+                            guard=BedrockGuardrail.from_file(config_dir / "models.yaml"))
     raise ValueError(f"unknown PIPELINE_IMPL: {impl!r}")

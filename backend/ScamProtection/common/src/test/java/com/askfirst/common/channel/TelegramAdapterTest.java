@@ -2,6 +2,7 @@ package com.askfirst.common.channel;
 
 import com.askfirst.common.channel.model.EntityRef;
 import com.askfirst.common.channel.model.InboundMessage;
+import com.askfirst.common.channel.model.TelegramCallbackQuery;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.io.InputStream;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -25,242 +27,330 @@ class TelegramAdapterTest {
         mapper.registerModule(new JavaTimeModule());
     }
 
-    @Test
-    @DisplayName("Parse regular text message")
-    void testParseTextMessage() throws Exception {
-        String json = """
-            {
-              "update_id": 10001,
-              "message": {
-                "message_id": 42,
-                "from": { "id": 999, "is_bot": false, "first_name": "Nam" },
-                "chat": { "id": 888, "type": "private" },
-                "date": 1729000000,
-                "text": "Chào bạn, đây là tin nhắn text"
-              }
+    private JsonNode loadFixture(String fixtureName) throws Exception {
+        String path = "/telegram/" + fixtureName;
+        try (InputStream is = getClass().getResourceAsStream(path)) {
+            if (is == null) {
+                throw new IllegalArgumentException("Fixture not found on classpath: " + path);
             }
-            """;
-        JsonNode update = mapper.readTree(json);
-        Optional<InboundMessage> result = adapter.parseUpdate(update);
+            return mapper.readTree(is);
+        }
+    }
+
+    @Test
+    @DisplayName("Fixture 01: Parse regular text message")
+    void test01_TextSimple() throws Exception {
+        JsonNode fixture = loadFixture("01_text_simple.json");
+        Optional<InboundMessage> result = adapter.parseUpdate(fixture);
 
         assertThat(result).isPresent();
         InboundMessage msg = result.get();
         assertThat(msg.channel()).isEqualTo("telegram");
         assertThat(msg.updateId()).isEqualTo("10001");
-        assertThat(msg.messageId()).isEqualTo("42");
-        assertThat(msg.chatId()).isEqualTo("888");
-        assertThat(msg.userId()).isEqualTo("tg:999");
+        assertThat(msg.messageId()).isEqualTo("101");
+        assertThat(msg.chatId()).isEqualTo("222222");
+        assertThat(msg.userId()).isEqualTo("tg:111111");
         assertThat(msg.kind()).isEqualTo("text");
-        assertThat(msg.text()).isEqualTo("Chào bạn, đây là tin nhắn text");
+        assertThat(msg.text()).isEqualTo("Chào bạn, cho mình hỏi số tài khoản này có an toàn không?");
         assertThat(msg.media()).isNull();
         assertThat(msg.entities()).isEmpty();
+        assertThat(msg.forwardOrigin()).isNull();
+        assertThat(msg.mediaGroupId()).isNull();
         assertThat(msg.receivedAt()).isNotNull();
     }
 
     @Test
-    @DisplayName("Parse text message containing url and text_link entities")
-    void testParseTextWithEntities() throws Exception {
-        String json = """
-            {
-              "update_id": 10002,
-              "message": {
-                "message_id": 43,
-                "from": { "id": 999, "is_bot": false },
-                "chat": { "id": 888, "type": "private" },
-                "date": 1729000000,
-                "text": "Bấm vào đây để tra cứu phạt nguội",
-                "entities": [
-                  {
-                    "offset": 0,
-                    "length": 10,
-                    "type": "text_link",
-                    "url": "https://dichvucong-fake.com"
-                  },
-                  {
-                    "offset": 20,
-                    "length": 15,
-                    "type": "bold"
-                  }
-                ]
-              }
-            }
-            """;
-        JsonNode update = mapper.readTree(json);
-        Optional<InboundMessage> result = adapter.parseUpdate(update);
+    @DisplayName("Fixture 02: Parse text with url and text_link entities")
+    void test02_TextUrlEntities() throws Exception {
+        JsonNode fixture = loadFixture("02_text_url_entities.json");
+        Optional<InboundMessage> result = adapter.parseUpdate(fixture);
 
         assertThat(result).isPresent();
         InboundMessage msg = result.get();
-        assertThat(msg.entities()).hasSize(1);
-        EntityRef entity = msg.entities().get(0);
-        assertThat(entity.kind()).isEqualTo("text_link");
-        assertThat(entity.offset()).isEqualTo(0);
-        assertThat(entity.length()).isEqualTo(10);
-        assertThat(entity.url()).isEqualTo("https://dichvucong-fake.com");
+        assertThat(msg.entities()).hasSize(2);
+
+        EntityRef urlRef = msg.entities().get(0);
+        assertThat(urlRef.kind()).isEqualTo("url");
+        assertThat(urlRef.offset()).isEqualTo(18);
+        assertThat(urlRef.length()).isEqualTo(24);
+
+        EntityRef linkRef = msg.entities().get(1);
+        assertThat(linkRef.kind()).isEqualTo("text_link");
+        assertThat(linkRef.offset()).isEqualTo(52);
+        assertThat(linkRef.length()).isEqualTo(6);
+        assertThat(linkRef.url()).isEqualTo("https://malicious-site.vn");
     }
 
     @Test
-    @DisplayName("Parse photo message and pick the largest PhotoSize")
-    void testParsePhotoMessage() throws Exception {
-        String json = """
-            {
-              "update_id": 10003,
-              "message": {
-                "message_id": 44,
-                "from": { "id": 999, "is_bot": false },
-                "chat": { "id": 888, "type": "private" },
-                "date": 1729000000,
-                "caption": "Ảnh chụp màn hình tin nhắn phạt nguội",
-                "photo": [
-                  { "file_id": "small_id", "file_unique_id": "u_small", "file_size": 1500, "width": 100, "height": 100 },
-                  { "file_id": "largest_id", "file_unique_id": "u_largest", "file_size": 85000, "width": 800, "height": 800 },
-                  { "file_id": "medium_id", "file_unique_id": "u_medium", "file_size": 15000, "width": 320, "height": 320 }
-                ]
-              }
-            }
-            """;
-        JsonNode update = mapper.readTree(json);
-        Optional<InboundMessage> result = adapter.parseUpdate(update);
+    @DisplayName("Fixture 03: Parse command /start")
+    void test03_TextCommandStart() throws Exception {
+        JsonNode fixture = loadFixture("03_text_command_start.json");
+        Optional<InboundMessage> result = adapter.parseUpdate(fixture);
+
+        assertThat(result).isPresent();
+        InboundMessage msg = result.get();
+        assertThat(msg.kind()).isEqualTo("text");
+        assertThat(msg.text()).isEqualTo("/start");
+        assertThat(TelegramAdapter.isCommand(msg)).isTrue();
+    }
+
+    @Test
+    @DisplayName("Fixture 04: Parse command /huongdan")
+    void test04_TextCommandHuongdan() throws Exception {
+        JsonNode fixture = loadFixture("04_text_command_huongdan.json");
+        Optional<InboundMessage> result = adapter.parseUpdate(fixture);
+
+        assertThat(result).isPresent();
+        InboundMessage msg = result.get();
+        assertThat(msg.kind()).isEqualTo("text");
+        assertThat(msg.text()).isEqualTo("/huongdan");
+        assertThat(TelegramAdapter.isCommand(msg)).isTrue();
+    }
+
+    @Test
+    @DisplayName("Fixture 05: Parse photo message and select largest PhotoSize")
+    void test05_PhotoSingle() throws Exception {
+        JsonNode fixture = loadFixture("05_photo_single.json");
+        Optional<InboundMessage> result = adapter.parseUpdate(fixture);
 
         assertThat(result).isPresent();
         InboundMessage msg = result.get();
         assertThat(msg.kind()).isEqualTo("photo");
-        assertThat(msg.text()).isEqualTo("Ảnh chụp màn hình tin nhắn phạt nguội");
+        assertThat(msg.text()).isEqualTo("Ảnh chụp màn hình tin nhắn trúng thưởng");
         assertThat(msg.media()).isNotNull();
-        assertThat(msg.media().fileId()).isEqualTo("largest_id");
-        assertThat(msg.media().fileUniqueId()).isEqualTo("u_largest");
+        assertThat(msg.media().fileId()).isEqualTo("photo_lg_105");
+        assertThat(msg.media().fileUniqueId()).isEqualTo("u_lg_105");
         assertThat(msg.media().mime()).isEqualTo("image/jpeg");
-        assertThat(msg.media().size()).isEqualTo(85000L);
+        assertThat(msg.media().size()).isEqualTo(95000L);
     }
 
     @Test
-    @DisplayName("Parse voice message")
-    void testParseVoiceMessage() throws Exception {
-        String json = """
-            {
-              "update_id": 10004,
-              "message": {
-                "message_id": 45,
-                "from": { "id": 999, "is_bot": false },
-                "chat": { "id": 888, "type": "private" },
-                "date": 1729000000,
-                "voice": {
-                  "file_id": "voice_file_id",
-                  "file_unique_id": "u_voice",
-                  "mime_type": "audio/ogg",
-                  "file_size": 32000,
-                  "duration": 15
-                }
-              }
-            }
-            """;
-        JsonNode update = mapper.readTree(json);
-        Optional<InboundMessage> result = adapter.parseUpdate(update);
+    @DisplayName("Fixture 06: Parse photo album preserving media_group_id")
+    void test06_PhotoAlbum() throws Exception {
+        JsonNode fixture = loadFixture("06_photo_album.json");
+        Optional<InboundMessage> result = adapter.parseUpdate(fixture);
+
+        assertThat(result).isPresent();
+        InboundMessage msg = result.get();
+        assertThat(msg.kind()).isEqualTo("photo");
+        assertThat(msg.mediaGroupId()).isEqualTo("album_987654321");
+        assertThat(msg.media().fileId()).isEqualTo("photo_alb_106");
+    }
+
+    @Test
+    @DisplayName("Fixture 07: Parse voice message")
+    void test07_VoiceOgg() throws Exception {
+        JsonNode fixture = loadFixture("07_voice_ogg.json");
+        Optional<InboundMessage> result = adapter.parseUpdate(fixture);
 
         assertThat(result).isPresent();
         InboundMessage msg = result.get();
         assertThat(msg.kind()).isEqualTo("voice");
         assertThat(msg.media()).isNotNull();
-        assertThat(msg.media().fileId()).isEqualTo("voice_file_id");
+        assertThat(msg.media().fileId()).isEqualTo("voice_107_id");
         assertThat(msg.media().mime()).isEqualTo("audio/ogg");
-        assertThat(msg.media().duration()).isEqualTo(15);
-        assertThat(msg.media().size()).isEqualTo(32000L);
+        assertThat(msg.media().duration()).isEqualTo(22);
+        assertThat(msg.media().size()).isEqualTo(45000L);
     }
 
     @Test
-    @DisplayName("Parse forwarded message origin")
-    void testParseForwardOrigin() throws Exception {
-        String json = """
-            {
-              "update_id": 10005,
-              "message": {
-                "message_id": 46,
-                "from": { "id": 999, "is_bot": false },
-                "chat": { "id": 888, "type": "private" },
-                "date": 1729000000,
-                "text": "Tin nhắn chuyển tiếp từ kênh",
-                "forward_origin": {
-                  "type": "channel"
-                }
-              }
-            }
-            """;
-        JsonNode update = mapper.readTree(json);
-        Optional<InboundMessage> result = adapter.parseUpdate(update);
+    @DisplayName("Fixture 08: Parse audio message")
+    void test08_AudioMp3() throws Exception {
+        JsonNode fixture = loadFixture("08_audio_mp3.json");
+        Optional<InboundMessage> result = adapter.parseUpdate(fixture);
+
+        assertThat(result).isPresent();
+        InboundMessage msg = result.get();
+        assertThat(msg.kind()).isEqualTo("audio");
+        assertThat(msg.media()).isNotNull();
+        assertThat(msg.media().fileId()).isEqualTo("audio_108_id");
+        assertThat(msg.media().mime()).isEqualTo("audio/mpeg");
+        assertThat(msg.media().duration()).isEqualTo(65);
+        assertThat(msg.media().fileName()).isEqualTo("ghi_am_cuoc_goi.mp3");
+    }
+
+    @Test
+    @DisplayName("Fixture 09: Parse document message")
+    void test09_DocumentPdf() throws Exception {
+        JsonNode fixture = loadFixture("09_document_pdf.json");
+        Optional<InboundMessage> result = adapter.parseUpdate(fixture);
+
+        assertThat(result).isPresent();
+        InboundMessage msg = result.get();
+        assertThat(msg.kind()).isEqualTo("document");
+        assertThat(msg.media()).isNotNull();
+        assertThat(msg.media().fileId()).isEqualTo("doc_109_id");
+        assertThat(msg.media().mime()).isEqualTo("application/pdf");
+        assertThat(msg.media().fileName()).isEqualTo("thong_bao_phat_nguoi.pdf");
+        assertThat(msg.media().size()).isEqualTo(120500L);
+    }
+
+    @Test
+    @DisplayName("Fixture 10: Parse forwarded message from channel")
+    void test10_ForwardChannel() throws Exception {
+        JsonNode fixture = loadFixture("10_forward_channel.json");
+        Optional<InboundMessage> result = adapter.parseUpdate(fixture);
 
         assertThat(result).isPresent();
         assertThat(result.get().forwardOrigin()).isEqualTo("channel");
     }
 
     @Test
-    @DisplayName("Ignore message from bot account")
-    void testIgnoreBotMessage() throws Exception {
-        String json = """
-            {
-              "update_id": 10006,
-              "message": {
-                "message_id": 47,
-                "from": { "id": 777, "is_bot": true, "first_name": "SpamBot" },
-                "chat": { "id": 888, "type": "private" },
-                "date": 1729000000,
-                "text": "Alo"
-              }
-            }
-            """;
-        JsonNode update = mapper.readTree(json);
-        Optional<InboundMessage> result = adapter.parseUpdate(update);
+    @DisplayName("Fixture 11: Parse forwarded message from user")
+    void test11_ForwardUser() throws Exception {
+        JsonNode fixture = loadFixture("11_forward_user.json");
+        Optional<InboundMessage> result = adapter.parseUpdate(fixture);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().forwardOrigin()).isEqualTo("user");
+    }
+
+    @Test
+    @DisplayName("Fixture 12: Ignore message from bot account")
+    void test12_BotSenderIgnored() throws Exception {
+        JsonNode fixture = loadFixture("12_bot_sender.json");
+        Optional<InboundMessage> result = adapter.parseUpdate(fixture);
 
         assertThat(result).isEmpty();
     }
 
     @Test
-    @DisplayName("Truncate text over 4000 characters")
-    void testTruncateLongText() throws Exception {
-        String longText = "a".repeat(5000);
-        String json = """
-            {
-              "update_id": 10007,
-              "message": {
-                "message_id": 48,
-                "from": { "id": 999, "is_bot": false },
-                "chat": { "id": 888, "type": "private" },
-                "date": 1729000000,
-                "text": "%s"
-              }
-            }
-            """.formatted(longText);
-        JsonNode update = mapper.readTree(json);
-        Optional<InboundMessage> result = adapter.parseUpdate(update);
+    @DisplayName("Fixture 13: Parse callback query for Fast Path button clicks")
+    void test13_CallbackQuery() throws Exception {
+        JsonNode fixture = loadFixture("13_callback_query.json");
+
+        // parseUpdate returns empty for callback_query (slow path ignores it)
+        assertThat(adapter.parseUpdate(fixture)).isEmpty();
+
+        // parseCallbackQuery extracts callback details for fast path
+        Optional<TelegramCallbackQuery> cbOpt = adapter.parseCallbackQuery(fixture);
+        assertThat(cbOpt).isPresent();
+        TelegramCallbackQuery cb = cbOpt.get();
+        assertThat(cb.updateId()).isEqualTo("10013");
+        assertThat(cb.queryId()).isEqualTo("cb_query_10013");
+        assertThat(cb.userId()).isEqualTo("tg:111111");
+        assertThat(cb.chatId()).isEqualTo("222222");
+        assertThat(cb.messageId()).isEqualTo("101");
+        assertThat(cb.data()).isEqualTo("action:confirm_report");
+    }
+
+    @Test
+    @DisplayName("Fixture 14: Truncate message text over 4000 characters")
+    void test14_TextLongTruncated() throws Exception {
+        JsonNode fixture = loadFixture("14_text_long_truncated.json");
+        Optional<InboundMessage> result = adapter.parseUpdate(fixture);
 
         assertThat(result).isPresent();
         assertThat(result.get().text()).hasSize(4000);
     }
 
     @Test
-    @DisplayName("Verify InboundMessage serializes to valid JSON matching schema")
-    void testJsonRoundTripSerialization() throws Exception {
-        String json = """
-            {
-              "update_id": 10008,
-              "message": {
-                "message_id": 49,
-                "from": { "id": 999, "is_bot": false },
-                "chat": { "id": 888, "type": "private" },
-                "date": 1729000000,
-                "text": "Kiểm tra serialization"
-              }
-            }
-            """;
-        JsonNode update = mapper.readTree(json);
-        InboundMessage msg = adapter.parseUpdate(update).orElseThrow();
+    @DisplayName("Verify round-trip JSON serialization matches InboundMessage contract")
+    void testJsonRoundTripContract() throws Exception {
+        JsonNode fixture = loadFixture("01_text_simple.json");
+        InboundMessage msg = adapter.parseUpdate(fixture).orElseThrow();
 
         String serialized = mapper.writeValueAsString(msg);
         JsonNode tree = mapper.readTree(serialized);
 
         assertThat(tree.path("channel").asText()).isEqualTo("telegram");
-        assertThat(tree.path("user_id").asText()).isEqualTo("tg:999");
-        assertThat(tree.path("chat_id").asText()).isEqualTo("888");
-        assertThat(tree.path("message_id").asText()).isEqualTo("49");
+        assertThat(tree.path("update_id").asText()).isEqualTo("10001");
+        assertThat(tree.path("chat_id").asText()).isEqualTo("222222");
+        assertThat(tree.path("user_id").asText()).isEqualTo("tg:111111");
+        assertThat(tree.path("message_id").asText()).isEqualTo("101");
         assertThat(tree.path("kind").asText()).isEqualTo("text");
         assertThat(tree.has("received_at")).isTrue();
+    }
+
+    @Test
+    @DisplayName("Handles empty update, null, or unsupported update gracefully")
+    void testEmptyAndUnsupportedUpdates() throws Exception {
+        assertThat(adapter.parseUpdate(null)).isEmpty();
+        assertThat(adapter.parseCallbackQuery(null)).isEmpty();
+
+        JsonNode emptyNode = mapper.readTree("{}");
+        assertThat(adapter.parseUpdate(emptyNode)).isEmpty();
+        assertThat(adapter.parseCallbackQuery(emptyNode)).isEmpty();
+
+        // Unsupported sticker / video without text
+        String stickerUpdate = """
+            {
+              "update_id": 99999,
+              "message": {
+                "message_id": 555,
+                "from": { "id": 111111, "is_bot": false },
+                "chat": { "id": 222222, "type": "private" },
+                "date": 1729000000,
+                "sticker": { "file_id": "sticker_id" }
+              }
+            }
+            """;
+        assertThat(adapter.parseUpdate(mapper.readTree(stickerUpdate))).isEmpty();
+
+        // Missing required fields (e.g. chat id is missing)
+        String missingChatUpdate = """
+            {
+              "update_id": 99998,
+              "message": {
+                "message_id": 556,
+                "from": { "id": 111111, "is_bot": false },
+                "date": 1729000000,
+                "text": "Hello"
+              }
+            }
+            """;
+        assertThat(adapter.parseUpdate(mapper.readTree(missingChatUpdate))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Parse legacy forward fields (forward_from, forward_sender_name, forward_from_chat)")
+    void testLegacyForwardFields() throws Exception {
+        // forward_from
+        String forwardFrom = """
+            {
+              "update_id": 8801,
+              "message": {
+                "message_id": 601,
+                "from": { "id": 111111, "is_bot": false },
+                "chat": { "id": 222222, "type": "private" },
+                "date": 1729000000,
+                "text": "Fwd",
+                "forward_from": { "id": 222, "first_name": "Bob" }
+              }
+            }
+            """;
+        assertThat(adapter.parseUpdate(mapper.readTree(forwardFrom)).get().forwardOrigin()).isEqualTo("user");
+
+        // forward_sender_name
+        String forwardSenderName = """
+            {
+              "update_id": 8802,
+              "message": {
+                "message_id": 602,
+                "from": { "id": 111111, "is_bot": false },
+                "chat": { "id": 222222, "type": "private" },
+                "date": 1729000000,
+                "text": "Fwd hidden",
+                "forward_sender_name": "Hidden User"
+              }
+            }
+            """;
+        assertThat(adapter.parseUpdate(mapper.readTree(forwardSenderName)).get().forwardOrigin()).isEqualTo("hidden_user");
+
+        // forward_from_chat non-channel
+        String forwardFromGroup = """
+            {
+              "update_id": 8803,
+              "message": {
+                "message_id": 603,
+                "from": { "id": 111111, "is_bot": false },
+                "chat": { "id": 222222, "type": "private" },
+                "date": 1729000000,
+                "text": "Fwd group",
+                "forward_from_chat": { "id": -555, "type": "supergroup" }
+              }
+            }
+            """;
+        assertThat(adapter.parseUpdate(mapper.readTree(forwardFromGroup)).get().forwardOrigin()).isEqualTo("chat");
     }
 }
