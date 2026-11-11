@@ -1,0 +1,69 @@
+# Chạy lại benchmark OCR (AI-20, Gate G2) để số trong docs/results/ocr-spike.md tái lập được:
+# RapidOCR + cột (cấu hình G2) và đường production `askfirst` (AI-26, fp32 và int8) trên bộ 50 ảnh phát triển và
+# bộ 16 ảnh độc lập, lưu kết quả thô + báo cáo làm artifact. Trước đó chạy test OCR với model thật.
+# Đo trên runner Linux, khoá 2 lõi và 2 luồng onnxruntime cho gần cấu hình Lambda 3008 MB (~1,7 vCPU).
+# Đây vẫn chỉ là số đo thay thế, KHÔNG phải số trên Lambda thật (AI-26).
+name: OCR bench
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - eval/ocr_benchmark.py
+      - ai/src/askfirst/local_models/**
+      - ai/scripts/fetch_ocr_models.py
+      - ai/config/artifacts.yaml
+      - eval/datasets/ocr_images.jsonl
+      - eval/assets/ocr/**
+      - eval/testocr/**
+      - .github/workflows/ocr-bench.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ocr-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OCR_THREADS: "2"
+      OCR_MODELS_DIR: ${{ github.workspace }}/.ocr-models/fp32
+      OCR_MODELS_DIR_INT8: ${{ github.workspace }}/.ocr-models/int8
+      PY_DEPS: --no-project --python 3.12 --with rapidocr==3.10.0 --with onnxruntime==1.31.0 --with numpy --with pillow --with pydantic
+      ENGINES: rapidocr_cols askfirst askfirst_int8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Tải model (kiểm sha256) và tạo bản int8
+        working-directory: ai
+        run: uv run --with onnx python scripts/fetch_ocr_models.py "$OCR_MODELS_DIR" --int8 "$OCR_MODELS_DIR_INT8"
+      - name: Test OCR với model thật
+        working-directory: ai
+        run: uv run pytest tests/unit/test_ocr.py
+      - name: Bộ 50 ảnh phát triển
+        run: |
+          mkdir -p out
+          /usr/bin/time -v -o out/time-dev.txt taskset -c 0,1 uv run $PY_DEPS python eval/ocr_benchmark.py \
+            --engines $ENGINES --raw-dir out/raw-dev --out out/report-dev.md
+      - name: Bộ 16 ảnh độc lập
+        run: |
+          /usr/bin/time -v -o out/time-test.txt taskset -c 0,1 uv run $PY_DEPS python eval/ocr_benchmark.py \
+            --engines $ENGINES --dataset eval/testocr/test_images.jsonl \
+            --raw-dir out/raw-test --out out/report-test.md
+      - name: Tóm tắt
+        if: always()
+        run: |
+          for s in dev test; do
+            echo "### $s: RAM đỉnh cả tiến trình (3 engine), $(grep 'Maximum resident' out/time-$s.txt 2>/dev/null)" >> "$GITHUB_STEP_SUMMARY"
+            sed -n '/^## 3\./,/^## 4\./p' out/report-$s.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ocr-bench-${{ github.run_id }}
+          path: out/
+          retention-days: 30

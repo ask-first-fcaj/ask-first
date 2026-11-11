@@ -43,7 +43,7 @@ Mục tiêu: **AI không phải chờ BE.** (Từ ARCH v3.4, Mini App là MVP+ n
 
 1. **Contract-first.** Tuần 1 cả team chốt **hợp đồng dữ liệu** (§3): Pydantic model (xuất ra JSON Schema cho Java), format message SQS, format bộ eval, fixtures JSON cho từng `op`. Sau đó mỗi track code theo hợp đồng của mình.
 2. **AI là một Lambda Python riêng, lõi là thư viện thuần.** Mọi code AI nằm trong `ai/src/askfirst/` (`pipeline/`, `local_models/`, `llm/`; phần chạm AWS gom ở `handler.py`, `media/`, `cache/`, `artifacts/`). Lõi `pipeline/` **không import** `handler`, `media`, `cache`, `artifacts`. AI chạy và test được trên laptop bằng CLI (`uv run python -m askfirst.cli analyze …`) và bằng bộ eval, **không cần AWS** (trừ lúc gọi Bedrock), và **không cần Java**.
-3. **BE dùng `ai` bản stub cho tới khi AI xong.** Từ tuần 2, Lambda `ai` deploy với `PIPELINE_IMPL=stub` (trả kết quả giả theo từ khoá, §3.5), nên luồng Telegram → Java worker → `ai` → trả lời chạy được end-to-end từ sớm. Khi AI xong thì đổi `PIPELINE_IMPL=real`, Java không đổi gì. Test Java dùng `FakeAiClient` đọc `contracts/fixtures/`, không cần Python.
+3. **BE dùng `ai` bản stub cho tới khi AI xong.** Từ tuần 2, Lambda `ai` deploy với `PIPELINE_IMPL=stub` (trả kết quả giả theo từ khoá, §3.5), nên luồng Telegram → Java worker → `ai` → trả lời chạy được end-to-end từ sớm. Khi AI xong thì đổi `PIPELINE_IMPL=real`, Java không đổi gì. Test Java không cần Python: worker dùng bản giả `AiClient` trong bộ nhớ, `AiContractTest` và `LambdaAiClientTest` đọc `contracts/fixtures/`.
 4. **(MVP+) Nếu làm Mini App:** FE dùng mock API sinh từ `contracts/openapi.yaml` (MSW hoặc json-server), lúc ghép API thật chỉ đổi base URL.
 5. **Tích hợp theo lát cắt dọc (vertical slice).** Mỗi mốc ghép một loại input chạy thật từ đầu đến cuối: văn bản (W3) → ảnh + người thân (W4) → RAG (W5); voice ⏸ hoãn. Không ghép một lần vào cuối.
 6. **Feature flag:** `PIPELINE_IMPL` là biến môi trường (§3.5). Các cờ bật tắt lúc chạy nằm ở DynamoDB `CONFIG#global/FLAGS` (ARCH §5.8): `llm_enabled`, `feature_image`, `feature_voice`, `feature_rag` được truyền cho AI qua `Flags` (§3.3); `feature_guardian` chỉ BE đọc. Tính năng chưa xong vẫn merge được nhưng tắt.
@@ -618,7 +618,7 @@ pricing_usd_per_1m:            # dùng để tính Verdict.cost_usd_est; cập n
 | Có ảnh hoặc voice, không khớp dòng nào ở trên | `UNSURE`, score 30 |
 | Còn lại | `LOW_RISK`, score 10, `group="N0"`, `scenario="N0"` |
 
-Mọi trường hợp: `path="fast"`, `versions={"contract": CONTRACT_VERSION, "pipeline": "stub"}`, `masked_text` = text gốc (stub không mask, **chỉ dùng ở bot `dev`**). `render` của stub trả 1 tin `"[STUB] <level> <scenario>"` kèm nút `report_wrong`; `render_guardian_alert` trả `"[STUB] cảnh báo <elder_name>"` kèm nút `ack`. Output của stub cho mỗi dòng bảng trên được chụp thành `contracts/fixtures/<op>/<case>.json` (request + response) để `FakeAiClient` phía Java dùng lại.
+Mọi trường hợp: `path="fast"`, `versions={"contract": CONTRACT_VERSION, "pipeline": "stub"}`, `masked_text` = text gốc (stub không mask, **chỉ dùng ở bot `dev`**). `render` của stub trả 1 tin `"[STUB] <level> <scenario>"` kèm nút `report_wrong`; `render_guardian_alert` trả `"[STUB] cảnh báo <elder_name>"` kèm nút `ack`. Output của stub cho mỗi dòng bảng trên được chụp thành `contracts/fixtures/<op>/<case>.json` (request + response) để `AiContractTest` và `LambdaAiClientTest` phía Java dùng lại.
 
 ### 3.6 Dựng `Bundle` từ các `InboundMessage` (AI2, trong Lambda `ai`)
 
@@ -652,7 +652,7 @@ Mỗi dòng một mẫu:
  "input":{"text":"Quý khách có biên bản phạt nguội…","entities":[],"image":null,"audio":null,"forward_origin":"hidden_user"},
  "label":{"is_scam":true,"group":"N1","scenario":"N1.4","min_level":"SUSPICIOUS","max_level":null,
           "must_signals":["U_TYPOSQUAT"],"risky_actions":["click_link"]},
- "source_url":"https://…","author":"AI2","notes":""}
+ "source_url":"https://…","author":"AI2","notes":"","provenance":"rewritten"}
 ```
 
 | Trường | Quy ước |
@@ -663,6 +663,8 @@ Mỗi dòng một mẫu:
 | `label.min_level` | Bắt buộc khi `is_scam=true` |
 | `label.max_level` | Bắt buộc khi `is_scam=false`; thường là `"UNSURE"` |
 | `source_url` | Bắt buộc với mẫu viết lại từ cảnh báo chính thức |
+| `label.scenario` | Mã kịch bản research-concept §2.2 (`N0`, `N1.1`…`N6`, `OTHER`); `group` = phần trước dấu chấm. Cách gán: `eval/LABELING.md` |
+| `provenance` | `rewritten` \| `ai_drafted` \| `constructed` \| `real_anonymized`; bắt buộc với 4 split `real_scam`/`benign_*`/`hard`. Mẫu `ai_drafted` cần người thứ hai duyệt nhãn (`eval/LABELING.md` mục 10) |
 
 `eval/run_eval.py` đổi mỗi dòng thành `Bundle` (đọc file ảnh/voice thành bytes), gọi `pipeline.analyze()` với `Flags()` mặc định, **không cần BE**. Định nghĩa chỉ số (dùng thống nhất ở G1, M4, CI):
 
@@ -821,7 +823,7 @@ def test_callback_data_fits_telegram_limit() -> None:  # callback_data ≤ 64 by
 
 ### 3.10 Schema KB: `kb/*.yaml` (owner AI2)
 
-Mỗi mục có nguồn thì có `source_url` và `verified_at` (`YYYY-MM-DD`). CI báo đỏ nếu một mục trong `hotlines.yaml` có `verified_at` cũ hơn 30 ngày.
+Mỗi mục có nguồn thì có `source_url` và `verified_at` (`YYYY-MM-DD`). CI của PR báo đỏ nếu `verified_at` trống hoặc sai định dạng. Job định kỳ `kb-freshness.yml` (hằng tuần) báo đỏ nếu một mục trong `hotlines.yaml` có `verified_at` cũ hơn 30 ngày, để hotline hết hạn không chặn các PR không liên quan.
 
 ```yaml
 # kb/scenarios.yaml: scenario card (ARCH §6.5)
@@ -861,6 +863,14 @@ suffixes: [gov.vn]
 - {id: police_113, name: "Công an (khẩn cấp)", kind: phone, value: "113", source_url: "https://…", verified_at: 2026-10-14}
 ```
 
+**Mở rộng so với ví dụ trên (đã có trong `kb/`, kiểm bằng `scripts/validate_kb.py`):**
+
+- `hotlines.yaml`: `kind` ∈ {`phone`, `app`}. Với `phone`, `value` chỉ gồm chữ số, không khoảng trắng (code BE đọc số để hiện nút gọi). Với `app` (ví dụ `vneid_report`), `value` là văn bản hướng dẫn tự do, **không** phải số điện thoại: code BE phải rẽ nhánh theo `kind`, không giả định mọi mục là `phone`. Host của `source_url` phải thuộc `allowlist.yaml` hoặc `.gov.vn`.
+- `scenarios.yaml`: `code` phải nằm trong bảng mã `eval/validate.py` (`SCENARIOS`). Mỗi nguồn trong `sources` có thể có `tier: media` (báo thương mại dẫn lại cảnh báo của công an). Nguồn nội bộ dạng `docs/...` phải là file tồn tại.
+- `allowlist.yaml`: mục có thể có `evidence: redirect` khi chỉ có bằng chứng là tên miền chuyển hướng về trang chính thức.
+- `checklist.yaml`: danh sách `{id, title, steps[]}`; mỗi bước có `id`, `phase`, `action`, `detail`, `sources`, `verified_at`, và `hotline_ref`: `id` trong `hotlines.yaml`, `null` (bước không cần gọi), hoặc giá trị đặc biệt `bank_of_victim` (ngân hàng của nạn nhân, không có số cố định; cách hiển thị do SH-08 quyết). `action` và `detail` không được chứa số điện thoại.
+- `rules.yaml` (AI-23): engine ở `ai/src/askfirst/pipeline/signals.py`, pattern chạy trên `normalize.fold()` của bản đã mask. Mỗi luật có `code`, `weight`, `hard`, `patterns`, và tuỳ chọn `requires` (phải khớp thêm), `unless` (khớp thì bỏ luật), `negatable` (bỏ đoạn khớp có từ phủ định đứng trước, ví dụ "không bao giờ yêu cầu cung cấp mã OTP"), `url` (`required` / `forbidden` / `hard` = thành luật cứng khi tin có URL), `unless_codes`. Không có `hard_floor`, `combos`, `explain`: sàn và tổ hợp nằm ở `fuse.py`, câu giải thích ở `kb/templates/signals.j2`.
+
 > Pattern trong `rules.yaml` ở trên chỉ là **ví dụ về định dạng**; AI2 viết pattern thật ở AI-23 và mỗi luật phải có test dương và test âm.
 
 ### 3.11 API Mini App: `contracts/openapi.yaml` (owner BE2), **MVP+, không thuộc gate G0**
@@ -877,7 +887,7 @@ Chỉ viết khi quyết định làm Mini App. Đủ các endpoint ở ARCH §1
 |---|---|---|---|
 | **G0: Contracts** | W1 (23/10) | `ai/src/askfirst/domain/models.py` + `export.py` (§3.3), `contracts/schema/*.json` đã sinh, `ai/tests/contract/test_models.py` (§3.9), `StubPipeline` + fixtures trong `contracts/fixtures/` (§3.5), `ai/config/models.yaml` và `ai/config/artifacts.yaml` khung (§3.5) đã merge vào `main` | Job `contract` trong CI xanh: `uv run pytest tests/contract` (Python) **và** `./mvnw test -Dtest='**/contract/*'` (Java đọc fixtures, validate schema); 1 BE + 1 AI đã duyệt; AI chạy được `build_pipeline("stub", …)` từ máy dev. Codegen Java (jsonschema2pojo) có thể xong muộn hơn ở BE-05b, không chặn G0 |
 | **G1: Chốt LLM** | W2 (30/10) | Xác nhận Qwen3 32B (ARCH §6.9) | Trên 100 mẫu với prompt v0: JSON hợp lệ ≥ 98%, p95 ≤ 5 giây, recall sơ bộ ≥ 85%, biết cách tắt thinking. Không đạt thì làm theo phương án dự phòng ở §9 |
-| **G2: Chốt OCR** | W2 (30/10) | Chọn stack OCR (ARCH §6.0, §6.3). Phần ASR ⏸ hoãn cùng AI-21 | OCR: chép đúng URL ≥ 90%, CER ≤ 5% trên 50 ảnh |
+| **G2: Chốt OCR** | W2 (30/10) | Chọn stack OCR (ARCH §6.0, §6.3). Phần ASR ⏸ hoãn cùng AI-21 | OCR: chép đúng URL ≥ 90%, CER ≤ 10% trên tập ảnh độc lập (hạ từ 5%, ADR-003) |
 | **M1: Text E2E** | W3 (06/11) | Chuyển tiếp tin "phạt nguội" có link giả → bot trả kết luận thật (luật + Qwen3) | Demo trên bot `dev`; 20 mẫu văn bản đúng ≥ 85% |
 | **M2: Ảnh + người thân** | W4 (13/11) | Ảnh chụp màn hình → OCR local → kết luận; điện thoại của "con" nhận cảnh báo | p95 ảnh ≤ 15 giây (warm); luồng double opt-in chạy đủ |
 | **M3: RAG** | W5 (20/11) | RAG: kết luận kèm trích nguồn cảnh báo (voice ⏸ hoãn) | Recall@4 scenario card ≥ 90% trên `real_scam`; truy vấn < 100 ms |
@@ -923,7 +933,7 @@ Việc chung chạy xuyên suốt: SH-03 (mỗi người 25 mẫu eval ở W1–
 | Mã | Việc | Owner | Tuần | Cỡ | Xong khi |
 |---|---|---|---|---|---|
 | SH-01 | Kickoff: cả team đọc ARCH và §3; **AI1** copy `models.py`, `export.py` + test contract từ §3.3 và §3.9 vào `ai/`, sinh `contracts/schema/`, viết `StubPipeline` theo bảng §3.5 và ghi fixtures; **BE2** duyệt và viết `TelegramAdapter.parseUpdate` (Java) tạo đúng `InboundMessage` hợp lệ theo schema | Cả team (AI1, BE2 chính) | W1 | M | Gate G0 qua |
-| SH-02 | Hướng dẫn gán nhãn: mỗi kịch bản N0–N6 có định nghĩa, 2 ví dụ dương, 1 ví dụ dễ nhầm (`eval/LABELING.md`) | AI2 (chính), AI1 | W1 | S | 4 người gán thử cùng 10 mẫu, đồng ý ≥ 8/10 |
+| SH-02 | Hướng dẫn gán nhãn: mỗi kịch bản N0–N6 có định nghĩa, 2 ví dụ dương, 1 ví dụ dễ nhầm (`eval/LABELING.md`) | AI2 (chính), AI1 | W1 | S | AI1 duyệt guide và các mã thêm vào research-concept §2.2 (bỏ gán thử 4 người, 30/10/2026) |
 | SH-03 | Bộ eval: **v0 = 100 mẫu** (mỗi người 25 mẫu, W1–W2) → **v1 = 300 mẫu** (W5) theo cơ cấu ARCH §6.11. Mẫu lừa đảo **viết lại từ cảnh báo chính thức, kèm URL nguồn**; **không** sinh bằng LLM | Cả team | W1–W4 | M mỗi người | `python -m eval.validate` pass (đúng schema, không trùng, đủ số lượng từng split) |
 | SH-04 | Phỏng vấn người dùng: 5 người cao tuổi, 5 con cháu (câu hỏi ở research-concept §9). Ghi chú ở `research/interviews/` (đã ẩn danh) | Cả team | W1–W2 | S mỗi người | 10 bản ghi chú + 1 trang tổng hợp insight |
 | SH-05 | Xác minh hotline và kênh trình báo (113, công an xã, hotline các ngân hàng lớn, kênh tố giác VNeID…) **chỉ từ trang chính thức** | AI2 + BE2 | W2–W3 | S | Mọi mục trong `kb/hotlines.yaml` có `source_url` và `verified_at` |
@@ -952,7 +962,7 @@ Code Java **và** hạ tầng của lane A: SQS/DLQ, SnapStart, IAM và image c�
 | Mã | Việc | Tuần | Cỡ | Cần trước | Xong khi |
 |---|---|---|---|---|---|
 | BE-05 | **Bedrock ở `ap-southeast-2`**: bật model access (Qwen3 32B, gpt-oss-120b, Gemma 3 12B, Nova Lite, Qwen3 VL 235B để thử); **xin tăng quota ngay**; ghi model ID copy từ console vào `ai/config/models.yaml` | W1 | S | BE-01 | AI1 gọi được Converse tới Qwen3 32B từ máy dev |
-| BE-05b | **Codegen + `AiClient` (Java)**: plugin jsonschema2pojo đọc `contracts/schema/`, sinh class vào `target/generated-sources` (Jackson, `SNAKE_CASE`); `AiClient` (`InvokeFunction`, timeout 95 giây, không retry SDK, map `FunctionError` → `retryable`); `FakeAiClient` đọc `contracts/fixtures/`; test contract phía Java (§3.9). **Spike W1:** xác nhận jsonschema2pojo sinh đúng enum, `Instant`, trường tuỳ chọn, `Map<String,Integer>` từ schema ở §3.3; không ổn thì viết tay `record` + giữ `FixturesRoundTripTest` làm lưới an toàn (ghi ADR-000b) | W1–W2 | M | G0 | `./mvnw test -Dtest='**/contract/*'` xanh với fixtures của `StubPipeline`; ADR-000b có kết luận codegen |
+| BE-05b | **Codegen + `AiClient` (Java)**: `AiContract` (Java `record` viết tay theo `models.py`, Jackson, `@JsonProperty` snake_case, thay cho codegen jsonschema2pojo: ADR-000b); `AiClient` + `LambdaAiClient` (`InvokeFunction`, timeout 95 giây, không retry SDK, map `FunctionError` → `retryable`); test contract phía Java (§3.9): `AiContractTest` đọc `contracts/fixtures/`; test worker dùng bản giả trong bộ nhớ (`Fakes.FakeAi`). **Spike W1:** xác nhận jsonschema2pojo sinh đúng enum, `Instant`, trường tuỳ chọn, `Map<String,Integer>` từ schema ở §3.3; **Kết luận: viết tay `record`**, `AiContractTest` làm lưới an toàn (ADR-000b) | W1–W2 | M | G0 | `AiContractTest` xanh với fixtures của `StubPipeline` (mọi field Java sinh ra phải có trong fixture); ADR-000b có kết luận codegen |
 | BE-22 | **Webhook handler (Java)**: kiểm secret bằng `MessageDigest.isEqual` (constant-time, không dùng `String.equals`), dedup `update_id` (conditional put, TTL 24 giờ), chỉ nhận chat private, đường nhanh (lệnh, callback) hoặc đường chậm (gửi "⏳" rồi enqueue); luôn trả 200 nhanh; secret đọc lười sau SnapStart restore | W2 | M | BE-03, BE-21 (dùng fixtures của BE-21 khi adapter chưa xong) | Test: secret sai trả 401; gửi trùng update thì chỉ xử lý 1 lần; p95 handler < 500 ms (warm) |
 | BE-07 | Đường ống SQS → worker (Java): event source mapping (batch 1, **max concurrency 5**, ReportBatchItemFailures), visibility **720 giây** (6 × timeout 120 giây của worker), `maxReceiveCount=5`, alarm DLQ; xử lý DLQ: gửi người dùng câu "Bot đang bận"; bật **SnapStart** cho `webhook`/`worker` (published version + alias) | W2–W3 | M | BE-03 | Test: job lỗi 5 lần thì vào DLQ, alarm bắn, người dùng nhận tin báo bận; đo cold start Java có/không SnapStart, ghi ADR |
 | BE-24b | **Repos lane A** (Java, trên nền `store/` của BE-24): `CHECK#`, `SESSION#`, `BUFFER#`, `DEDUP#`, `ALERT#`, `ALERTLOCK#`, `CONFIG#global/FLAGS` (ARCH §7) | W2 | S | BE-24 (phần nền) | Unit test CRUD + TTL + conditional write pass, dùng chung cấu hình Testcontainers của BE-24 |
@@ -1127,7 +1137,7 @@ Code Java **và** hạ tầng của lane B: nền DynamoDB, CI/CD, stage `prod`,
 - Cách đảo ngược: (nếu sai thì đổi lại thế nào)
 ```
 
-ADR dự kiến: 001 Bedrock/Qwen3 spike · 002 chốt LLM (G1) · 003 OCR (G2) · 004 ASR (G2) · 005 ngưỡng · 006 VLM fallback · 007 cold start / đóng gói · 000b codegen Java từ JSON Schema.
+ADR dự kiến: 001 Bedrock/Qwen3 spike · 002 chốt LLM (G1) · 003 OCR (G2) · 004 ASR (G2) · 005 ngưỡng · 006 VLM fallback · 007 cold start / đóng gói · 000b contract Java viết tay thay codegen.
 
 ---
 

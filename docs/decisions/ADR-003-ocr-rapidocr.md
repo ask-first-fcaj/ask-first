@@ -1,7 +1,7 @@
-# ADR-003: Chọn RapidOCR cho OCR local (có điều kiện)
+# ADR-003: Chọn RapidOCR cho OCR local
 
-- **Trạng thái:** Chấp nhận **có điều kiện** (chưa qua Gate G2). Chưa phải kết luận cuối.
-- **Ngày:** 2026-10-22
+- **Trạng thái:** Chấp nhận. **Gate G2 đạt về độ chính xác** (2026-10-30, xem mục "Chốt Gate G2"). Độ trễ trên Lambda còn là điều kiện mở của AI-26, phải xong trước M2.
+- **Ngày:** 2026-10-22 (chốt G2: 2026-10-30)
 - **Người quyết định:** AI1 (chốt hướng); AI2 (chạy đo, xem `docs/results/ocr-spike.md`)
 - **Task:** AI-20 (spike), AI-26 (OCR production). Issue #17.
 
@@ -33,11 +33,11 @@ Pipeline giữ cả URL gốc lẫn URL đã sửa (ARCH yêu cầu).
 - Tesseract và Paddle + VietOCR chép URL quá thấp.
 - Phóng ×2 ảnh rộng và bộ đọc Latinh PP-OCRv5 không cải thiện, nên không dùng.
 
-## Điều kiện (mục 1 và 4 đã xong; mục 2 hoãn sang AI-26)
+## Điều kiện (mục 1, 3, 4 đã xong; mục 2 còn mở ở AI-26)
 
-1. **Kiểm tra độc lập (xong, 2026-10-23, PR #99):** 16 ảnh mới (`eval/testocr/`, 18 URL, 20 SĐT), không sửa code hay regex, chạy đúng một lần. URL nghiêm ngặt 15/18 (83%, CI 61–94%); sau `repair_urls` 17/18 (94%, CI 74–99%), vượt ngưỡng 90%; SĐT 20/20; CER 7.2% (CI 5.9–8.7%). Chi tiết: `docs/results/ocr-spike.md` mục 8. Hạn chế: 18 URL là mẫu nhỏ (cận dưới CI 74%); không có regex thì chỉ 83%, dưới 90%; p50 trên tập này 5,35 s (máy dev), cao hơn 1,91 s của tập 50 ảnh; nhãn 16 ảnh chưa có AI1 duyệt.
-2. **Đo trên Lambda ở AI-26 (hoãn theo quyết định của team 2026-10-23, chưa làm):** cold start, RAM đỉnh, p95 so với 3 giây ở 3–4 GB. Số hiện tại là máy dev 18 luồng, không so trực tiếp được. Mới thử Docker giả lập (3008 MB, 2 lõi, 4 ảnh, khoảng 2 giây mỗi ảnh).
-3. **Đưa luật cột và `repair_urls`/`repair_phones` vào code pipeline** kèm test (AI-26).
+1. **Kiểm tra độc lập (xong, 2026-10-23, PR #99):** 16 ảnh mới (`eval/testocr/`, 18 URL, 20 SĐT), không sửa code hay regex, chạy đúng một lần. URL nghiêm ngặt 15/18 (83%, CI 61–94%); sau `repair_urls` 17/18 (94%, CI 74–99%), vượt ngưỡng 90%; SĐT 20/20; CER 7.2% (CI 5.9–8.7%). Chi tiết: `docs/results/ocr-spike.md` mục 8. Hạn chế: 18 URL là mẫu nhỏ (cận dưới CI 74%); không có regex thì chỉ 83%, dưới 90%; p50 trên tập này 5,35 s (máy dev), cao hơn 1,91 s của tập 50 ảnh; nhãn 16 ảnh chưa có AI1 duyệt. **Chạy lại trên CI (30/10/2026, PR #105, `ocr-spike.md` mục 9):** ra cùng số URL và CER trên Linux. Bộ 16 ảnh không có ảnh ghép 2 khung, nên `order_by_columns` chưa được kiểm độc lập. Nhãn 16 ảnh AI1 đã soát lại (2026-10-30), không sửa.
+2. **Đo trên Lambda ở AI-26 (hoãn theo quyết định của team 2026-10-23, chưa làm):** cold start, RAM đỉnh, p95 so với 3 giây ở 3–4 GB. Số hiện tại là máy dev 18 luồng, không so trực tiếp được. Mới thử Docker giả lập (3008 MB, 2 lõi, 4 ảnh, khoảng 2 giây mỗi ảnh). Số đo thay thế trên GitHub Actions (Linux, khoá 2 lõi, onnxruntime 2 luồng, 30/10/2026): p95 1.63 s (50 ảnh) và 1.12 s (16 ảnh); RAM đỉnh 826 MB. Vẫn chưa phải Lambda: chưa có cold start, chưa tính tải model.
+3. **Đưa luật cột và `repair_urls`/`repair_phones` vào code pipeline** kèm test (xong ở AI-26, 2026-11-03): `ai/src/askfirst/local_models/ocr.py`, test ở `ai/tests/unit/test_ocr.py`. `eval/ocr_benchmark.py` import lại từ đây. Chạy trên CI bằng model production fp32: URL 31/32 (97%) trên 50 ảnh, 17/18 (94%) trên 16 ảnh, CER 12.8% và 7.1% (`ocr-spike.md` mục 10). Lượt này runner chậm hơn mục 9 (p95 3.15 s / 2.32 s, cấu hình RapidOCR + cột cũng lên 3.00 s), nên không thay số đo thay thế ở điều kiện 2.
 4. **Quy ước URL bị mờ (`oi-015`, `oi-020`, `oi-039`):** AI1 đã xác nhận: URL có phần bị mờ không đưa vào `urls` và không dùng để đo exact-match. Báo cáo ghi cả hai mẫu số (32 và 33).
 
 ## CER so với mục tiêu G2
@@ -48,12 +48,29 @@ Issue #17 ban đầu đặt CER ≤ 5%. Kết quả: 12.9% trên 50 ảnh, 7.2% 
 
 Lưu ý: ngưỡng này đặt **sau khi đã thấy số đo**, không phải ngưỡng đặt trước. Số 12.9% trên 50 ảnh tuning vẫn trên 10%. Ngưỡng 10% chưa có căn cứ độc lập ngoài việc URL mới là chỉ số chính.
 
+## Chốt Gate G2 (AI1, 2026-10-30)
+
+Tiêu chí G2 trong plan §4: chép đúng URL ≥ 90%, CER ≤ 10% trên tập ảnh độc lập.
+
+- URL: 17/18 (94%, CI 74–99%) sau `repair_urls` trên 16 ảnh độc lập: **đạt**. Không có `repair_urls` thì 15/18 (83%), nên `repair_urls` là **bắt buộc** trong pipeline (điều kiện 3).
+- CER: 7.2% (CI 5.9–8.7%): **đạt** ngưỡng 10% (ngưỡng đặt sau khi thấy số, xem mục trên).
+- Số đo chạy lại được trên CI (PR #105); nhãn 16 ảnh AI1 đã soát (PR #109).
+
+**Quyết định: G2 đạt về độ chính xác, chọn RapidOCR.** Phần độ trễ (điều kiện 2) không nằm trong tiêu chí G2 của plan nên không chặn G2, nhưng chuyển thành điều kiện của AI-26 và M2: đo trên Lambda thật, p95 > 3 giây ở 3–4 GB hoặc image > 2 GB thì mở lại ADR này theo thứ tự ở mục dưới.
+
+Rủi ro chấp nhận: cận dưới CI của URL là 74% (mẫu 18 URL nhỏ). AI-26 thêm ảnh vào bộ độc lập khi có ảnh mới, và eval M2 đo lại URL trên ảnh thật đi qua pipeline.
+
 ## Nếu điều kiện 1 hoặc 2 không đạt
 
 Không coi G2 là đạt. Xem lại theo thứ tự: tiền xử lý ảnh, rồi VLM fallback (AI-27, đang hoãn), rồi mở lại ADR này.
 
+## Lượng tử hoá int8 (AI-26, 2026-11-03)
+
+Plan ghi ONNX int8. Đã thử int8 động (`quantize_dynamic`, trọng số `QUInt8`) trên CI: URL còn 15/32 (47%) và 9/18 (50%), CER 15.6% và 7.7%, chậm hơn fp32 (`ocr-spike.md` mục 10). **Quyết định: dùng fp32.** Chỉ xem lại int8 (tĩnh, có ảnh hiệu chỉnh) nếu đo trên Lambda thấy fp32 không đạt p95 hoặc RAM.
+
 ## Chưa kiểm
 
-- License trọng số model (PP-OCRv6, `tessdata_fast`) và Tesseract: team xác nhận ổn (2026-10-23); chưa có nguồn license được trích dẫn trong repo.
+- License code: `rapidocr` 3.10.0 là Apache-2.0, `onnxruntime` 1.31.0 là MIT, PaddleOCR là Apache-2.0 (nguồn ở `ocr-spike.md` mục 4, kiểm 30/10/2026).
+- License file trọng số ONNX PP-OCRv6: Apache-2.0 theo `MODEL_LICENSES.md` đi kèm wheel `rapidocr==3.10.0` (liệt kê đúng 3 file với cùng sha256), ghi ở `ai/MODELS.md` (AI-26). Thẻ model PaddlePaddle trên Hugging Face mà file đó dẫn tới chưa mở để đối chiếu: **not verified**.
 - Hiệu năng trên Lambda thật: **not verified**.
 - Ngưỡng sắp cột chỉ chỉnh theo 1 ảnh (`oi-022`).

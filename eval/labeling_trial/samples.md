@@ -1,14 +1,13 @@
-# Bộ 10 mẫu gán thử (Labeling Trial) - Nhiệm vụ SH-02
+# Bộ 10 mẫu tự luyện gán nhãn (SH-02)
 
-Tài liệu dùng cho 4 người trong team (AI1, AI2, BE1, BE2) gán thử độc lập để kiểm tra độ rõ ràng của `eval/LABELING.md`.  
-Điều kiện nghiệm thu SH-02: **Cả 4 người cùng gán 10 mẫu này, đồng ý ≥ 8/10 mẫu**.
+Bài tự luyện cho người mới gán nhãn trước khi gán mẫu thật cho bộ eval. Không còn là điều kiện xong SH-02: AI1 duyệt guide là đủ (`LABELING.md` mục 11).
 
 > **Hướng dẫn cho người gán:**
 > 1. Đọc kỹ file `eval/LABELING.md` trước khi bắt đầu.
-> 2. Đọc từng mẫu tin nhắn bên dưới và tự ghi nhãn (`N0` đến `N6`, hoặc `OTHER`) vào sheet riêng của mình.
+> 2. Đọc từng mẫu tin nhắn bên dưới và tự ghi **mã kịch bản** (`scenario`, vd `N0`, `N1.4`, `N3.3`, `N5.4`, `N6`, `OTHER`; bảng ở `LABELING.md` mục 1) vào sheet riêng của mình, dạng `mẫu | scenario | ghi chú`.
 > 3. Các mẫu đã được xáo trộn ngẫu nhiên.
-> 4. Tuyệt đối không bàn bạc trước với nhau trong lúc gán nhãn.
-> 5. Sau khi cả 4 người đã hoàn thành gán nhãn độc lập, mở file `eval/labeling_trial/answer_key.md` để đối chiếu đáp án và ghi kết quả.
+> 4. Tự gán, không xem đáp án trước.
+> 5. Gán xong mở `eval/labeling_trial/answer_key.md` để đối chiếu. Lệch mẫu nào thì đọc lại mục và quy tắc mà đáp án dẫn.
 
 ---
 

@@ -5,8 +5,9 @@
     python -m eval.validate --target v1     # đối chiếu số lượng với v1 (300 mẫu) thay vì v0
     python -m eval.validate --strict        # cảnh báo cũng làm lệnh thất bại
 
-Lỗi (schema, trùng id, trùng nội dung, thiếu source_url...) làm lệnh trả mã 1. Cảnh báo (thiếu số
-lượng so với mốc, mẫu gần trùng, một nguồn nuôi quá 2 mẫu, nghi còn số điện thoại thật) chỉ in ra,
+Lỗi (schema, mã kịch bản không có trong LABELING, group lệch scenario, thiếu provenance, trùng id, trùng
+nội dung, thiếu source_url...) làm lệnh trả mã 1. Cảnh báo (thiếu số lượng so với mốc, mẫu gần trùng, một
+nguồn nuôi quá 2 mẫu, nghi còn số điện thoại thật, tên miền lừa đảo chưa defang) chỉ in ra,
 trừ khi có --strict.
 Chỉ dùng thư viện chuẩn để cả team chạy được trên Windows, macOS, Linux mà không cần cài thêm.
 """
@@ -27,6 +28,12 @@ DATASETS = EVAL_DIR / "datasets"
 
 SPLITS = {"real_scam", "benign_suspicious", "benign_normal", "hard", "ocr_images", "voice", "synthetic"}
 GROUPS = {"N0", "N1", "N2", "N3", "N4", "N5", "N6", "OTHER"}
+# Mã kịch bản research-concept §2.2 (+ N1.6, N2.3, N5.4 của LABELING bản 2); group = tiền tố trước dấu chấm.
+SCENARIOS = {
+    "N0", "N1.1", "N1.2", "N1.3", "N1.4", "N1.5", "N1.6", "N2.1", "N2.2", "N2.3",
+    "N3.1", "N3.2", "N3.3", "N4.1", "N4.2", "N4.3", "N5.1", "N5.2", "N5.3", "N5.4", "N6", "OTHER",
+}
+PROVENANCES = {"rewritten", "ai_drafted", "constructed", "real_anonymized"}  # LABELING mục 10
 LEVELS = {"DANGEROUS", "SUSPICIOUS", "UNSURE", "LOW_RISK"}
 RISKY_ACTIONS = {
     "transfer_money", "share_otp", "share_password", "install_app",
@@ -36,6 +43,7 @@ FORWARD_ORIGINS = {"user", "hidden_user", "chat", "channel"}
 TEAM_SIZE = 2  # team chốt 23/10/2026: thiendt1608 và minhvhq làm chung bộ eval; `author` là tên GitHub
 INPUT_KEYS = {"text", "entities", "image", "audio", "forward_origin"}
 TOP_KEYS = {"id", "split", "input", "label", "source_url", "author", "notes"}
+OPTIONAL_KEYS = {"provenance"}  # bắt buộc với 4 split tính số lượng, xem check_record
 
 # Số lượng theo ARCH §6.11. v1 = 120/60/60/60; v0 chia cùng tỉ lệ cho đủ 100 mẫu (giả định của team).
 TARGETS = {
@@ -48,6 +56,10 @@ NEAR_DUP_RATIO = 0.92
 MAX_PER_SOURCE = 2  # một bài nguồn nuôi quá nhiều mẫu thì bộ eval kém đa dạng
 PHONE_RE = re.compile(r"(?<!\d)(?:\+?84|0)(?:[\s.\-]?\d){8,10}(?!\d)")
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+# Tên miền chưa defang trong mẫu lừa đảo (quy tắc nguồn, LABELING mục 10). Bỏ qua tên miền .gov.vn chính thức.
+DOMAIN_RE = re.compile(r"(?<![\w.\-\[])(?:https?://)?((?:[a-z0-9-]+\.)+[a-z]{2,})(?![\w\-\[]|\.[\w\[])", re.IGNORECASE)
+OFFICIAL_SUFFIXES = (".gov.vn",)
+NOT_DOMAINS = (".apk", ".exe", ".pdf", ".jpg", ".png", ".zip", "co.opmart")  # tên file, tên thương hiệu có dấu chấm
 
 
 def normalize(text: str) -> str:
@@ -147,10 +159,11 @@ def check_label(rep: Report, where: str, rec: dict) -> None:
         rep.error(where, "is_scam=true nhưng group=N0 (N0 là lành tính)")
     elif not is_scam and group not in {"N0"}:
         rep.error(where, f"is_scam=false thì group phải là N0, đang là {group}")
-    if not isinstance(label.get("scenario"), str) or not label["scenario"]:
-        rep.error(where, "label.scenario phải là chuỗi không rỗng (vd N1.4, N0, OTHER)")
-    elif group in GROUPS and group != "OTHER" and label["scenario"] != "OTHER" and not label["scenario"].startswith(group):
-        rep.error(where, f"scenario={label['scenario']!r} không thuộc group {group}")
+    scenario = label.get("scenario")
+    if scenario not in SCENARIOS:
+        rep.error(where, f"label.scenario={scenario!r} không phải mã kịch bản (vd N1.4, N0, OTHER; bảng ở LABELING mục 1)")
+    elif group in GROUPS and scenario.split(".")[0] != group:
+        rep.error(where, f"scenario={scenario!r} không thuộc group {group} (group là phần trước dấu chấm)")
     min_l, max_l = label.get("min_level"), label.get("max_level")
     if is_scam:
         if min_l not in LEVELS:
@@ -178,7 +191,7 @@ def check_record(rep: Report, where: str, rec: object) -> None:
     if not isinstance(rec, dict):
         rep.error(where, "mỗi dòng phải là một JSON object")
         return
-    for k in sorted(set(rec) - TOP_KEYS):
+    for k in sorted(set(rec) - TOP_KEYS - OPTIONAL_KEYS):
         rep.error(where, f"có trường lạ: {k}")
     for k in sorted(TOP_KEYS - set(rec)):
         rep.error(where, f"thiếu trường: {k}")
@@ -191,6 +204,11 @@ def check_record(rep: Report, where: str, rec: object) -> None:
         rep.error(where, "author phải là chuỗi không rỗng (tên GitHub của người duyệt mẫu)")
     if not isinstance(rec.get("notes"), str):
         rep.error(where, "notes phải là chuỗi (có thể rỗng)")
+    prov = rec.get("provenance")
+    if prov is None and split in COUNTED_SPLITS:
+        rep.error(where, f"thiếu provenance (một trong {sorted(PROVENANCES)})")
+    elif prov is not None and prov not in PROVENANCES:
+        rep.error(where, f"provenance={prov!r} không thuộc {sorted(PROVENANCES)}")
     src = rec.get("source_url")
     if src is not None and not (isinstance(src, str) and re.match(r"https?://\S+$", src)):
         rep.error(where, "source_url phải là null hoặc URL http(s)")
@@ -210,6 +228,12 @@ def check_privacy(rep: Report, where: str, rec: dict) -> None:
             rep.warn(where, f"nghi còn số điện thoại thật {m.group().strip()!r}; thay bằng số bịa (0000…) nếu là tin thật")
     if EMAIL_RE.search(text):
         rep.warn(where, "nghi còn email; ẩn danh trước khi đưa vào bộ eval")
+    label = rec.get("label")
+    if isinstance(label, dict) and label.get("is_scam") is True:
+        for m in DOMAIN_RE.finditer(text):
+            host = m.group(1).lower()
+            if not host.endswith(OFFICIAL_SUFFIXES + NOT_DOMAINS):
+                rep.warn(where, f"tên miền chưa defang {host!r}; viết dạng abc[.]xyz, kể cả t[.]me")
 
 
 def check_duplicates(rep: Report, records: list[tuple[str, dict]]) -> None:

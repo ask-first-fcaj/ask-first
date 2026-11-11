@@ -348,7 +348,7 @@ Pipeline chỉ làm việc với `InboundMessage` và `Verdict`. Muốn thêm Za
 - **Vì sao media không đi qua payload:** invoke đồng bộ giới hạn payload 6 MB ⚠️, voice và ảnh Telegram có thể tới 20 MB; base64 còn làm to thêm khoảng 33%. Truyền link tải thì link chứa bot token, không được để lọt vào payload hay log. Nên `ai` nhận `file_id` rồi tự gọi `getFile`.
 - **Vì sao cache nằm ở `ai`:** fingerprint cần nội dung đã normalize (text + mọi `file_unique_id` + URL, §6.2). Để Java tính thì hai bên phải viết trùng logic normalize bằng hai ngôn ngữ. `ai` có quyền DynamoDB chỉ trên các item `CACHE#`/`URL#` (IAM `dynamodb:LeadingKeys`, §9.3).
 - **Lỗi:** `ai` luôn trả JSON. Lỗi tạm (Bedrock throttle, tải Telegram lỗi) → `{"error": {"kind": "retryable"}}`, Java để SQS retry. Hết thời gian hoặc lỗi không phục hồi → Java gọi `render` với `maintenance=true` hoặc gửi câu suy giảm cố định. Lỗi runtime của Lambda (`FunctionError`) Java coi như `retryable`.
-- **Dev local:** `PIPELINE_IMPL=stub` cho `ai` trả verdict cố định theo bảng (implementation-plan §3.5), để BE làm end-to-end từ tuần 1 khi AI chưa xong. Java test dùng `FakeAiClient` đọc fixture JSON trong `contracts/fixtures/`.
+- **Dev local:** `PIPELINE_IMPL=stub` cho `ai` trả verdict cố định theo bảng (implementation-plan §3.5), để BE làm end-to-end từ tuần 1 khi AI chưa xong. Java test worker dùng bản giả `AiClient` trong bộ nhớ (`Fakes.FakeAi`); `AiContractTest` và `LambdaAiClientTest` đọc fixture JSON trong `contracts/fixtures/` để giữ record Java khớp contract.
 
 ---
 
@@ -645,9 +645,10 @@ Tổng p95 cho ảnh khi Lambda đã warm: khoảng 3 giây (gom tin) cộng 5�
 | Tín hiệu | Cách làm | Ghi chú |
 |---|---|---|
 | Nguồn URL | **Gộp URL từ 3 nơi:** (1) regex trên text; (2) `entities` loại `url`; (3) `entities` loại `text_link` (URL thật nằm ở `entity.url`, không nằm trong chữ hiển thị). Với `text_link`, **luôn chấm theo URL thật**, không theo chữ hiển thị (xlsx BR-010). OCR từ ảnh thì chỉ có nguồn (1) | Thiếu nguồn (2)-(3) là bỏ sót kiểu lừa "chữ ghi dichvucong.gov.vn, link trỏ domain giả" |
-| `U_TEXT_LINK_MISMATCH` | `text_link` mà **chữ hiển thị trông như một domain/URL** nhưng domain đó **khác eTLD+1** của `entity.url`; hoặc chữ hiển thị nhắc thương hiệu/cơ quan trong `brands.yaml` còn URL thật không thuộc allowlist | Tín hiệu rất mạnh, sàn 80 (§6.4 phần tổ hợp cứng) |
+| `U_TEXT_LINK_MISMATCH` | `text_link` mà **chữ hiển thị là một tên miền thật** (có hậu tố công khai, không tính "Tp.HCM") **thuộc allowlist hoặc mang tên thương hiệu**, nhưng **khác eTLD+1** của `entity.url`. Chữ chỉ nhắc thương hiệu mà không ghi tên miền thì là `U_BRAND_UNVERIFIED`; link thật là kho ứng dụng chính thức (Google Play, App Store) thì bỏ qua | Tín hiệu rất mạnh, sàn 80 (§6.4 phần tổ hợp cứng) |
 | `U_OFFICIAL` | So khớp **chính xác domain gốc** với allowlist: `dichvucong.gov.vn`, `*.gov.vn`, domain ngân hàng chính thức… (`kb/allowlist.yaml`) | So **eTLD+1**, không so chuỗi con. `dichvucong.gov.vn.abc.com` không phải chính thức |
-| `U_TYPOSQUAT` | Levenshtein ≤ 2 so với danh sách thương hiệu, hoặc chứa token thương hiệu nhưng không phải domain chính thức (`dichvucong-vn.com`, `dichvuconggov.vn`) | Danh sách thương hiệu: DVC, VNeID, các ngân hàng lớn, EVN, nhà mạng, Shopee… |
+| `U_TYPOSQUAT` | Host mượn tên thương hiệu **kèm dấu hiệu giả**: tên thương hiệu làm subdomain của tên miền lạ, ghép gạch nối (`dichvucong-vn.com`), Levenshtein ≤ 1–2 (`vietconbank`), chữ trông giống/leet, tên cơ quan nhà nước ghép chữ ngoài `.gov.vn` (`dichvuconggov.vn`), TLD rẻ (`techcombank.cfd`), hoặc tên miền chèn trước `@` | Danh sách thương hiệu: DVC, VNeID, các ngân hàng lớn, EVN, nhà mạng, Shopee… (`kb/brands.yaml`) |
+| `U_BRAND_UNVERIFIED` | Host mang đúng tên thương hiệu, không có dấu hiệu giả, nhưng chưa có trong allowlist (`shopee.com`); hoặc `text_link` có chữ nhắc thương hiệu mà link thật không chính thức | Tín hiệu **yếu** (15 điểm, không nâng sàn) vì allowlist chưa đủ tên miền thật của các thương hiệu |
 | `U_PUNYCODE` | Có `xn--` hoặc ký tự homoglyph (Cyrillic `а` thay `a`) | |
 | `U_SHORTENER` | bit.ly, tinyurl…; **mở rộng** bằng HEAD, tối đa 5 redirect, timeout 2 giây | **Chống SSRF:** chỉ cho `http(s)`; resolve DNS rồi **chặn IP private, loopback, link-local và metadata 169.254.169.254**; không tải body; không chạy JS |
 | `U_NEW_DOMAIN` | Tuổi domain < 90 ngày, lấy qua RDAP | ⚠️ RDAP cho `.vn` chưa kiểm; không lấy được thì bỏ qua |
@@ -916,7 +917,7 @@ ask-first/
 │       ├── handler/   WebhookHandler, WorkerHandler, (ApiHandler — MVP+)
 │       ├── channel/   ChannelAdapter, TelegramAdapter, (ZaloAdapter — phase 2)
 │       ├── store/     DynamoStore (Enhanced Client): buffer, profile, guardian, check, alert, flags
-│       ├── ai/        AiClient (InvokeFunction), FakeAiClient (test)
+│       ├── ai/        AiClient, LambdaAiClient (InvokeFunction), AiContract (record viết tay, ADR-000b)
 │       ├── notify/    GuardianNotifier, FollowupScheduler
 │       └── command/   /start, /nguoithan, /lichsu, /caidat, /rutdongy, /xoadulieu, callback router
 ├── ai/                          # Python 3.12, uv
@@ -933,7 +934,7 @@ ask-first/
 │       │              retrieve.py, guard.py, judge.py, fuse.py, respond.py
 │       ├── cache/     dynamo.py # chỉ CACHE#, URL#
 │       └── llm/       bedrock.py # Converse (+ mantle adapter nếu cần): retry, timeout, cascade, cost accounting
-├── prompts/       judge_v1.md
+├── prompts/       judge_v1.md, judge_v2.md (đang dùng)
 ├── kb/            scenarios.yaml, rules.yaml, allowlist.yaml, brands.yaml, hotlines.yaml, templates/
 ├── eval/          datasets/, run_eval.py, judge_explanations.py, report.md
 ├── scripts/       build_index.py, upload_models.py, set_webhook.py, set_commands.py, flags.py   # script vận hành, Python, chạy trên cả 3 OS

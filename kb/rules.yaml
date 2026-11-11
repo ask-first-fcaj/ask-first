@@ -1,0 +1,157 @@
+# Luật cứng của stage Signals (AI-23, ARCH §6.4). Engine: ai/src/askfirst/pipeline/signals.py.
+#
+# Pattern chạy trên bản ĐÃ MASK rồi qua normalize.fold(): chữ thường, KHÔNG dấu, "đ" thành "d", dấu câu thành
+# khoảng trắng, dấu kết câu thành " . " (nên viết "[^ .]+" cho một từ để không khớp xuyên câu), token mask dạng
+# [otp_1], [sdt_1], [stk_1 vietcombank]. Mỗi luật phải có ≥ 2 test dương, 1 test âm (ai/tests/unit/test_signals.py).
+#
+# Trường của một luật:
+#   code, weight, hard        mã (khớp kb/templates/signals.j2), trọng số, luật cứng (sàn 80 ở fuse)
+#   patterns                  khớp một trong số này thì luật bật; đoạn khớp đầu tiên làm bằng chứng
+#   requires                  (tuỳ chọn) phải khớp thêm ít nhất một pattern ở bất kỳ đâu trong tin
+#   unless                    (tuỳ chọn) khớp một pattern này ở bất kỳ đâu thì bỏ luật
+#   negatable                 (tuỳ chọn) bỏ đoạn khớp có từ phủ định đứng ngay trước trong cùng câu
+#                             ("không bao giờ yêu cầu khách cung cấp mã OTP"); xem NEGATION trong signals.py
+#   url                       (tuỳ chọn) required: chỉ bật khi tin có URL; forbidden: chỉ bật khi KHÔNG có URL;
+#                             hard: thành luật cứng khi tin có URL
+#   unless_codes              (tuỳ chọn) bỏ luật khi một trong các mã này đã bật
+# Sàn cứng và tổ hợp (R_AUTHORITY + tiền/bí mật/tài khoản an toàn → 85) nằm ở pipeline/fuse.py.
+version: rules-2026.11.03
+rules:
+  - code: R_OTP_REQUEST
+    weight: 45
+    hard: true
+    negatable: true
+    patterns:
+      # động từ + mã: "đọc mã OTP", "cung cấp giúp em mã xác thực", "đọc giúp em mã 6 số trên màn hình"
+      - '\b(?:cung cap|doc|doc lai|(?<!canh )bao(?! mat)|nhan tin|soan|chup|dua|cho (?:em|toi|minh|chau|ben em|nhan vien) (?:xin|biet)|xin)(?: [^ .]+){0,4} (?:ma )?(?:otp|ma xac thuc|ma xac nhan|ma xac minh|ma bao mat|ma kich hoat|ma pin|\[otp_\d+\]|ma (?:vua|da) (?:gui|nhan)|ma \d+ so|ma (?:so )?(?:ve|tren|gui ve) (?:may|dien thoai|man hinh)|ma (?:do|nay|de|nhe|voi|di|nha|a))(?!\w)'
+      # "gửi" chỉ tính khi là lời bảo người nhận gửi đi ("vui lòng gửi mã OTP"), không tính "Co.opmart gửi mã xác thực"
+      - '(?:^|\. |\b(?:vui long|hay|xin|anh|chi|bac|ban|quy khach|ong|ba|co|chu|cu)(?: [^ .]+){0,2} )gui(?: lai)?(?: [^ .]+){0,2} (?:ma )?(?:otp|ma xac thuc|ma xac nhan|ma xac minh|\[otp_\d+\])(?!\w)'
+      # mã + đích: "mã OTP cho nhân viên", "[OTP_1] qua Zalo"
+      - '(?<!\w)(?:otp|ma xac thuc|ma xac nhan|ma xac minh|\[otp_\d+\])(?: [^ .]+){0,3} (?:cho|ve|qua|toi) (?:em|toi|minh|chau|nhan vien|tong dai|tong dai vien|can bo|chuyen vien|ben em|bo phan|so nay|zalo)\b'
+      # mã đứng trước động từ: "mã OTP bình chọn đọc giúp tao"
+      - '(?<!\w)(?:otp|ma xac thuc|ma xac nhan|ma xac minh|\[otp_\d+\])(?: (?!khong\b|dung\b|tuyet\b|cam\b)[^ .]+){0,4} (?:doc|doc lai|cung cap|bao|nhan tin) (?:giup|lai|cho|qua|ngay|di|luon)\b'
+      # người nói cần mã: "hệ thống chỉ cần mã xác nhận OTP"
+      - '\b(?:em|toi|he thong|ben em|chung toi|minh|nhan vien|can bo) (?:chi )?(?:can|xin) (?:ma )?(?:otp|ma xac thuc|ma xac nhan|ma xac minh)\b'
+      # "nhập mã OTP tại <trang>": không tính "tại ứng dụng/màn hình/quầy" (SMS OTP thật hay viết vậy)
+      - '\bnhap (?:ma )?(?:otp|ma xac thuc|\[otp_\d+\])(?: [^ .]+){0,4} (?:vao|tai|tren)(?! (?:ung dung|app|man hinh|quay|chi nhanh))\b'
+
+  - code: R_OTP_GENUINE
+    weight: -20
+    hard: false
+    url: forbidden
+    unless_codes: [R_OTP_REQUEST]
+    patterns:
+      - '\b(?:khong|dung|tuyet doi khong|nghiem cam|khong duoc)(?: [^ .]+){0,2} (?:cung cap|chia se|tiet lo|dua|gui|cho|doc)(?: [^ .]+){0,4} (?:ai|bat ky ai|bat ki ai|nguoi khac|bat ky nguoi nao|nguoi la|nhan vien|ke ca)\b'
+      - '\b(?:khong|dung|tuyet doi khong)(?: [^ .]+){0,2} (?:cung cap|chia se|tiet lo)(?: [^ .]+){0,2} (?:ma|otp)\b'
+    requires:
+      - '\[otp_\d+\]'
+
+  - code: R_SAFE_ACCOUNT
+    weight: 50
+    hard: true
+    patterns:
+      - '\btai khoan (?:an toan|tam giu|giam sat|chuyen dung|cua co quan (?:cong an|dieu tra)|cua bo cong an|niem phong)\b'
+      - '\bchung minh (?:tai chinh|trong sach|nguon (?:goc )?tien|tien sach|khong lien quan|so du|thu nhap)\b'
+      - '\b(?:tam giu|niem phong|xac minh nguon goc) (?:so )?(?:tien|tai san|khoan tien)\b'
+
+  - code: R_SCREEN_SHARE
+    weight: 45
+    hard: true
+    patterns:
+      - '\b(?:chia se|share|mo|bat|chieu)(?: [^ .]+){0,2} man hinh\b'
+      - '\b(?:anydesk|teamviewer|ultraviewer|ultra viewer|rustdesk|airdroid|quick support|quicksupport)\b'
+      - '\bdieu khien (?:tu xa|may (?:tu xa|cua bac|cua ban))\b'
+
+  - code: R_INSTALL_APP
+    weight: 35
+    hard: false
+    url: hard
+    patterns:
+      - '\b(?:cai|cai dat|tai|tai ve|download|install)(?: [^ .]+){0,3} (?:ung dung|app|phan mem|apk|tep cai|file cai)\b'
+      - 'apk\b'
+    unless:
+      - '\b(?:app store|appstore|ch play|chplay|google play|kho ung dung)\b'
+
+  - code: R_SECRECY
+    weight: 35
+    hard: false
+    patterns:
+      # Không tính lời khuyên giữ kín thông tin, mã, mật khẩu ("không tiết lộ thông tin cá nhân cho người khác"):
+      # kiểu lừa là giấu chính cuộc gọi với người nhà ("không được nói với ai").
+      - '\b(?:khong|dung|cam|tuyet doi khong|khong duoc)(?: duoc)? (?:noi|ke|tiet lo|trao doi|bao|thong bao|cho biet|lam lo|tiet lo)(?: (?!ma\b|otp\b|mat\b|pin\b|thong\b|\[otp)[^ .]+){0,4} (?:voi |cho )?(?:ai|bat ky ai|bat ki ai|nguoi than|gia dinh|nguoi nha|vo|chong|con|con chau|hang xom|ngan hang|nguoi khac)\b'
+      - '\bgiu (?:kin |tuyet doi )?bi mat\b'
+      - '\bbi mat (?:dieu tra|nha nuoc|quoc gia|tuyet doi|vu an)\b'
+
+  - code: R_AUTHORITY
+    weight: 20
+    hard: false
+    patterns:
+      - '\b(?:cong an|vien kiem sat|toa an|dieu tra vien|can bo dieu tra|co quan dieu tra|canh sat|bo cong an|thieu ta|trung ta|thuong ta|dai ta|dai uy|thuong uy|trung uy|chanh an|kiem sat vien)\b'
+
+  - code: R_MONEY_TRANSFER
+    weight: 25
+    hard: false
+    patterns:
+      - '\b(?:chuyen khoan|chuyen tien|nap tien|nop (?:tien|phi|phat)|dong (?:tien|phi)|thanh toan phi|dat coc|chuyen (?:ngay |gap )?\d+|ck)\b'
+    requires:
+      - '\b\d+ ?(?:k|nghin|ngan|tr|trieu|ty|d|vnd|dong|usd)\b'
+      - '\b(?:trieu|nghin|ty) (?:dong|d)\b'
+      - '\[stk_\d+'
+      - '\b(?:so tai khoan|stk)\b'
+    unless:
+      - '\b(?:sd|so du (?:hien tai|kha dung|cuoi)|bien dong so du|sd kha dung)\b'
+
+  - code: R_URGENCY
+    weight: 15
+    hard: false
+    patterns:
+      - '\b(?:ngay lap tuc|ngay bay gio|khan cap|gap|trong vong \d+ (?:gio|phut|ngay|tieng)|truoc \d+ ?(?:h|gio)|trong ngay hom nay)\b'
+      - '\b(?:se bi|bi|dang bi) (?:khoa|tam khoa|phong toa|cuong che|dinh chi|vo hieu hoa|thu hoi|xu ly hinh su|bat)\b'
+
+  - code: R_TRAFFIC_FINE
+    weight: 20
+    hard: false
+    url: required
+    patterns:
+      - '\b(?:phat nguoi|vi pham (?:giao thong|luat giao thong|an toan giao thong)|bien ban (?:vi pham|xu phat)|nop phat|xu phat (?:vi pham )?hanh chinh)\b'
+
+  - code: R_PRIZE
+    weight: 20
+    hard: false
+    patterns:
+      - '\b(?:trung thuong|trung giai|qua tri an|tri an khach hang|nhan qua|phan thuong|vong quay may man|qua tang|duoc tang|giai thuong)\b'
+
+  - code: R_TASK_JOB
+    weight: 20
+    hard: false
+    patterns:
+      - '\b(?:lam nhiem vu|nhiem vu (?:online|don gian|hang ngay)|viec nhe luong cao|tha tim|cong tac vien|ctv|hoa hong|lam them tai nha|kiem tien online|nhap lieu online|don hang ao)\b'
+
+  - code: R_RECOVERY
+    weight: 20
+    hard: false
+    patterns:
+      - '\b(?:lay lai|thu hoi|hoan lai|doi lai)(?: [^ .]+){0,2} (?:tien|so tien|khoan tien|tai san)(?: [^ .]+){0,4} (?:bi lua|da mat|bi chiem doat|bi mat)\b'
+      - '\bho tro (?:nan nhan|lay lai tien|thu hoi)\b'
+
+  - code: R_AI_INSTRUCTION
+    weight: 10
+    hard: false
+    patterns:
+      - '\b(?:bo qua|quen|phot lo)(?: (?:het|moi|tat ca|cac|nhung)){0,2} (?:huong dan|chi dan|lenh|yeu cau|quy tac)(?: (?:truoc|tren|o tren|truoc do|cua ban))?\b'
+      - '\bignore (?:all |the |any )?(?:previous|above|prior) (?:instructions?|prompts?|rules?)\b'
+      - '\b(?:ban la|you are) (?:ai|tro ly|chatbot|bot|mot ai|an ai|an assistant|assistant)\b'
+      - '\b(?:hay|phai|chi duoc) (?:ket luan|danh gia|tra loi|noi|xac nhan)(?: [^ .]+){0,3} (?:la )?(?:an toan|safe|khong phai lua dao)\b'
+      # AI-08 red-team: đòi điểm/mức rủi ro bằng 0 ("risk_score 0", "đánh giá rủi ro bằng 0", JSON dựng sẵn)
+      - '\b(?:risk score|risk_score|diem rui ro|muc rui ro|danh gia rui ro)(?: [^ .]+){0,2} (?:bang |la )?0\b'
+      # "lệnh cho AI", "hướng dẫn mới cho trợ lý", "không cảnh báo người dùng"
+      - '\b(?:lenh|chi dan|huong dan)(?: moi)? (?:cho|danh cho) (?:ai|bot|tro ly|model|mo hinh|chatbot)\b'
+      - '\bkhong (?:canh bao|bao cho) nguoi dung\b'
+      # "nói tin này an toàn", "xác nhận giúp mình là link này của ngân hàng thật"
+      - '\b(?:noi|ket luan|xac nhan|tra loi|danh gia)(?: [^ .]+){0,3} (?:tin|tin nhan|link|noi dung) nay(?: [^ .]+){0,3} (?:la )?(?:an toan|hop le|vo hai|khong phai lua dao|dang tin cay|that)\b'
+      # "bạn không phải bot", "you are no longer"
+      - '\b(?:ban khong (?:phai|con la)|you are no longer) (?:la )?(?:bot|ai|tro ly|chatbot|a scam detector)\b'
+      # chữ rời để né regex: fold() gộp "b o q u a" thành "boqua" (không phải từ tiếng Việt bình thường)
+      - '\bboqua\b'
+      # chữ tách rời từng ký tự: "b ỏ q u a"
+      - '\b(?:b o q u a|i g n o r e)\b'

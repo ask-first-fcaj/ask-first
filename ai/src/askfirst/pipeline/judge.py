@@ -1,0 +1,411 @@
+"""Stage Judge (AI-04, ARCH §6.6): dựng prompt, gọi LLM, parse JSON và hậu kiểm (post-validation).
+
+Chỉ import ``askfirst.domain`` và thư viện chuẩn/bên thứ ba (plan §3.5): client LLM được truyền vào qua
+``LLM`` (``askfirst.llm.bedrock.BedrockClient`` khớp giao diện này).
+
+Cascade (ARCH §6.2 bước 8, §6.9; AI-07): model ``judge``, JSON hỏng thì hỏi lại **một lần** kèm lỗi. Chuyển sang
+model ``backup`` (gpt-oss-120b, model dự phòng duy nhất) khi: JSON vẫn hỏng, client lỗi/throttle/timeout, hoặc
+**leo thang** vì ``confidence=low`` hay mâu thuẫn với luật (điểm luật ≥ 80 mà LLM < 30). Backup cũng không được thì:
+đang leo thang thì giữ câu trả lời của ``judge``; còn lại ``JudgeResult.judgement = None`` để fuse chạy **chế độ chỉ
+chạy luật**. Kill switch ``LLM_ENABLED=false`` (ARCH §5.8) và hết giờ (``can_call``) cũng dẫn tới chế độ này.
+
+Hậu kiểm (ARCH §6.6):
+
+* ``quote`` của mỗi tín hiệu phải là chuỗi con của tin đã gửi cho model (so trên bản NFKC, chữ thường, gộp
+  khoảng trắng); không phải thì bỏ và đếm vào ``rejected_quotes`` (chỉ số "trích dẫn bị loại" của eval).
+* ``scenario`` phải có trong taxonomy, không thì gán ``OTHER``; ``group`` lấy theo tiền tố của ``scenario``.
+* ``requested_actions`` có giá trị ngoài enum (vd ``call_number``) thì bỏ giá trị đó lúc parse, ghi mã
+  ``action_unknown``, giữ phần còn lại của câu trả lời (#138). Thêm hành động mới vào enum là sửa contract.
+* ``quote`` bị nhét nhiều chuỗi (``"quote": "a", "b"``, JSON sai cú pháp) thì giữ chuỗi đầu, bỏ chuỗi thừa, ghi mã
+  ``json_repaired`` (#138). Chỉ sửa đúng dạng này và chỉ khi ``json.loads`` đã lỗi; lỗi khác vẫn hỏi lại model.
+* ``short_explanation``: bỏ câu có URL, số điện thoại, hotline hoặc từ cấm; lẫn tiếng Anh/chữ Hán hoặc không
+  dấu thì thay cả đoạn bằng giải thích ghép từ template. Cắt còn 280 ký tự.
+* ``followup_question``: lượt 2 không được hỏi thêm (ARCH §6.12); câu có URL/số/từ cấm thì bỏ.
+
+Không log nội dung prompt hay câu trả lời (plan §3.1). Lỗi parse gửi lại cho model chỉ có tên trường và loại lỗi.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import time
+import unicodedata
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Literal, Protocol, get_args
+
+from pydantic import BaseModel, ConfigDict, PrivateAttr, ValidationError
+
+from askfirst.domain.models import ForwardOrigin, Group, RiskyAction
+
+PROMPT_VERSION = "judge_v2"
+DEFAULT_PROMPT = Path(__file__).resolve().parents[4] / "prompts" / f"{PROMPT_VERSION}.md"
+
+# Mã kịch bản research-concept §2.2 (khớp eval/validate.py SCENARIOS). Khi kb/scenarios.yaml (AI-25) vào main
+# thì truyền taxonomy đọc từ KB vào post_check thay cho hằng này.
+TAXONOMY = frozenset({
+    "N0", "N1.1", "N1.2", "N1.3", "N1.4", "N1.5", "N1.6", "N2.1", "N2.2", "N2.3",
+    "N3.1", "N3.2", "N3.3", "N4.1", "N4.2", "N4.3", "N5.1", "N5.2", "N5.3", "N5.4", "N6", "OTHER",
+})
+MAX_SIGNALS = 5
+MAX_EXPLANATION = 280
+MAX_FOLLOWUP = 200
+ESCALATE_RULE_MIN = 80   # luật chắc là lừa đảo…
+ESCALATE_LLM_MAX = 30    # …mà LLM cho điểm thấp: mâu thuẫn, hỏi model dự phòng
+ACTIONS = frozenset((*get_args(RiskyAction), "none"))
+
+# Schema cho structured outputs của Bedrock (Converse outputConfig.textFormat). ⚠️ Chưa kiểm Qwen3 32B có hỗ trợ
+# không (G1); trong lúc chờ, judge() parse + validate bằng Pydantic và hỏi lại một lần.
+JUDGE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["group", "scenario", "risk_score", "confidence", "signals", "requested_actions", "short_explanation", "followup_question"],
+    "properties": {
+        "group": {"enum": ["N0", "N1", "N2", "N3", "N4", "N5", "N6", "OTHER"]},
+        "scenario": {"type": "string"},
+        "risk_score": {"type": "integer", "minimum": 0, "maximum": 100},
+        "confidence": {"enum": ["high", "medium", "low"]},
+        "signals": {"type": "array", "maxItems": MAX_SIGNALS, "items": {
+            "type": "object", "additionalProperties": False, "required": ["code", "quote"],
+            "properties": {"code": {"type": "string"}, "quote": {"type": "string"}}}},
+        "requested_actions": {"type": "array", "items": {"enum": [
+            "transfer_money", "share_otp", "share_password", "install_app", "share_screen", "click_link", "keep_secret", "share_id_card", "none"]}},
+        "short_explanation": {"type": "string"},
+        "followup_question": {"type": ["string", "null"]},
+    },
+}
+
+
+class JudgeSignal(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    code: str
+    quote: str
+
+
+class Judgement(BaseModel):
+    """Output của LLM sau khi parse. Không phải hợp đồng BE <-> AI; fuse (AI-05) đổi nó thành ``Verdict``."""
+    model_config = ConfigDict(extra="ignore")
+    group: Group
+    scenario: str
+    risk_score: int                  # kẹp 0–100 ở post_check, không làm hỏng cả câu trả lời
+    confidence: Literal["high", "medium", "low"]
+    signals: list[JudgeSignal]
+    requested_actions: list[RiskyAction | Literal["none"]]
+    short_explanation: str
+    followup_question: str | None
+    _unknown_actions: int = PrivateAttr(default=0)   # số giá trị ngoài enum đã bỏ lúc parse (#138)
+    _json_repaired: bool = PrivateAttr(default=False)   # đã bỏ chuỗi thừa sau "quote" lúc parse (#138)
+
+
+class JudgeParseError(ValueError):
+    """Câu trả lời không phải JSON hợp lệ theo schema. Message chỉ có tên trường + loại lỗi, không có nội dung."""
+
+
+class LLM(Protocol):
+    def converse(self, role: str, messages: list[dict], system: str | None = None, extra_fields: dict | None = None) -> Any:
+        """Trả về đối tượng có ``text``, ``cost_usd``, ``latency_ms`` (``LLMResult``); lỗi thì raise."""
+        ...
+
+
+@dataclass
+class PostCheck:
+    judgement: Judgement
+    rejected_quotes: int = 0
+    fixes: list[str] = field(default_factory=list)   # mã việc đã sửa, để đếm trong eval; không chứa nội dung
+
+
+@dataclass
+class JudgeResult:
+    judgement: Judgement | None      # None = chế độ chỉ chạy luật
+    rejected_quotes: int = 0
+    fixes: list[str] = field(default_factory=list)
+    model_role: str | None = None    # "judge" | "backup"
+    escalated: bool = False          # kết luận lấy từ model dự phòng: fuse ghi path="escalated"
+    escalation: str | None = None    # vì sao gọi backup: low_confidence | rule_conflict | json | error
+    skipped: str | None = None       # không gọi được model nào/backup: llm_disabled | deadline
+    calls: int = 0                   # số lần gọi LLM thành công (có câu trả lời)
+    json_errors: int = 0             # số câu trả lời JSON hỏng: tử số của "JSON hợp lệ" trong eval
+    llm_errors: int = 0
+    cost_usd: float = 0.0
+    latency_ms: int = 0
+
+
+# ------------------------------------------------------------------ prompt
+
+def load_system_prompt(path: Path = DEFAULT_PROMPT) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+_FORWARD = {"user": "nguoi_la", "hidden_user": "nguoi_an_danh", "chat": "nhom", "channel": "kenh"}
+
+
+def _data(text: str) -> str:
+    """Đổi ``<``/``>`` sang dạng toàn độ rộng để tin không đóng được thẻ ``</tin_nhan>`` và chèn lệnh.
+    NFKC đổi lại đúng ký tự gốc, nên so trích dẫn vẫn khớp."""
+    return text.replace("<", "＜").replace(">", "＞")
+
+
+def build_user_message(text: str, *, source: Literal["van_ban", "anh_chup", "giong_noi"] = "van_ban",
+                       forward_origin: ForwardOrigin | None = None, rule_signals: Iterable[str] = (),
+                       scenario_cards: str = "", alerts: str = "") -> str:
+    """Phần USER của prompt (ARCH §6.6). ``text`` phải là bản đã chuẩn hoá và mask."""
+    fwd = f' chuyen_tiep_tu="{_FORWARD[forward_origin]}"' if forward_origin else ""
+    parts = [f'<ngu_canh nguon="{source}"{fwd}/>']
+    if scenario_cards:
+        parts.append(f"<related_scenarios>\n{_data(scenario_cards)}\n</related_scenarios>")
+    parts.append(f"<tin_nhan>\n{_data(text)}\n</tin_nhan>")
+    codes = ", ".join(rule_signals)
+    if codes:
+        parts.append(f"<tin_hieu_tu_luat>{_data(codes)}</tin_hieu_tu_luat>")
+    if alerts:
+        parts.append(f"<canh_bao_lien_quan>\n{_data(alerts)}\n</canh_bao_lien_quan>")
+    return "\n".join(parts)
+
+
+# ------------------------------------------------------------------ parse
+
+_THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
+# "quote": "a", "b"[, "c"]: chuỗi đứng sau dấu phẩy mà không có ":" theo sau thì không phải khoá, luôn là JSON sai.
+_JSTR = r'"(?:[^"\\]|\\.)*"'
+_EXTRA_QUOTES = re.compile(rf'("quote"\s*:\s*{_JSTR})(?:\s*,\s*{_JSTR}(?!\s*:))+')
+
+
+def _loads(body: str) -> tuple[Any, bool]:
+    """``json.loads``; lỗi cú pháp thì thử bỏ chuỗi thừa sau ``"quote"`` một lần. Trả ``(data, đã_sửa)``."""
+    try:
+        return json.loads(body), False
+    except json.JSONDecodeError as e:
+        fixed = _EXTRA_QUOTES.sub(r"\1", body)
+        if fixed == body:
+            raise JudgeParseError(f"JSON sai cú pháp ở vị trí {e.pos}") from None
+    try:
+        return json.loads(fixed), True
+    except json.JSONDecodeError as e:
+        raise JudgeParseError(f"JSON sai cú pháp ở vị trí {e.pos}") from None
+
+
+def parse_judgement(raw: str) -> Judgement:
+    """Lấy đối tượng JSON đầu tiên trong câu trả lời (bỏ ```json và khối <think> của model reasoning)."""
+    body = _THINK.sub("", raw)
+    start, end = body.find("{"), body.rfind("}")
+    if start < 0 or end <= start:
+        raise JudgeParseError("không có đối tượng JSON")
+    data, repaired = _loads(body[start:end + 1])
+    if not isinstance(data, dict):
+        raise JudgeParseError("JSON không phải đối tượng")
+    actions, unknown = data.get("requested_actions"), 0
+    if isinstance(actions, list):
+        # Chỉ bỏ chuỗi lạ (model tự đặt tên hành động); sai kiểu (số, không phải list) vẫn là sai schema.
+        kept = [a for a in actions if not isinstance(a, str) or a in ACTIONS]
+        unknown = len(actions) - len(kept)
+        data["requested_actions"] = kept
+    try:
+        j = Judgement.model_validate(data)
+    except ValidationError as e:
+        errs = "; ".join(f"{'.'.join(str(x) for x in err['loc'])}: {err['type']}" for err in e.errors()[:5])
+        raise JudgeParseError(f"sai schema ({errs})") from None
+    j._unknown_actions, j._json_repaired = unknown, repaired
+    return j
+
+
+# ------------------------------------------------------------------ hậu kiểm
+
+_URL = re.compile(
+    # Chỉ cần nhãn cuối + TLD ("a.b.gov.vn" khớp ở "gov.vn"); bắt đầu ở đầu token để không quét lại bậc hai.
+    r"(?:https?|hxxps?)://|www\.|\[\.\]|(?<![\w-])[\w-]+\.(?:com|net|org|vn|xyz|cc|top|info|io|me|app|link|site|online|shop"
+    r"|club|biz|tk|ml|ga|cf|gq|ru|cn|asia|live|pro|vip)\b", re.IGNORECASE)
+_PHONE = re.compile(r"(?<!\d)(?:\+?84|0)\d(?:[\s.\-]?\d){7,9}(?!\d)")
+_HOTLINE = re.compile(r"(?<!\d)(?:1[89]00(?:[\s.\-]?\d){4,6}|11[1345])(?!\d)")
+FORBIDDEN = ("an toàn", "yên tâm", "không sao đâu", "chắc chắn không", "không phải lừa đảo", "không có gì đáng lo")
+_CJK = re.compile(r"[぀-ヿ㐀-䶿一-鿿가-힯]")
+# Từ tiếng Anh hay lọt vào câu của model nhỏ; tránh từ trùng với tiếng Việt không dấu ("link", "app", "an", "to").
+_EN_WORDS = frozenset({
+    "the", "and", "this", "that", "you", "your", "please", "scam", "scammer", "message", "account", "with", "from", "have",
+    "is", "are", "was", "will", "should", "click", "money", "transfer", "suspicious", "fraud", "risk", "verify", "however",
+    "because", "not", "it", "of", "for", "be",
+})
+_SENTENCE = re.compile(r"(?<=[.!?…])\s+")
+_WS = re.compile(r"\s+")
+
+
+def _norm(s: str) -> str:
+    return _WS.sub(" ", unicodedata.normalize("NFKC", s).casefold()).strip()
+
+
+def has_contact_or_url(s: str) -> bool:
+    return bool(_URL.search(s) or _PHONE.search(s) or _HOTLINE.search(s))
+
+
+def has_forbidden(s: str) -> bool:
+    low = _norm(s)
+    return any(w in low for w in FORBIDDEN)
+
+
+def is_bad_language(s: str) -> bool:
+    """Lẫn chữ Hán/Nhật/Hàn, ≥ 2 từ tiếng Anh thông dụng, hoặc câu dài mà không có chữ nào có dấu."""
+    if _CJK.search(s):
+        return True
+    words = re.findall(r"[^\W\d_]+", s)
+    if sum(1 for w in words if w.lower() in _EN_WORDS) >= 2:
+        return True
+    return len(words) >= 8 and not any(ord(c) > 127 for w in words for c in w)
+
+
+def _clip(s: str, limit: int) -> str:
+    if len(s) <= limit:
+        return s
+    cut = s[:limit - 1].rsplit(" ", 1)[0]
+    return cut.rstrip(" ,;:") + "…"
+
+
+def default_template(codes: list[str], group: str) -> str:
+    """Giải thích dự phòng khi câu của model không dùng được. AI-07 thay bằng template theo mã trong kb/templates/."""
+    if group == "N0" and not codes:
+        return ("Bot chưa thấy dấu hiệu lừa đảo rõ ràng. Nhưng nếu ai bảo bác chuyển tiền, đọc OTP hay giữ bí mật "
+                "thì bác hãy dừng lại.")
+    return "Tin này có dấu hiệu hay gặp trong các vụ lừa đảo. Bác đừng làm theo yêu cầu trong tin, hỏi con cháu trước đã."
+
+
+def post_check(j: Judgement, text: str, *, turn: int = 1, taxonomy: frozenset[str] = TAXONOMY,
+               template: Callable[[list[str], str], str] = default_template) -> PostCheck:
+    """Sửa ``j`` theo ARCH §6.6. ``text`` là đúng bản đã gửi cho model (đã chuẩn hoá và mask)."""
+    fixes: list[str] = []
+    score = min(100, max(0, j.risk_score))
+    if score != j.risk_score:
+        fixes.append("score_clamped")
+
+    haystack = _norm(text)
+    signals, rejected = [], 0
+    for s in j.signals:
+        quote = _norm(s.quote).strip("\"'“”‘’ ")
+        if quote and quote in haystack:
+            signals.append(s)
+        else:
+            rejected += 1
+    if len(signals) > MAX_SIGNALS:
+        signals = signals[:MAX_SIGNALS]
+        fixes.append("signals_truncated")
+    if rejected:
+        fixes.append("quote_rejected")
+
+    scenario, group = j.scenario.strip(), j.group
+    if scenario not in taxonomy:
+        scenario = "OTHER"
+        fixes.append("scenario_unknown")
+    if scenario != "OTHER" and group != scenario.split(".")[0]:
+        group = scenario.split(".")[0]
+        fixes.append("group_from_scenario")
+
+    actions = list(dict.fromkeys(a for a in j.requested_actions if a != "none"))
+    if j._json_repaired:
+        fixes.append("json_repaired")
+    if j._unknown_actions:
+        fixes.append("action_unknown")
+
+    explanation = j.short_explanation.strip()
+    if is_bad_language(explanation):
+        explanation = ""
+        fixes.append("explanation_language")
+    else:
+        kept = [s for s in _SENTENCE.split(explanation) if s and not has_contact_or_url(s) and not has_forbidden(s)]
+        if len(kept) != len([s for s in _SENTENCE.split(explanation) if s]):
+            fixes.append("explanation_sentence_dropped")
+        explanation = " ".join(kept)
+    if not explanation:
+        explanation = template([s.code for s in signals], group)
+    explanation = _clip(explanation, MAX_EXPLANATION)
+
+    followup = (j.followup_question or "").strip() or None
+    if followup and turn >= 2:
+        followup = None
+        fixes.append("followup_turn2")
+    elif followup and (has_contact_or_url(followup) or has_forbidden(followup) or is_bad_language(followup)
+                       or len(followup) > MAX_FOLLOWUP):
+        followup = None
+        fixes.append("followup_dropped")
+
+    fixed = j.model_copy(update={"risk_score": score, "signals": signals, "scenario": scenario, "group": group,
+                                 "requested_actions": actions, "short_explanation": explanation, "followup_question": followup})
+    return PostCheck(fixed, rejected, fixes)
+
+
+# ------------------------------------------------------------------ gọi model
+
+_RETRY_NOTE = "\n\nCâu trả lời trước chưa hợp lệ: {err}. Chỉ trả về đúng MỘT đối tượng JSON theo schema, không có chữ nào khác."
+
+
+def escalation_reason(j: Judgement, rule_score: int) -> str | None:
+    """Lý do leo thang lên model dự phòng dù ``judge`` đã trả lời hợp lệ (ARCH §6.9), ``None`` = giữ kết quả."""
+    if j.confidence == "low":
+        return "low_confidence"
+    if rule_score >= ESCALATE_RULE_MIN and j.risk_score < ESCALATE_LLM_MAX:
+        return "rule_conflict"
+    return None
+
+
+def deadline_check(deadline_s: float, budgets: Mapping[str, float], *, margin_s: float = 5.0,
+                   clock: Callable[[], float] = time.monotonic) -> Callable[[str], bool]:
+    """``can_call`` cho ``judge()``: chỉ gọi một model khi còn đủ ``budgets[role]`` giây (thời gian tệ nhất của role,
+    ``BedrockClient.budget_s``) trước mốc ``deadline_s - margin_s`` tính từ lúc tạo (``AnalyzeContext.deadline_s``)."""
+    end = clock() + deadline_s - margin_s
+    return lambda role: end - clock() >= budgets.get(role, 0.0)
+
+
+def _ask(llm: LLM, role: str, system_prompt: str, user_message: str, text: str, turn: int,
+         taxonomy: frozenset[str], res: JudgeResult) -> tuple[PostCheck | None, str]:
+    """Gọi một model, hỏi lại một lần khi JSON hỏng. Cộng dồn số đo vào ``res``; lỗi trả ``(None, "error"|"json")``."""
+    prompt = user_message
+    for _ in range(2):   # lần đầu + hỏi lại một lần khi JSON hỏng
+        try:
+            out = llm.converse(role, [{"role": "user", "content": [{"text": prompt}]}], system=system_prompt)
+        except Exception:  # noqa: BLE001 — LLMError hoặc lỗi bất kỳ của client: chuyển model dự phòng
+            res.llm_errors += 1
+            return None, "error"
+        res.calls += 1
+        res.cost_usd += out.cost_usd
+        res.latency_ms += out.latency_ms
+        try:
+            parsed = parse_judgement(out.text)
+        except JudgeParseError as e:
+            res.json_errors += 1
+            prompt = user_message + _RETRY_NOTE.format(err=e)
+            continue
+        return post_check(parsed, text, turn=turn, taxonomy=taxonomy), ""
+    return None, "json"
+
+
+def judge(llm: LLM, system_prompt: str, user_message: str, text: str, *, turn: int = 1, rule_score: int = 0,
+          llm_enabled: bool = True, can_call: Callable[[str], bool] = lambda role: True,
+          roles: tuple[str, str] = ("judge", "backup"), taxonomy: frozenset[str] = TAXONOMY) -> JudgeResult:
+    """Không bao giờ raise vì lỗi LLM: trả ``judgement=None`` để fuse chạy chế độ chỉ chạy luật.
+
+    ``rule_score``: điểm luật (``fuse.rule_score``) để phát hiện mâu thuẫn. ``llm_enabled``: cờ kill switch từ
+    ``AnalyzeContext.flags``. ``can_call(role)``: còn đủ thời gian gọi model đó không (``deadline_check``)."""
+    res = JudgeResult(None)
+    if not llm_enabled:
+        res.skipped = "llm_disabled"
+        return res
+    primary, backup = roles
+
+    def use(pc: PostCheck, role: str) -> JudgeResult:
+        res.judgement, res.rejected_quotes, res.fixes, res.model_role = pc.judgement, pc.rejected_quotes, pc.fixes, role
+        res.escalated = role == backup
+        return res
+
+    if not can_call(primary):
+        res.skipped = "deadline"
+        return res
+    first, failure = _ask(llm, primary, system_prompt, user_message, text, turn, taxonomy, res)
+    reason = escalation_reason(first.judgement, rule_score) if first else failure
+    if reason is None:
+        return use(first, primary)
+    res.escalation = reason
+    if can_call(backup):
+        second, _ = _ask(llm, backup, system_prompt, user_message, text, turn, taxonomy, res)
+        if second:
+            return use(second, backup)
+    else:
+        res.skipped = "deadline"
+    return use(first, primary) if first else res
