@@ -139,7 +139,7 @@ void handleAnalyze(AnalyzeJob job, Context lambdaCtx) {
 
     List<AlertResult> alerts = new ArrayList<>();
     List<Guardian> guardians = store.activeGuardians(job.userId());      // status=active và consent.purposes.guardian = true
-    if (verdict.getShouldAlert() && !guardians.isEmpty() && store.lockAlert(job.userId(), verdict.getKichBan())) {  // ALERTLOCK 30'
+    if (verdict.getShouldAlert() && !guardians.isEmpty() && store.lockAlert(job.userId(), verdict.getScenario())) {  // ALERTLOCK 30'
         List<GuardianAlertContext> gctx = guardians.stream()
             .map(g -> new GuardianAlertContext(Ulid.next(), profile.displayName(), g.shareLevel(), Instant.now())).toList();
         List<OutMessage> outs = ai.call(new RenderGuardianAlertsRequest(verdict, gctx))   // AI, cùng thứ tự
@@ -153,7 +153,7 @@ void handleAnalyze(AnalyzeJob job, Context lambdaCtx) {
     }
 
     ReplyPlan plan = ai.call(new RenderRequest(verdict, new RenderContext(                    // AI
-        job.jobId(), profile.xungHo(), !guardians.isEmpty(), alerts, !flags.getLlmEnabled()))).getRender();
+        job.jobId(), profile.addressForm(), !guardians.isEmpty(), alerts, !flags.getLlmEnabled()))).getRender();
     telegram.editOrSend(job.chatId(), buf.placeholderId(), plan.getMessages().get(0));       // sửa tin "⏳"
     plan.getMessages().stream().skip(1).forEach(m -> telegram.send(job.chatId(), m));
 

@@ -935,7 +935,7 @@ ask-first/
 │       │              retrieve.py, guard.py, judge.py, fuse.py, respond.py
 │       ├── cache/     dynamo.py # chỉ CACHE#, URL#
 │       └── llm/       bedrock.py # Converse (+ mantle adapter nếu cần): retry, timeout, cascade, cost accounting
-├── prompts/       judge_v1.md
+├── prompts/       judge_v1.md, judge_v2.md (đang dùng)
 ├── kb/            scenarios.yaml, rules.yaml, allowlist.yaml, brands.yaml, hotlines.yaml, templates/
 ├── eval/          datasets/, run_eval.py, judge_explanations.py, report.md
 ├── scripts/       build_index.py, upload_models.py, set_webhook.py, set_commands.py, flags.py   # script vận hành, Python, chạy trên cả 3 OS
