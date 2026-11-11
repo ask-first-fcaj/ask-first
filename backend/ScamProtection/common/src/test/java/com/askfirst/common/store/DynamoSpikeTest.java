@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Docker không có mặt (@Testcontainers(disabledWithoutDocker = true)).
  * Không có catch-all nào cho pass khi không kết nối được - lỗi thật phải thất bại thật.
  */
-@Testcontainers(disabledWithoutDocker = true)
+@Testcontainers
 class DynamoSpikeTest {
 
     @Container
