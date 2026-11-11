@@ -29,4 +29,11 @@ Token giám khảo: 95507 vào, 14586 ra.
 
 ## Chấm tay so với LLM
 
-Chưa có điểm chấm tay. Phiếu ở `docs/results/ai11-human-grading.md`, ghi điểm vào `eval/human/ai11_scores.csv` rồi chạy lại với `--from ... --human ...` (không gọi API).
+20 mẫu, 1 người chấm. Sai lệch = |điểm LLM − trung bình điểm người|.
+
+| Tiêu chí | Người (TB) | LLM (TB) | Sai lệch TB | Lệch ≤ 1 điểm |
+|---|---|---|---|---|
+| Đúng trọng tâm | 4.30 | 3.80 | 0.80 | 75.0% |
+| Người 70 tuổi hiểu ngay | 4.65 | 4.45 | 0.40 | 100.0% |
+| Hướng dẫn hành động rõ | 5.00 | 4.35 | 0.65 | 85.0% |
+| Ngắn gọn | 4.50 | 4.00 | 0.80 | 80.0% |
