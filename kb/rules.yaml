@@ -15,7 +15,7 @@
 #                             hard: thành luật cứng khi tin có URL
 #   unless_codes              (tuỳ chọn) bỏ luật khi một trong các mã này đã bật
 # Sàn cứng và tổ hợp (R_AUTHORITY + tiền/bí mật/tài khoản an toàn → 85) nằm ở pipeline/fuse.py.
-version: rules-2026.11.03
+version: rules-2026.11.11
 rules:
   - code: R_OTP_REQUEST
     weight: 45
@@ -34,6 +34,35 @@ rules:
       - '\b(?:em|toi|he thong|ben em|chung toi|minh|nhan vien|can bo) (?:chi )?(?:can|xin) (?:ma )?(?:otp|ma xac thuc|ma xac nhan|ma xac minh)\b'
       # "nhập mã OTP tại <trang>": không tính "tại ứng dụng/màn hình/quầy" (SMS OTP thật hay viết vậy)
       - '\bnhap (?:ma )?(?:otp|ma xac thuc|\[otp_\d+\])(?: [^ .]+){0,4} (?:vao|tai|tren)(?! (?:ung dung|app|man hinh|quay|chi nhanh))\b'
+      # AI-14 red-team (#139): xin OTP mà không gọi tên mã. "Đọc lại dãy 6 số vừa gửi đến máy", "đọc giúp em mấy số
+      # vừa nhận". Không có "gửi" ở đầu: "hệ thống gửi dãy số…" là lời của tin thật.
+      - '\b(?:cung cap|doc|doc lai|(?<!canh )bao(?! mat)|nhan tin|xin|cho (?:em|toi|minh|chau|ben em|nhan vien) (?:xin|biet))(?: [^ .]+){0,3} (?:day|chuoi|may|cac|nhung|mot) (?:\d+ )?(?:con )?so(?: [^ .]+)? (?:vua|da|moi) (?:gui|nhan|toi|den|ve)\b'
+      # "mấy số xác nhận" thay cho "mã": phải có lượng từ (mấy/dãy/các) để không bắt "số xác nhận đặt phòng"
+      - '\b(?:cung cap|doc|doc lai|(?<!canh )bao(?! mat)|nhan tin|xin)(?: [^ .]+){0,3} (?:day|chuoi|may|cac|nhung) (?:con )?so (?:xac nhan|xac thuc|xac minh)\b'
+      - '\b(?:day|chuoi|may|cac|nhung) (?:con )?so (?:xac nhan|xac thuc|xac minh)(?: (?!khong\b|dung\b|tuyet\b|cam\b)[^ .]+){0,4} (?:doc|doc lai|cung cap|bao|nhan tin) (?:giup|lai|cho|qua|ngay|di|luon)\b'
+
+  # AI-14 red-team (#139): xin ảnh hai mặt thẻ ngân hàng hoặc mã CVV. Ngân hàng không xin qua tin nhắn/điện thoại, nên
+  # là luật cứng. "Hai mặt thẻ căn cước" không tính ở đây (là R_ID_CARD_REQUEST); phải có ngữ cảnh thẻ ngân hàng.
+  - code: R_CARD_PHOTO
+    weight: 45
+    hard: true
+    negatable: true
+    patterns:
+      - '\b(?:chup|gui|xin|cung cap)(?: [^ .]+){0,3} (?:anh )?(?:hai mat|2 mat|ca hai mat|mat sau|mat truoc va mat sau) (?:cua )?the\b(?! (?:can cuoc|cccd|cmnd|chung minh|bhyt|bao hiem|sinh vien|hoc sinh|xe))'
+      - '\b(?:chup|gui)(?: [^ .]+){0,2} (?:anh )?the (?:ngan hang|atm|tin dung|ghi no|visa|mastercard)\b'
+      - '\b(?:cung cap|doc|gui|(?<!canh )bao(?! mat)|nhan tin|xin)(?: [^ .]+){0,3} (?:ma )?(?:cvv|cvc|ba so (?:o )?mat sau|3 so (?:o )?mat sau)\b'
+    requires:
+      - '\b(?:ngan hang|atm|tin dung|ghi no|visa|mastercard|napas|cvv|cvc)\b'
+
+  # AI-14 red-team (#139): xin chụp/gửi căn cước. Trọng số thấp, không cứng: con cái xin ảnh căn cước của bố mẹ để làm
+  # giấy tờ là chuyện bình thường. Kẻ gian thường xin kèm thẻ ngân hàng (R_CARD_PHOTO) hoặc xưng cơ quan.
+  - code: R_ID_CARD_REQUEST
+    weight: 20
+    hard: false
+    negatable: true
+    patterns:
+      - '\b(?:chup|gui|xin|cung cap|cho (?:em|toi|minh|chau|ben em) xin)(?: [^ .]+){0,4} (?:anh )?(?:(?:hai|2) mat )?(?:the )?(?:can cuoc|cccd|cmnd|cmt|chung minh nhan dan|chung minh thu|giay to tuy than|ho chieu)\b'
+      - '\b(?:anh|hinh) (?:chan dung |selfie |tu chup )?(?:cam|kem|voi|ben canh) (?:the )?(?:can cuoc|cccd|cmnd)\b'
 
   - code: R_OTP_GENUINE
     weight: -20
