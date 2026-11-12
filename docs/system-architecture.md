@@ -623,10 +623,12 @@ Tổng p95 cho ảnh khi Lambda đã warm: khoảng 3 giây (gom tin) cộng 5�
 
 | Mã | Mẫu (rút gọn) | Trọng số | Loại |
 |---|---|---|---|
-| `R_OTP_REQUEST` | (cung cấp, đọc, gửi, nhập) + (mã OTP, mã xác thực, mã xác nhận) | 45 | **cứng** |
+| `R_OTP_REQUEST` | (cung cấp, đọc, gửi, nhập) + (mã OTP, mã xác thực, mã xác nhận); (đọc, báo) + "dãy/mấy số vừa gửi", "mấy số xác nhận" | 45 | **cứng** |
 | `R_OTP_GENUINE` | Có mã số kèm "không cung cấp/chia sẻ mã cho bất kỳ ai", không có link, không có yêu cầu gửi lại | −20 | lành tính (N0) |
 | `R_SAFE_ACCOUNT` | tài khoản an toàn, tạm giữ, chứng minh tài chính, chứng minh trong sạch | 50 | **cứng** |
 | `R_SCREEN_SHARE` | chia sẻ/share màn hình, AnyDesk, TeamViewer, UltraViewer | 45 | **cứng** |
+| `R_CARD_PHOTO` | xin chụp hai mặt thẻ/ảnh thẻ ngân hàng, mã CVV; phải có ngữ cảnh ngân hàng/thẻ (#139) | 45 | **cứng** |
+| `R_ID_CARD_REQUEST` | xin chụp/gửi căn cước, CCCD, CMND, ảnh cầm căn cước (#139) | 20 | |
 | `R_INSTALL_APP` | cài, tải (ứng dụng, app, phần mềm); `.apk` | 35 (cứng nếu kèm link) | |
 | `R_SECRECY` | không được (nói, trao đổi, chia sẻ) với (ai, bất kỳ ai, người thân); giữ bí mật | 35 | |
 | `R_AUTHORITY` | công an, viện kiểm sát, toà án, điều tra viên, cán bộ + cấp bậc | 20 | |
