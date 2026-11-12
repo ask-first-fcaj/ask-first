@@ -15,8 +15,10 @@
   files:
     model.onnx: dd476dd0c2514e9b9be83aeb3853fac0763e0bdf4a71645407587d77c48a2d88
     sentencepiece.bpe.model: cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865
-- name: kb_index
-  version: ""
-  s3_prefix: ""
+- name: kb_index                 # INT-03: ai/scripts/build_index.py từ kb/scenarios.yaml + kb/alerts.yaml (21 thẻ + 103 cảnh báo)
+  version: kb-2026.11.11
+  s3_prefix: kb_index/kb-2026.11.11/
   license: internal
-  files: {}
+  files:
+    index.npy: 5716e1551ac2d899dec762c3b127a3719975f2d8a939e7423cd9af5e0d32460d
+    meta.json: d3fbfb5ad875c08aade73784e59351451921cb6f9c1814df8c4311d42f078d9a
