@@ -515,6 +515,18 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         // 2. Bóc tách InboundMessage
         Optional<InboundMessage> inboundOpt = adapter.parseUpdate(root);
         if (inboundOpt.isEmpty()) {
+            // BE-35: Nếu là sticker thì phản hồi lời chào + hướng dẫn gửi tin nhắn
+            if (root.has("message") && root.path("message").has("sticker")) {
+                JsonNode msg = root.path("message");
+                long sChatId = msg.path("chat").path("id").asLong();
+                String sUserId = "tg:" + msg.path("from").path("id").asText();
+                String sAddressForm = getAddressForm(sUserId);
+                if (telegram != null) {
+                    telegram.sendText(sChatId, "Dạ cháu chào " + sAddressForm + "! Cháu là trợ lý phòng chống lừa đảo AskFirst.\n\n"
+                            + sAddressForm + " hãy gửi tin nhắn chữ, hình ảnh chụp màn hình hoặc đường link nghi ngờ để cháu kiểm tra giúp nhé!");
+                }
+                return response(200, "STICKER_REPLIED");
+            }
             return response(200, "IGNORED");
         }
 
@@ -1187,6 +1199,47 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
         String addressForm = getAddressForm(userId);
 
+        // BE-35: 1. Kiểm tra tệp cài đặt Android (.apk) độc hại - Xử lý ngay lập tức (Zero SQS, Zero Download)
+        if ("apk".equalsIgnoreCase(inbound.kind())) {
+            return handleApkBlocked(inbound, chatId, userId, addressForm, context);
+        }
+
+        // BE-35: 2. Kiểm tra các định dạng không hỗ trợ (Document non-image, unsupported_media, audio, sticker)
+        if ("document".equalsIgnoreCase(inbound.kind())) {
+            String docMsg = "Dạ hiện tại cháu chưa hỗ trợ đọc trực tiếp định dạng tệp này. "
+                    + addressForm + " hãy mở tệp ra rồi <b>CHỤP ẢNH MÀN HÌNH</b> gửi lại cho cháu kiểm tra nhé!";
+            if (telegram != null) {
+                telegram.sendText(chatId, docMsg);
+            }
+            return response(200, "UNSUPPORTED_DOCUMENT");
+        }
+
+        if ("unsupported_media".equalsIgnoreCase(inbound.kind())) {
+            String mediaMsg = "Dạ hiện tại cháu chưa hỗ trợ kiểm tra trực tiếp video, vị trí hoặc danh bạ. "
+                    + addressForm + " hãy <b>CHỤP ẢNH MÀN HÌNH</b> hoặc <b>gõ lại nội dung</b> gửi cho cháu kiểm tra nhé!";
+            if (telegram != null) {
+                telegram.sendText(chatId, mediaMsg);
+            }
+            return response(200, "UNSUPPORTED_MEDIA");
+        }
+
+        if ("audio".equalsIgnoreCase(inbound.kind())) {
+            String audioMsg = "Dạ hiện tại cháu chưa hỗ trợ kiểm tra tệp âm thanh. "
+                    + addressForm + " hãy <b>gõ lại nội dung</b> hoặc <b>chụp ảnh màn hình</b> gửi cho cháu kiểm tra nhé!";
+            if (telegram != null) {
+                telegram.sendText(chatId, audioMsg);
+            }
+            return response(200, "UNSUPPORTED_AUDIO");
+        }
+
+        if ("sticker".equalsIgnoreCase(inbound.kind())) {
+            if (telegram != null) {
+                telegram.sendText(chatId, "Dạ cháu chào " + addressForm + "! Cháu là trợ lý phòng chống lừa đảo AskFirst.\n\n"
+                        + addressForm + " hãy gửi tin nhắn chữ, hình ảnh chụp màn hình hoặc đường link nghi ngờ để cháu kiểm tra giúp nhé!");
+            }
+            return response(200, "STICKER_REPLIED");
+        }
+
         // 1. Kiểm tra trạng thái Đồng ý điều khoản (Consent Check - BE-25)
         if (userRepo != null && !userRepo.hasValidConsent(userId, policySha256)) {
             String promptConsent = addressForm + " ơi, để bảo vệ dữ liệu cá nhân theo quy định của pháp luật, " +
@@ -1276,6 +1329,67 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         }
 
         return response(200, "OK");
+    }
+
+    private APIGatewayProxyResponseEvent handleApkBlocked(
+            InboundMessage inbound,
+            long chatId,
+            String userId,
+            String addressForm,
+            Context context) {
+
+        // 1. Gửi cảnh báo khẩn cấp cho người cao tuổi (chữ to, in đậm, hướng dẫn tuyệt đối không cài)
+        String apkAlert = "🚨 <b>CẢNH BÁO NGUY HIỂM:</b> Đây là tệp cài đặt ứng dụng ngoài luồng (.apk)!\n\n"
+                + "Kẻ gian thường dùng tệp này để chiếm quyền điều khiển điện thoại và lấy cắp tiền ngân hàng. "
+                + addressForm + " <b>TUYỆT ĐỐI KHÔNG BẤM CÀI ĐẶT</b> nhé!\n\n"
+                + "👉 Nếu " + addressForm.toLowerCase() + " đã lỡ bấm cài đặt:\n"
+                + "1. Bật ngay Chế độ máy bay (ngắt mạng Wi-Fi và 4G/5G).\n"
+                + "2. Dùng điện thoại khác gọi ngay cho ngân hàng để khoá tài khoản/thẻ.\n"
+                + "3. Báo ngay cho con cháu hoặc Công an gần nhất để được hỗ trợ.";
+
+        if (telegram != null) {
+            telegram.sendText(chatId, apkAlert);
+        }
+
+        // 2. Kích hoạt cảnh báo khẩn cấp cho người thân (nếu đã liên kết)
+        if (guardianRepo != null) {
+            try {
+                List<GuardianRecord> guardians = guardianRepo.listGuardians(userId);
+                for (GuardianRecord g : guardians) {
+                    String status = g.getStatus() != null ? g.getStatus() : "active";
+                    if ("active".equals(status)) {
+                        String guardianUid = g.getGuardianUid();
+                        if (guardianUid != null && !guardianUid.isBlank()) {
+                            try {
+                                long gChatId = Long.parseLong(guardianUid.replace("tg:", ""));
+                                String guardianAlert = "🚨 <b>CẢNH BÁO KHẨN CẤP TỪ ASKFIRST</b>\n\n"
+                                        + "Người thân của bạn (" + addressForm + ") vừa nhận được một <b>tệp cài đặt ứng dụng Android lạ (.apk)</b> nguy hiểm!\n\n"
+                                        + "Kẻ gian thường giả danh Công an, Thuế, Dịch vụ công để lừa cài mã độc chiếm quyền điện thoại.\n"
+                                        + "👉 <b>Hãy liên hệ ngay với người thân</b> để nhắc nhở tuyệt đối không bấm cài đặt!";
+                                if (telegram != null) {
+                                    telegram.sendText(gChatId, guardianAlert);
+                                }
+                            } catch (Exception ex) {
+                                log(context, "Lỗi gửi cảnh báo tới người thân " + guardianUid + ": " + ex.getMessage());
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                log(context, "Lỗi truy vấn danh sách người thân khi phát hiện APK: " + ex.getMessage());
+            }
+        }
+
+        // 3. Ghi audit log
+        if (auditRepo != null) {
+            String fileName = (inbound.media() != null && inbound.media().fileName() != null)
+                    ? inbound.media().fileName()
+                    : "unknown.apk";
+            auditRepo.recordEvent(userId, "APK_BLOCKED", POLICY_VERSION, policySha256,
+                    "Blocked APK file: " + fileName);
+        }
+
+        return response(200, "APK_BLOCKED");
     }
 
     private String getAddressForm(String userId) {

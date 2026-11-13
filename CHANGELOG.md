@@ -27,6 +27,14 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - BE-03 (`infra/template.yaml`, `infra/README.md`): token bot và webhook secret chuyển sang SSM `SecureString`. Lambda đọc lúc khởi tạo qua `TELEGRAM_BOT_TOKEN_PARAM` và `TELEGRAM_WEBHOOK_SECRET_PARAM`, không còn đưa giá trị plaintext vào cấu hình Lambda. Lambda được cấp `ssm:GetParameter` cho `parameter/askfirst/<stage>/telegram/*` và `kms:Decrypt` qua SSM. Cần thêm `software.amazon.awssdk:ssm` vào `webhook-handler/pom.xml`.
 
 ### Added
+- BE-35 (#73): **xử lý đầu vào không hỗ trợ và chặn tệp cài đặt `.apk` độc hại ngay ở webhook** (ARCH §5.7, docs/features.md FR15):
+  - Nhận diện tệp `.apk` bằng phần mở rộng (`.apk`, không phân biệt hoa thường) hoặc MIME type `application/vnd.android.package-archive`.
+  - Chặn ngay tại Webhook: tuyệt đối không tải file về máy, không enqueue SQS, không gọi LLM/Bedrock (zero download, zero enqueue).
+  - Cảnh báo đỏ khẩn cấp cho người cao tuổi với chữ to, in đậm, hướng dẫn tuyệt đối không bấm cài đặt và các bước xử lý khi đã lỡ cài (bật chế độ máy bay, khoá tài khoản ngân hàng).
+  - Tự động kích hoạt cảnh báo khẩn cấp cho con cháu/người thân đang hoạt động (`active` guardians) ngay khi người cao tuổi nhận tệp `.apk` nguy hiểm.
+  - Ghi nhận sự kiện `APK_BLOCKED` vào `AuditRepo`.
+  - Phản hồi hướng dẫn dễ hiểu cho các định dạng không hỗ trợ (PDF, Word, ZIP, Video, Location, Contact, Audio, Sticker): hướng dẫn mở tệp chụp màn hình hoặc gõ lại nội dung; tài liệu dạng ảnh (`image/*` hoặc đuôi ảnh) được tự động chuyển thành `photo` để phân tích bình thường.
+  - Bổ sung 4 unit tests trong `TelegramAdapterTest` và 12 unit tests trong `WebhookHandlerBE35Test`, đạt 100% build pass và thỏa mãn kiểm thử JaCoCo.
 - BE-28 (#64): **luồng liên kết người thân an toàn 2 chiều (double opt-in) và deep link 1-chạm**:
   - Lệnh `/nguoithan`: sinh mã mời 6 chữ số ngẫu nhiên lưu `INVITE#<code>` (hạn 24 giờ, dùng 1 lần) kèm nút chia sẻ Telegram `t.me/share/url` và deep link 1-chạm `https://t.me/<bot>?start=g_<code>`.
   - Tự động nhận diện bot username qua biến môi trường `TELEGRAM_BOT_USERNAME` (khai báo trong `infra/template.yaml`) hoặc fallback `/getMe` (`TelegramClient.getMeUsername()`).
