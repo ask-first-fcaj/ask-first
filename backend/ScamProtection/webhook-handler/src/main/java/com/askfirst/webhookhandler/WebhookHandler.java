@@ -91,7 +91,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     /**
      * Username của bot (ví dụ: "AskFirstBot"), dùng để tạo deep link mời người
      * thân.
-     * Đọc từ biến môi trường BOT_USERNAME. Nếu không có, không hiển thị nút share
+     * Đọc từ biến môi trường TELEGRAM_BOT_USERNAME (hoặc BOT_USERNAME). Nếu không có, không hiển thị nút share
      * (graceful degradation).
      */
     private final String botUsername;
@@ -118,9 +118,13 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.sqs = SqsClient.create();
         this.adapter = new TelegramAdapter();
         this.localDevelopment = false;
-        // BOT_USERNAME không bắt buộc: nếu thiếu thì không tạo deep link (graceful
-        // degradation)
-        this.botUsername = System.getenv("BOT_USERNAME");
+        // TELEGRAM_BOT_USERNAME không bắt buộc: nếu thiếu thì không tạo deep link (graceful
+        // degradation), hỗ trợ cả BOT_USERNAME cũ để tương thích ngược
+        String envBot = System.getenv("TELEGRAM_BOT_USERNAME");
+        if (envBot == null || envBot.isBlank()) {
+            envBot = System.getenv("BOT_USERNAME");
+        }
+        this.botUsername = (envBot != null && !envBot.isBlank()) ? envBot.trim() : null;
 
         DynamoDbClient ddb = DynamoDbClient.create();
         DynamoDbEnhancedClient enhanced = DynamoDbEnhancedClient.builder().dynamoDbClient(ddb).build();
@@ -253,7 +257,10 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
      * /caidat, /nguoithan, /ketnoi) ngay trên máy dev mà không cần AWS DynamoDB.
      */
     public static WebhookHandler forLocalDevelopment(TelegramClient telegram) {
-        String botUser = System.getenv("BOT_USERNAME");
+        String botUser = System.getenv("TELEGRAM_BOT_USERNAME");
+        if (botUser == null || botUser.isBlank()) {
+            botUser = System.getenv("BOT_USERNAME");
+        }
         if (botUser == null || botUser.isBlank()) {
             botUser = readEnvFileBotUsername();
         }
@@ -284,7 +291,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                     String line;
                     while ((line = reader.readLine()) != null) {
                         line = line.trim();
-                        if (line.startsWith("BOT_USERNAME=") || line.startsWith("BOT_USERNAME =")) {
+                        if (line.startsWith("TELEGRAM_BOT_USERNAME=") || line.startsWith("TELEGRAM_BOT_USERNAME =")
+                                || line.startsWith("BOT_USERNAME=") || line.startsWith("BOT_USERNAME =")) {
                             String[] parts = line.split("=", 2);
                             return parts[1].trim().replaceAll("^[\"']|[\"']$", "");
                         }
@@ -523,7 +531,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         // 3. Fast path: Các lệnh điều khiển (/start, /caidat, /huongdan, /bilua,
         // /nguoithan, /ketnoi)
         if (TelegramAdapter.isCommand(inbound)) {
-            return handleCommand(chatId, userId, inbound.text().trim(), context);
+            String firstName = root.path("message").path("from").path("first_name").asText("").trim();
+            String username = root.path("message").path("from").path("username").asText("").trim();
+            return handleCommand(chatId, userId, inbound.text().trim(), firstName, username, context);
         }
 
         // 4. Slow path: Kiểm tra tin nhắn lừa đảo
@@ -636,6 +646,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
         // Tạo mã mời mới (kèm deep link 1-chạm nếu BOT_USERNAME được cấu hình)
         if ("guardian:create_invite".equals(data)) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đang tạo mã kết nối...");
+            }
             int code = ThreadLocalRandom.current().nextInt(100_000, 1_000_000);
             String inviteCode = String.valueOf(code);
 
@@ -644,13 +657,13 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                         Instant.now().getEpochSecond() + (24 * 3600));
             }
 
-            // Xác định botUsername hiệu lực (ưu tiên field cấu hình, nếu chạy local thì query động qua Telegram/file .env)
+            // Xác định botUsername hiệu lực (ưu tiên field cấu hình, fallback Telegram / file .env)
             String effectiveBotUsername = this.botUsername;
-            if ((effectiveBotUsername == null || effectiveBotUsername.isBlank()) && localDevelopment) {
+            if (effectiveBotUsername == null || effectiveBotUsername.isBlank()) {
                 if (telegram != null) {
                     effectiveBotUsername = telegram.getMeUsername();
                 }
-                if (effectiveBotUsername == null || effectiveBotUsername.isBlank()) {
+                if ((effectiveBotUsername == null || effectiveBotUsername.isBlank()) && localDevelopment) {
                     effectiveBotUsername = readEnvFileBotUsername();
                 }
             }
@@ -696,7 +709,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                     java.util.List<java.util.List<Map<String, String>>> rows = new ArrayList<>();
                     rows.add(java.util.List.of(
                             TelegramClient.urlButtonMap(
-                                    new TelegramClient.UrlButton("📤 Gửi lời mời cho con/cháu", shareUrl))));
+                                     new TelegramClient.UrlButton("📤 Gửi lời mời cho con/cháu", shareUrl))));
                     telegram.sendText(chatId, msg, TelegramClient.inlineKeyboardRaw(rows));
                 } else {
                     telegram.sendText(chatId, msg);
@@ -709,6 +722,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         if (data.startsWith("guardian:accept:")) {
             String[] parts = data.split(":");
             if (parts.length < 4) {
+                if (telegram != null) {
+                    telegram.answerCallbackQuery(cb.queryId(), "Dữ liệu không hợp lệ");
+                }
                 return response(200, "BAD_CALLBACK");
             }
 
@@ -721,7 +737,17 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
 
             if (guardianRepo != null) {
-                GuardianRecord rec = new GuardianRecord(userId, relativeUid);
+                Optional<GuardianRecord> existingOpt = guardianRepo.getGuardian(userId, relativeUid);
+                if (existingOpt.isEmpty() || !"pending".equals(existingOpt.get().getStatus())) {
+                    if (telegram != null) {
+                        telegram.answerCallbackQuery(cb.queryId(), "Yêu cầu kết nối này không còn hiệu lực.");
+                        telegram.sendText(chatId,
+                                "⚠️ Yêu cầu kết nối này không còn ở trạng thái chờ xác nhận.");
+                    }
+                    return response(200, "GUARDIAN_NOT_PENDING");
+                }
+
+                GuardianRecord rec = existingOpt.get();
                 rec.setShareLevel(shareLevel);
                 rec.setStatus("active");
                 rec.setElderConsentAt(Instant.now().toString());
@@ -734,6 +760,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
 
             if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã kết nối thành công (Mức " + shareLevel + ")!");
                 telegram.sendText(chatId,
                         "✅ Đã kết nối thành công! Người thân của Bác sẽ nhận cảnh báo khi cần thiết (Mức " + shareLevel
                                 + ").");
@@ -755,7 +782,23 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         // Người cao tuổi từ chối
         if (data.startsWith("guardian:reject:")) {
             String relativeUid = data.substring("guardian:reject:".length());
+
+            if (guardianRepo != null) {
+                Optional<GuardianRecord> existingOpt = guardianRepo.getGuardian(userId, relativeUid);
+                if (existingOpt.isEmpty() || !"pending".equals(existingOpt.get().getStatus())) {
+                    if (telegram != null) {
+                        telegram.answerCallbackQuery(cb.queryId(), "Yêu cầu kết nối này không còn hiệu lực.");
+                        telegram.sendText(chatId,
+                                "⚠️ Yêu cầu kết nối này không còn ở trạng thái chờ xác nhận.");
+                    }
+                    return response(200, "GUARDIAN_NOT_PENDING");
+                }
+
+                guardianRepo.delete(userId, relativeUid);
+            }
+
             if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã từ chối kết nối.");
                 telegram.sendText(chatId, "❌ Đã từ chối yêu cầu kết nối.");
             }
             try {
@@ -780,6 +823,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                         "Removed guardian: " + guardianUid);
             }
             if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã gỡ kết nối.");
                 telegram.sendText(chatId, "✅ Đã gỡ kết nối người thân thành công.");
             }
             return response(200, "GUARDIAN_REMOVED");
@@ -794,6 +838,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                     new InlineButton("Mức 2", "guardian:setlevel:" + guardianUid + ":2"),
                     new InlineButton("Mức 3", "guardian:setlevel:" + guardianUid + ":3"))));
             if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Chọn mức chia sẻ");
                 telegram.sendText(chatId, msg, keyboard);
             }
             return response(200, "LEVEL_PICKER_SENT");
@@ -803,6 +848,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         if (data.startsWith("guardian:setlevel:")) {
             String[] parts = data.split(":");
             if (parts.length < 4) {
+                if (telegram != null) {
+                    telegram.answerCallbackQuery(cb.queryId(), "Dữ liệu không hợp lệ");
+                }
                 return response(200, "BAD_CALLBACK");
             }
             String guardianUid = parts[2] + ":" + parts[3];
@@ -816,16 +864,30 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 guardianRepo.updateShareLevel(userId, guardianUid, newLevel);
             }
             if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã đổi thành Mức " + newLevel);
                 telegram.sendText(chatId,
                         "✅ Đã cập nhật mức chia sẻ thành Mức " + newLevel + ".");
             }
             return response(200, "SHARE_LEVEL_UPDATED");
         }
 
+        if (telegram != null) {
+            telegram.answerCallbackQuery(cb.queryId(), null);
+        }
         return response(200, "CALLBACK_IGNORED");
     }
 
     private APIGatewayProxyResponseEvent handleCommand(long chatId, String userId, String text, Context context) {
+        return handleCommand(chatId, userId, text, "", "", context);
+    }
+
+    private APIGatewayProxyResponseEvent handleCommand(
+            long chatId,
+            String userId,
+            String text,
+            String firstName,
+            String username,
+            Context context) {
         String cmd = text.toLowerCase();
 
         // BE-28: /nguoithan — hiện danh sách & nút tạo mã mời
@@ -835,7 +897,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
         // BE-28: /ketnoi <code> — người thân nhập mã mời
         if (cmd.startsWith("/ketnoi")) {
-            return handleKetNoiCommand(chatId, userId, text, context);
+            return handleKetNoiCommand(chatId, userId, text, firstName, username, context);
         }
 
         if (cmd.startsWith("/start") || cmd.startsWith("/batdau")) {
@@ -845,7 +907,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String[] startParts = text.trim().split("\\s+", 2);
             if (startParts.length == 2 && startParts[1].startsWith("g_")) {
                 String inviteCode = startParts[1].substring(2); // bỏ tiền tố "g_"
-                return handleKetNoiCommand(chatId, userId, "/ketnoi " + inviteCode, context);
+                return handleKetNoiCommand(chatId, userId, "/ketnoi " + inviteCode, firstName, username, context);
             }
 
             boolean hasConsent = (userRepo != null) && userRepo.hasValidConsent(userId, policySha256);
@@ -983,7 +1045,21 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         return response(200, "COMMAND_HANDLED");
     }
 
-    private APIGatewayProxyResponseEvent handleKetNoiCommand(long chatId, String userId, String text, Context context) {
+    private APIGatewayProxyResponseEvent handleKetNoiCommand(
+            long chatId,
+            String userId,
+            String text,
+            Context context) {
+        return handleKetNoiCommand(chatId, userId, text, "", "", context);
+    }
+
+    private APIGatewayProxyResponseEvent handleKetNoiCommand(
+            long chatId,
+            String userId,
+            String text,
+            String firstName,
+            String username,
+            Context context) {
         String[] parts = text.split("\\s+", 2);
         if (parts.length < 2 || parts[1].isBlank()) {
             if (telegram != null) {
@@ -1043,6 +1119,29 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return response(200, "INVITE_RACE");
         }
 
+        // Định dạng tên người thân để hiển thị cho người cao tuổi (tránh duyệt mù - issue #64)
+        String safeFirst = firstName != null ? TelegramClient.escapeHtml(firstName.trim()) : "";
+        String safeUser = username != null ? TelegramClient.escapeHtml(username.trim()) : "";
+        String senderDisplayName;
+        if (!safeFirst.isBlank() && !safeUser.isBlank()) {
+            senderDisplayName = safeFirst + " (@" + safeUser + ")";
+        } else if (!safeFirst.isBlank()) {
+            senderDisplayName = safeFirst;
+        } else if (!safeUser.isBlank()) {
+            senderDisplayName = "@" + safeUser;
+        } else {
+            senderDisplayName = "người thân (" + userId + ")";
+        }
+
+        // Ghi bản ghi pending vào GuardianRepo (chỉ đổi sang active khi người cao tuổi chấp thuận - issue #64)
+        if (guardianRepo != null) {
+            GuardianRecord pendingRec = new GuardianRecord(elderUid, userId);
+            pendingRec.setStatus("pending");
+            pendingRec.setName(senderDisplayName);
+            pendingRec.setGuardianConsentAt(Instant.now().toString());
+            guardianRepo.save(pendingRec);
+        }
+
         // Thông báo cho người thân (bản thân họ)
         if (telegram != null) {
             telegram.sendText(chatId,
@@ -1053,7 +1152,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         try {
             long elderChatId = Long.parseLong(elderUid.replace("tg:", ""));
             String msg = "🔔 <b>YÊU CẦU KẾT NỐI TỪ NGƯỜI THÂN</b>\n\n"
-                    + "Có người thân vừa nhập mã kết nối của Bác.\n\n"
+                    + "Tài khoản <b>" + senderDisplayName + "</b> muốn kết nối với Bác.\n\n"
                     + "Vui lòng chọn <b>mức độ chia sẻ thông tin</b> khi có cảnh báo:\n\n"
                     + "• <b>Mức 1:</b> Chỉ báo có nguy cơ (Nguy hiểm / Nghi ngờ).\n"
                     + "• <b>Mức 2:</b> Kèm tên kịch bản và dấu hiệu chính.\n"

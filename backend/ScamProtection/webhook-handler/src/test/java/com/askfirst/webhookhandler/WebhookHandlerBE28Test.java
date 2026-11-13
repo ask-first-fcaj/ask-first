@@ -143,7 +143,7 @@ class WebhookHandlerBE28Test {
 
     // ── Test 6: /ketnoi hợp lệ → gửi yêu cầu về người cao tuổi ─────────────
     @Test
-    @DisplayName("BE-28: /ketnoi mã hợp lệ → đánh dấu used + gửi yêu cầu cho người cao tuổi")
+    @DisplayName("BE-28: /ketnoi mã hợp lệ → đánh dấu used + tạo pending guardian + gửi yêu cầu cho người cao tuổi")
     void testKetNoiValidCode() {
         InviteRecord invite = new InviteRecord("123456", ELDER_UID,
                 Instant.now().getEpochSecond() + 86400);
@@ -160,15 +160,24 @@ class WebhookHandlerBE28Test {
         assertEquals("used", inviteRepo.store.get("INVITE#123456").getStatus());
         assertEquals(RELATIVE_UID, inviteRepo.store.get("INVITE#123456").getUsedByUid());
 
+        // Phải có bản ghi pending trong guardianRepo (issue #64)
+        Optional<GuardianRecord> pendingGuardian = guardianRepo.getGuardian(ELDER_UID, RELATIVE_UID);
+        assertTrue(pendingGuardian.isPresent(), "Phải tạo bản ghi guardian pending");
+        assertEquals("pending", pendingGuardian.get().getStatus());
+
         // Phải có tin nhắn gửi đến người thân (xác nhận đã gửi yêu cầu)
         boolean relativeMsgSent = telegramClient.sentMessages.stream()
                 .anyMatch(m -> m.chatId == RELATIVE_CHAT_ID);
         assertTrue(relativeMsgSent, "Bot phải gửi xác nhận về cho người thân");
 
-        // Phải có tin nhắn gửi đến người cao tuổi (yêu cầu chọn mức)
-        boolean elderMsgSent = telegramClient.sentMessages.stream()
-                .anyMatch(m -> m.chatId == ELDER_CHAT_ID);
-        assertTrue(elderMsgSent, "Bot phải gửi yêu cầu xác nhận đến người cao tuổi");
+        // Phải có tin nhắn gửi đến người cao tuổi (yêu cầu chọn mức) chứa tên con cháu (tránh duyệt mù)
+        Optional<FakeTelegramClient.SentMsg> elderMsgOpt = telegramClient.sentMessages.stream()
+                .filter(m -> m.chatId == ELDER_CHAT_ID)
+                .findFirst();
+        assertTrue(elderMsgOpt.isPresent(), "Bot phải gửi yêu cầu xác nhận đến người cao tuổi");
+        String elderMsg = elderMsgOpt.get().text;
+        assertTrue(elderMsg.contains("muốn kết nối với Bác"), "Tin nhắn phải thông báo tài khoản muốn kết nối");
+        assertTrue(elderMsg.contains("Test"), "Tin nhắn phải chứa tên người gửi mã");
 
         // Phải có audit
         assertFalse(auditRepo.events.isEmpty(), "Phải có audit event");
@@ -182,6 +191,11 @@ class WebhookHandlerBE28Test {
     @Test
     @DisplayName("BE-28: Người cao tuổi chấp nhận Mức 1 → lưu guardian active + thông báo 2 chiều")
     void testGuardianAcceptLevel1() {
+        // Cần có bản ghi pending trước đó
+        GuardianRecord pending = new GuardianRecord(ELDER_UID, RELATIVE_UID);
+        pending.setStatus("pending");
+        guardianRepo.save(pending);
+
         String data = "guardian:accept:" + RELATIVE_UID + ":1";
         APIGatewayProxyRequestEvent req = buildCallbackRequest(ELDER_CHAT_ID, data);
         APIGatewayProxyResponseEvent res = handler.handleRequest(req, fakeContext());
@@ -189,11 +203,15 @@ class WebhookHandlerBE28Test {
         assertEquals(200, res.getStatusCode());
         assertEquals("GUARDIAN_LINKED", res.getBody());
 
-        // Phải lưu được guardian với đúng share_level
-        assertFalse(guardianRepo.store.isEmpty(), "Phải có guardian record");
-        GuardianRecord saved = guardianRepo.store.values().iterator().next();
+        // Phải lưu được guardian với đúng share_level và status active
+        Optional<GuardianRecord> savedOpt = guardianRepo.getGuardian(ELDER_UID, RELATIVE_UID);
+        assertTrue(savedOpt.isPresent(), "Phải có guardian record");
+        GuardianRecord saved = savedOpt.get();
         assertEquals("active", saved.getStatus());
         assertEquals(1, saved.getShareLevel());
+
+        // Phải gọi answerCallbackQuery
+        assertFalse(telegramClient.answeredCallbacks.isEmpty(), "Phải trả lời callback query");
 
         // Thông báo đến cả 2 bên
         boolean elderNotified = telegramClient.sentMessages.stream()
@@ -210,15 +228,86 @@ class WebhookHandlerBE28Test {
 
     // ── Test 8: Người cao tuổi từ chối ───────────────────────────────────────
     @Test
-    @DisplayName("BE-28: Người cao tuổi từ chối → không lưu guardian, thông báo từ chối")
+    @DisplayName("BE-28: Người cao tuổi từ chối → xoá bản ghi pending, thông báo từ chối")
     void testGuardianReject() {
+        // Cần có bản ghi pending trước đó
+        GuardianRecord pending = new GuardianRecord(ELDER_UID, RELATIVE_UID);
+        pending.setStatus("pending");
+        guardianRepo.save(pending);
+
         String data = "guardian:reject:" + RELATIVE_UID;
         APIGatewayProxyRequestEvent req = buildCallbackRequest(ELDER_CHAT_ID, data);
         APIGatewayProxyResponseEvent res = handler.handleRequest(req, fakeContext());
 
         assertEquals(200, res.getStatusCode());
         assertEquals("GUARDIAN_REJECTED", res.getBody());
-        assertTrue(guardianRepo.store.isEmpty(), "Không được lưu guardian khi từ chối");
+        assertTrue(guardianRepo.store.isEmpty(), "Bản ghi pending phải bị xoá khi từ chối");
+        assertFalse(telegramClient.answeredCallbacks.isEmpty(), "Phải trả lời callback query");
+    }
+
+    @Test
+    @DisplayName("BE-28: Chấp nhận khi không có bản ghi pending → từ chối xử lý")
+    void testGuardianAcceptWithoutPending() {
+        String data = "guardian:accept:" + RELATIVE_UID + ":1";
+        APIGatewayProxyRequestEvent req = buildCallbackRequest(ELDER_CHAT_ID, data);
+        APIGatewayProxyResponseEvent res = handler.handleRequest(req, fakeContext());
+
+        assertEquals(200, res.getStatusCode());
+        assertEquals("GUARDIAN_NOT_PENDING", res.getBody());
+        assertTrue(guardianRepo.store.isEmpty());
+    }
+
+    @Test
+    @DisplayName("BE-28: Từ chối khi không có bản ghi pending → từ chối xử lý")
+    void testGuardianRejectWithoutPending() {
+        String data = "guardian:reject:" + RELATIVE_UID;
+        APIGatewayProxyRequestEvent req = buildCallbackRequest(ELDER_CHAT_ID, data);
+        APIGatewayProxyResponseEvent res = handler.handleRequest(req, fakeContext());
+
+        assertEquals(200, res.getStatusCode());
+        assertEquals("GUARDIAN_NOT_PENDING", res.getBody());
+    }
+
+    @Test
+    @DisplayName("BE-28: Nút cũ bấm accept sau khi đã từ chối → không cho phép kết nối")
+    void testGuardianAcceptAfterReject() {
+        GuardianRecord pending = new GuardianRecord(ELDER_UID, RELATIVE_UID);
+        pending.setStatus("pending");
+        guardianRepo.save(pending);
+
+        // 1. Người cao tuổi từ chối
+        APIGatewayProxyResponseEvent res1 = handler.handleRequest(
+                buildCallbackRequest(ELDER_CHAT_ID, "guardian:reject:" + RELATIVE_UID), fakeContext());
+        assertEquals("GUARDIAN_REJECTED", res1.getBody());
+
+        // 2. Bấm nút chấp nhận cũ
+        APIGatewayProxyResponseEvent res2 = handler.handleRequest(
+                buildCallbackRequest(ELDER_CHAT_ID, "guardian:accept:" + RELATIVE_UID + ":1"), fakeContext());
+        assertEquals("GUARDIAN_NOT_PENDING", res2.getBody());
+        assertTrue(guardianRepo.store.isEmpty());
+    }
+
+    @Test
+    @DisplayName("BE-28: Tất cả callback guardian:* phải gọi answerCallbackQuery để tránh xoay loading")
+    void testAllGuardianCallbacksAnswerCallbackQuery() {
+        // create_invite
+        handler.handleRequest(buildCallbackRequest(ELDER_CHAT_ID, "guardian:create_invite"), fakeContext());
+        assertFalse(telegramClient.answeredCallbacks.isEmpty(), "create_invite phải gọi answerCallbackQuery");
+        telegramClient.answeredCallbacks.clear();
+
+        // level picker
+        handler.handleRequest(buildCallbackRequest(ELDER_CHAT_ID, "guardian:level:" + RELATIVE_UID), fakeContext());
+        assertFalse(telegramClient.answeredCallbacks.isEmpty(), "level picker phải gọi answerCallbackQuery");
+        telegramClient.answeredCallbacks.clear();
+
+        // setlevel
+        handler.handleRequest(buildCallbackRequest(ELDER_CHAT_ID, "guardian:setlevel:" + RELATIVE_UID + ":2"), fakeContext());
+        assertFalse(telegramClient.answeredCallbacks.isEmpty(), "setlevel phải gọi answerCallbackQuery");
+        telegramClient.answeredCallbacks.clear();
+
+        // remove
+        handler.handleRequest(buildCallbackRequest(ELDER_CHAT_ID, "guardian:remove:" + RELATIVE_UID), fakeContext());
+        assertFalse(telegramClient.answeredCallbacks.isEmpty(), "remove phải gọi answerCallbackQuery");
     }
 
     // ── Test 9: Gỡ liên kết ──────────────────────────────────────────────────
@@ -493,9 +582,15 @@ class WebhookHandlerBE28Test {
         }
 
         final List<SentMsg> sentMessages = new ArrayList<>();
+        final List<String> answeredCallbacks = new ArrayList<>();
 
         FakeTelegramClient() {
             super("fake:token");
+        }
+
+        @Override
+        public void answerCallbackQuery(String callbackQueryId, String text) {
+            answeredCallbacks.add(callbackQueryId + ":" + text);
         }
 
         @Override
