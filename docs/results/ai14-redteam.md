@@ -71,5 +71,5 @@ Thêm một điểm: judge tự đặt mã tín hiệu giống mã luật (`R_MI
 ## Việc tiếp theo (đề xuất mở issue)
 
 1. **Judge loại cả câu trả lời chỉ vì một giá trị ngoài enum hoặc JSON lặt vặt.** Bỏ giá trị `requested_actions` lạ thay vì từ chối; cân nhắc bật `outputConfig` `json_schema` (ADR-001, AI-04 đang để tắt).
-2. **Rules: xin OTP không có chữ OTP** ("dãy 6 số", "mấy số xác nhận", "mã vừa gửi") và xin chụp thẻ/căn cước.
+2. **Rules: xin OTP không có chữ OTP** ("dãy 6 số", "mấy số xác nhận", "mã vừa gửi") và xin chụp thẻ/căn cước. Đã làm ở #139 (`rules-2026.11.11`): `hd-rt-10`, `hd-rt-11`, `hd-rt-22` lên sàn luật cứng 80. Luật viết khi đã đọc 3 mẫu này, nên 3 mẫu không còn tính là kiểm độc lập cho phần luật đó.
 3. **Hiệu chỉnh mức:** cài app, QR kèm nhập thẻ, biên lai "chuyển dư" và tin công an thật bị báo nhầm. Làm ở AI-13 trên bộ v1, sau khi nhãn của bộ này được duyệt. Không chỉnh prompt hay luật trên chính 34 mẫu này, để còn dùng nó làm bộ kiểm.

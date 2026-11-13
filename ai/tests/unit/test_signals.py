@@ -40,17 +40,38 @@ CASES: dict[str, tuple[list[str], list[str]]] = {
          # câu trấn an có chữ "không" ở xa động từ: không phải phủ định
          "Không ai biết đâu, đọc mã OTP đi.",
          "Không có gì nguy hiểm đâu, bác đọc mã OTP.",
-         "Không mất phí đâu ạ, anh đọc mã xác thực giúp em để hoàn tất."],
+         "Không mất phí đâu ạ, anh đọc mã xác thực giúp em để hoàn tất.",
+         # #139: xin OTP mà không gọi tên mã (red-team AI-14, câu viết lại, không lấy từ hard.jsonl)
+         "Chị đọc lại giúp em dãy 6 số vừa gửi về máy để bên em hủy lệnh nhé",
+         "Anh báo em mấy con số vừa nhận được trong tin nhắn là xong ạ",
+         "Cô đọc giúp con mấy số xác nhận trong tin nhắn với",
+         "Bên em vừa nhắn mấy số xác nhận, chú đọc lại cho em để em giao hàng"],
         ["Mã OTP của bạn là 482913. Tuyệt đối không cung cấp mã cho bất kỳ ai.",
          "Ngân hàng không bao giờ yêu cầu quý khách cung cấp mã OTP qua điện thoại",
          "Co.opmart gửi mã xác thực của bạn là 482913",
-         "Lưu ý vui lòng bảo mật mã OTP này"]),
+         "Lưu ý vui lòng bảo mật mã OTP này",
+         "Ngân hàng không bao giờ yêu cầu đọc dãy số vừa gửi đến máy quý khách",
+         "Hệ thống vừa gửi dãy 6 số tới máy quý khách, vui lòng nhập vào ứng dụng",
+         "Số xác nhận đặt phòng của quý khách là 48291, vui lòng xuất trình khi nhận phòng"]),
     "R_OTP_GENUINE": (
         ["Mã OTP của bạn là 482913. Tuyệt đối không cung cấp mã cho bất kỳ ai.",
          "VCB: 619284 la ma xac thuc giao dich. Khong chia se ma cho bat ky ai ke ca nhan vien ngan hang"],
         ["Không chia sẻ mã này cho bất kỳ ai",                                         # không có mã
          "Mã 482913, không chia sẻ cho ai. Nhưng bác đọc mã OTP cho nhân viên để hủy lệnh nhé",   # có lời xin mã
          "Mã OTP 482913, không chia sẻ cho ai. Đăng nhập tại https://vcb-bao-mat.xyz"]),          # có link
+    "R_CARD_PHOTO": (
+        ["Chú chụp giúp em hai mặt thẻ ATM gửi qua Zalo để ngân hàng gia hạn nhé",
+         "Bên em là ngân hàng, anh gửi ảnh thẻ tín dụng mặt trước và mặt sau để xác minh",
+         "Chị cung cấp giúp em 3 số mặt sau thẻ Visa để hoàn tiền"],
+        ["Mẹ chụp giúp con hai mặt thẻ căn cước gửi qua Zalo nhé",                     # căn cước, không phải thẻ ngân hàng
+         "Ngân hàng không bao giờ yêu cầu khách chụp hai mặt thẻ ATM",
+         "Con chụp hai mặt thẻ sinh viên nộp cho trường rồi"]),
+    "R_ID_CARD_REQUEST": (
+        ["Mẹ chụp giúp con hai mặt thẻ căn cước gửi qua Zalo nhé",
+         "Anh gửi ảnh CCCD và ảnh chân dung cầm căn cước để bên em giải ngân khoản vay",
+         "Cho em xin ảnh chụp chứng minh nhân dân của bác để làm hồ sơ"],
+        ["Tuyệt đối không gửi ảnh căn cước cho người lạ",
+         "Công dân mang căn cước đến UBND phường để làm thủ tục"]),
     "R_SAFE_ACCOUNT": (
         ["Ông phải chuyển toàn bộ tiền vào tài khoản an toàn của cơ quan điều tra",
          "Bà cần chứng minh tài chính để không bị liên quan vụ án"],

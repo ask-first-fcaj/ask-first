@@ -11,7 +11,8 @@ so sánh (ARCH §6.5).
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
@@ -33,10 +34,13 @@ class Embedder(Protocol):
 @dataclass(frozen=True)
 class Retrieved:
     cards: list[dict]    # top thẻ kịch bản (mục ``kind: card`` của meta), N0 ở cuối
-    alerts: list[dict]   # top cảnh báo (mục ``kind: alert``)
+    alerts: list[dict]   # top cảnh báo (mục ``kind: alert``) cho prompt
+    ranked: list[dict] = field(default_factory=list)   # mọi cảnh báo, giống tin nhất trước
 
-    def citations(self) -> list[m.Citation]:
-        return [m.Citation(title=a["title"], url=a["url"], publisher=a["publisher"], date=a["date"]) for a in self.alerts]
+    def citations(self, code: str, k: int = 3) -> list[m.Citation]:
+        """Nguồn để trích cho người dùng: chỉ cảnh báo đúng mã kịch bản của kết luận, giống tin nhất trước."""
+        return [m.Citation(title=a["title"], url=a["url"], publisher=a["publisher"], date=a["date"])
+                for a in self.ranked if a["code"] == code][:k]
 
 
 class Retriever:
@@ -68,11 +72,29 @@ class Retriever:
             near = best.setdefault(str(self.codes[i]), [])
             if len(near) < PER_CODE:
                 near.append(float(sims[i]))
-        ranked = sorted((c for c in best if c != ALWAYS and c in self.cards), key=lambda c: -sum(best[c]) / len(best[c]))
-        top = ranked[:self.cards_k]
+        codes = sorted((c for c in best if c != ALWAYS and c in self.cards), key=lambda c: -sum(best[c]) / len(best[c]))
+        top = codes[:self.cards_k]
         cards = [self.cards[c] for c in top] + ([self.cards[ALWAYS]] if ALWAYS in self.cards else [])
-        rows = self._alert_rows[np.argsort(-sims[self._alert_rows])[:self.alerts_k]]
-        return Retrieved(cards, [self.items[i] for i in rows])
+        order = self._alert_rows[np.argsort(-sims[self._alert_rows])]
+        ranked = [self.items[i] for i in order]
+        return Retrieved(cards, ranked[:self.alerts_k], ranked)
+
+
+class LazyRetriever:
+    """Nạp model và index ở lần ``search`` đầu (artifact nạp lười, plan §3.5). Nạp lỗi thì raise, lần sau thử lại."""
+
+    def __init__(self, load: Callable[[], Retriever]) -> None:
+        self._load = load
+        self._r: Retriever | None = None
+
+    @property
+    def version(self) -> str:
+        return self._r.version if self._r else ""
+
+    def search(self, text: str) -> Retrieved:
+        if self._r is None:
+            self._r = self._load()
+        return self._r.search(text)
 
 
 def _vn_date(d: str) -> str:

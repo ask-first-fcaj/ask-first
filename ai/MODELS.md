@@ -31,8 +31,8 @@ Bộ model mặc định của RapidOCR 3.10.0, bản ONNX fp32, dùng qua `askf
 uv run python scripts/fetch_ocr_models.py out/ocr
 ```
 
-Script tải 3 file và dừng nếu sha256 khác `artifacts.yaml`. Upload `out/ocr/*` lên `s3://$ARTIFACT_BUCKET/<s3_prefix>`
-cần quyền AWS, **chưa làm**.
+Script tải 3 file và dừng nếu sha256 khác `artifacts.yaml`. Upload lên `s3://$ARTIFACT_BUCKET/<s3_prefix>` bằng
+`scripts/upload_artifacts.py` (mục cuối file), cần quyền AWS, **chưa làm**.
 
 ### int8
 
@@ -65,9 +65,20 @@ Plan ghi ONNX int8. `fetch_ocr_models.py --int8` lượng tử hoá động (`qu
 uv run python scripts/fetch_embedder.py out/embedder
 ```
 
-## `kb_index` (AI-29)
+## `kb_index`: `kb-2026.11.11` (AI-29, INT-03)
 
-Không tải từ ngoài: `uv run python scripts/build_index.py out/embedder out/kb_index` dựng `index.npy` (124 × 384
-float32, 186 KB) và `meta.json` từ `kb/scenarios.yaml` + `kb/alerts.yaml`, in sha256 để ghi vào `artifacts.yaml`.
-Chạy lại trên cùng máy ra đúng sha256 cũ; máy khác có thể lệch ở chữ số cuối của float, khi đó ghi sha256 của bản đã
-upload. Mục `kb_index` trong `artifacts.yaml` còn để trống cho tới khi upload lên S3 (INT-03).
+Không tải từ ngoài: `uv run python scripts/build_index.py out/embedder out/kb_index --version kb-2026.11.11` dựng
+`index.npy` (124 × 384 float32, 186 KB) và `meta.json` từ `kb/scenarios.yaml` + `kb/alerts.yaml`, in sha256 để ghi vào
+`artifacts.yaml`. sha256 đang ghi là của bản dựng trên laptop của AI2 ngày 2026-11-11 (dựng lại trên cùng máy ra đúng
+sha256 đó). Máy khác có thể lệch ở chữ số cuối của float: khi đó upload bản của máy mình và ghi lại sha256.
+Đổi `kb/alerts.yaml` hoặc `kb/scenarios.yaml` thì dựng lại với `--version` mới, đổi `version`/`s3_prefix`/sha256 rồi upload.
+
+## Upload lên S3
+
+```bash
+ARTIFACT_BUCKET=<bucket> uv run python scripts/upload_artifacts.py embedder out/embedder
+ARTIFACT_BUCKET=<bucket> uv run python scripts/upload_artifacts.py kb_index out/kb_index
+```
+
+Script kiểm sha256 từng file theo `artifacts.yaml` trước, lệch thì không upload file nào. Cần `s3:PutObject` (BE1 cấp).
+**Chưa chạy** (máy AI2 chưa có quyền AWS).

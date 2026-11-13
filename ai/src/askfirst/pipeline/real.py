@@ -13,8 +13,12 @@ sau chữ của tin rồi đi chung các stage trên với nguồn ``anh_chup``.
 Guard (AI-08, ``guard.guard_signals``): chỉ gọi Bedrock Guardrails khi tin sẽ tới LLM; phát hiện prompt attack thì thêm
 ``G_PROMPT_ATTACK`` (fuse nâng mức tối thiểu lên UNSURE). ``guard=None`` (mặc định, hoặc ``guardrail.id`` trống) thì bỏ qua.
 
-Chưa có: ASR (voice không kèm chữ trả ``unreadable``), Retrieve (module ``retrieve.py`` có từ AI-29, nối vào đây ở INT-03),
-ghép câu trả lời lượt hỏi thêm vào prompt (AI-12, hoãn; lượt 2 chỉ chặn hỏi tiếp).
+Retrieve (INT-03, ARCH §6.5, khi ``flags.feature_rag`` bật và có ``retriever``): tìm trên bản đã mask, kể cả khi đi fast path.
+Top thẻ kịch bản và top cảnh báo vào prompt judge (``<related_scenarios>``, ``<canh_bao_lien_quan>``); ``citations`` lấy
+cảnh báo đúng mã kịch bản của kết luận, không có thì lấy nguồn của thẻ. Nạp model/index lỗi thì chạy tiếp không có RAG.
+
+Chưa có: ASR (voice không kèm chữ trả ``unreadable``), ghép câu trả lời lượt hỏi thêm vào prompt (AI-12, hoãn; lượt 2
+chỉ chặn hỏi tiếp).
 
 Không bao giờ raise vì lỗi model/mạng (judge tự xuống chế độ chỉ chạy luật). Không log nội dung (plan §3.1).
 """
@@ -33,6 +37,7 @@ from askfirst.pipeline import fuse as F
 from askfirst.pipeline import guard as G
 from askfirst.pipeline import judge as J
 from askfirst.pipeline import respond as R
+from askfirst.pipeline import retrieve as RAG
 from askfirst.pipeline.mask import mask
 from askfirst.pipeline.normalize import normalize as default_normalize
 
@@ -70,6 +75,15 @@ class Ocr(Protocol):
     version: str
 
     def read(self, data: bytes) -> Page: ...
+
+
+class Rag(Protocol):
+    """``retrieve.LazyRetriever`` (``build_pipeline``) hoặc ``retrieve.Retriever`` khớp giao diện này."""
+
+    @property
+    def version(self) -> str: ...
+
+    def search(self, text: str) -> RAG.Retrieved: ...
 
 
 def no_rules(masked_text: str, urls: list[str]) -> list[m.Signal]:
@@ -135,9 +149,10 @@ class RealPipeline:
     def __init__(self, llm: JudgeLLM, system_prompt: str, *, normalize: Callable[[str], str] = default_normalize,
                  rules: Rules = no_rules, rules_version: str = "none", url_intel: UrlSignals = no_url_intel,
                  roles: tuple[str, str] = ("judge", "backup"), thresholds: F.Thresholds = F.DEFAULT_THRESHOLDS,
-                 ocr: Ocr | None = None, guard: G.PromptGuard | None = None) -> None:
+                 ocr: Ocr | None = None, guard: G.PromptGuard | None = None, retriever: Rag | None = None) -> None:
         self.llm = llm
         self.guard = guard
+        self.retriever = retriever
         self.ocr = ocr
         self.system_prompt = system_prompt
         self.normalize = normalize
@@ -168,6 +183,20 @@ class RealPipeline:
                 log.warning(json.dumps({"event": "ocr_failed", "error": type(e).__name__}))   # không log message (plan §3.1)
         return pages
 
+    def _retrieve(self, masked: str, ctx: m.AnalyzeContext, versions: dict[str, str],
+                  latency: dict[str, int]) -> RAG.Retrieved | None:
+        if self.retriever is None or not ctx.flags.feature_rag:
+            return None
+        t = time.perf_counter()
+        try:
+            hits = self.retriever.search(masked)
+        except Exception as e:   # artifact chưa có, sai checksum, model lỗi: chạy tiếp không có RAG
+            log.warning(json.dumps({"event": "rag_failed", "error": type(e).__name__}))
+            return None
+        latency["rag"] = _ms(t)
+        versions["kb_index"] = self.retriever.version
+        return hits
+
     def _plain(self, outcome: m.Outcome, started: float, versions: dict[str, str], latency: dict[str, int]) -> m.Verdict:
         level, score, group = ("LOW_RISK", 0, "N0") if outcome == "smalltalk" else ("UNSURE", 30, "OTHER")
         return m.Verdict(outcome=outcome, level=level, score=score, group=group, scenario=group, should_alert=False,
@@ -196,6 +225,7 @@ class RealPipeline:
         t = time.perf_counter()
         signals = self.rules(masked, urls) + self.url_intel(urls, text_links(bundle.texts))
         latency["rules"] = _ms(t)
+        hits = self._retrieve(masked, ctx, versions, latency)
 
         res = J.JudgeResult(None)
         if not F.is_fast_path(signals):
@@ -206,7 +236,9 @@ class RealPipeline:
                     latency["guard"] = guard_ms
             t = time.perf_counter()
             user_message = J.build_user_message(masked, source="anh_chup" if seen else "van_ban",
-                                                forward_origin=bundle.forward_origin, rule_signals=[s.code for s in signals])
+                                                forward_origin=bundle.forward_origin, rule_signals=[s.code for s in signals],
+                                                scenario_cards=RAG.cards_prompt(hits.cards) if hits else "",
+                                                alerts=RAG.alerts_prompt(hits.alerts) if hits else "")
             res = J.judge(self.llm, self.system_prompt, user_message, masked,
                           turn=bundle.session.turn if bundle.session else 1, rule_score=F.rule_score(signals),
                           llm_enabled=ctx.flags.llm_enabled, can_call=can_call, roles=self.roles)
@@ -217,7 +249,8 @@ class RealPipeline:
         latency["total"] = _ms(started)
         return v.model_copy(update={
             "masked_text": masked,
-            "citations": R.scenario_citations(v.group, v.scenario),
+            "citations": (hits.citations(v.scenario) if hits and v.group not in ("N0", "OTHER") else [])
+                         or R.scenario_citations(v.group, v.scenario),
             "model_ids": [self.llm.model_id(res.model_role)] if res.model_role else [],
             "versions": versions,
             "latency_ms": latency,

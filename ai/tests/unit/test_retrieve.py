@@ -78,7 +78,8 @@ def test_top_k_cards_then_n0_once_even_when_n0_matches_best():
 def test_alerts_best_first_and_capped():
     res = retriever(alerts_k=2).search("phat")
     assert [a["id"] for a in res.alerts] == ["A003", "A002"]
-    assert res.citations()[0].url == "https://congan.x.gov.vn/3"
+    assert [c.url for c in res.citations("N1.4")] == ["https://congan.x.gov.vn/3", "https://congan.x.gov.vn/2"]
+    assert [c.url for c in res.citations("N3.1")] == ["https://congan.x.gov.vn/4"]   # ngoài top-3 vẫn trích được
 
 
 def test_empty_text_only_n0_without_embedding():

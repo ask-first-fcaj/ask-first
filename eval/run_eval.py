@@ -139,7 +139,8 @@ def run(pipeline: m.Pipeline, samples: list[dict], impl: str, cache_dir: pathlib
             res = json.loads(path.read_text(encoding="utf-8")) | {"cached": True}
         else:
             res = run_sample(pipeline, s) | {"cached": False}
-            if path and res["error"] is None:
+            # rules_only = LLM lỗi/không có quyền lúc chạy: không cache, để lần sau (có Bedrock) chạy lại thật.
+            if path and res["error"] is None and (res["verdict"] or {}).get("path") != "rules_only":
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(json.dumps(res, ensure_ascii=False), encoding="utf-8")
         results.append(res)
@@ -234,13 +235,14 @@ def compute_metrics(samples: list[dict], results: list[dict]) -> dict:
     }
 
 
-def gate(metrics: dict, baseline: dict | None = None) -> list[str]:
-    """Lý do trượt cổng CI (rỗng = đạt): recall < 90%, false alarm > 10%, hoặc tệ hơn baseline quá 2 điểm."""
+def gate(metrics: dict, baseline: dict | None = None, absolute: bool = True) -> list[str]:
+    """Lý do trượt cổng CI (rỗng = đạt): recall < 90%, false alarm > 10%, hoặc tệ hơn baseline quá 2 điểm.
+    ``absolute=False`` chỉ so với baseline: CI chưa gọi được Bedrock thì chạy chỉ luật, ngưỡng 90%/10% không áp được."""
     fails = []
     recall, fa = metrics["recall"], metrics["false_alarm"]
-    if recall is None or recall < RECALL_MIN:
+    if absolute and (recall is None or recall < RECALL_MIN):
         fails.append(f"recall {_pct(recall)} < {RECALL_MIN:.0%}")
-    if fa is not None and fa > FALSE_ALARM_MAX:
+    if absolute and fa is not None and fa > FALSE_ALARM_MAX:
         fails.append(f"false alarm {_pct(fa)} > {FALSE_ALARM_MAX:.0%}")
     if baseline:
         if recall is not None and baseline.get("recall") is not None and baseline["recall"] - recall > MAX_DRIFT:
@@ -310,6 +312,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--cache", type=pathlib.Path, help="thư mục cache kết quả từng mẫu")
     ap.add_argument("--baseline", type=pathlib.Path, help="report.json của lần chạy để so (vd. trên main)")
     ap.add_argument("--gate", action="store_true", help="trả mã 1 nếu trượt ngưỡng recall/false alarm hoặc lệch baseline")
+    ap.add_argument("--drift-only", action="store_true",
+                    help="với --gate: chỉ so với --baseline, bỏ ngưỡng 90%%/10%% (CI chạy chỉ luật khi chưa có Bedrock)")
     args = ap.parse_args(argv)
 
     paths = args.datasets or sorted(DATASETS.glob("*.jsonl"))
@@ -318,7 +322,9 @@ def main(argv: list[str] | None = None) -> int:
     results = run(pipeline, samples, args.pipeline, args.cache)
     metrics = compute_metrics(samples, results)
     baseline = json.loads(args.baseline.read_text(encoding="utf-8"))["metrics"] if args.baseline else None
-    fails = gate(metrics, baseline) if args.gate else None
+    if args.drift_only and baseline is None:
+        ap.error("--drift-only cần --baseline")
+    fails = gate(metrics, baseline, absolute=not args.drift_only) if args.gate else None
 
     args.out.mkdir(parents=True, exist_ok=True)
     report = {"pipeline": args.pipeline, "datasets": [p.name for p in paths], "metrics": metrics, "results": results}
