@@ -10,6 +10,10 @@ Parameters:
       - dev
       - prod
     Description: Environment stage (dev or prod)
+  TelegramBotUsername:
+    Type: String
+    Default: ''
+    Description: Telegram bot username (without @) used for invitation deep links (e.g. AskFirstBot)
 
 Globals:
   Function:
@@ -59,6 +63,7 @@ Resources:
           # Token và secret là SecureString: Lambda đọc lúc khởi tạo qua tên tham số, KHÔNG đưa giá trị vào đây
           TELEGRAM_BOT_TOKEN_PARAM: !Sub /askfirst/${Stage}/telegram/bot_token
           TELEGRAM_WEBHOOK_SECRET_PARAM: !Sub /askfirst/${Stage}/telegram/webhook_secret
+          TELEGRAM_BOT_USERNAME: !Ref TelegramBotUsername
           POLICY_SHA256: !Sub '{{resolve:ssm:/askfirst/${Stage}/config/policy_sha256}}'
 
   # ============================================================================
