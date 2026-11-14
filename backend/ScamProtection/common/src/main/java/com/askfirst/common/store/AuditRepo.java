@@ -19,10 +19,12 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Repository managing Legal Audit Trail for ND 356 compliance (BE-24, BE-25, ARCH §7).
+ * Repository managing Legal Audit Trail for ND 356 compliance (BE-24, BE-25,
+ * ARCH §7).
  * Single Table Design: PK=USER#<uid>, SK=AUDIT#<timestamp>#<event>.
  *
- * Audit là bằng chứng đồng ý nên KHÔNG BAO GIỜ được ghi đè: mọi lần ghi dùng attribute_not_exists(PK).
+ * Audit là bằng chứng đồng ý nên KHÔNG BAO GIỜ được ghi đè: mọi lần ghi dùng
+ * attribute_not_exists(PK).
  */
 public class AuditRepo {
 
@@ -40,14 +42,31 @@ public class AuditRepo {
     }
 
     /**
-     * Ghi một audit event. Nếu SK (AUDIT#timestamp#event) trùng với event đã có - hai event cùng loại
-     * trong cùng một thời điểm - thì thêm hậu tố ngẫu nhiên vào SK thay vì ghi đè event cũ.
+     * Ghi một audit event. Nếu SK (AUDIT#timestamp#event) trùng với event đã có -
+     * hai event cùng loại
+     * trong cùng một thời điểm - thì thêm hậu tố ngẫu nhiên vào SK thay vì ghi đè
+     * event cũ.
      */
     public void recordEvent(String userId, String event, String policyVersion, String policySha256, String details) {
+        recordEventAnonymized(userId, event, policyVersion, policySha256, details, userId);
+    }
+
+    /**
+     * Ghi một audit event với tùy chọn ẩn danh hóa trường user_id attribute (dùng cho DATA_DELETED).
+     * PK vẫn là USER#<pkUserId> để phục vụ truy vấn trạng thái tài khoản theo Single-Table,
+     * nhưng thuộc tính user_id bên trong item được thay thế bằng chuỗi ẩn danh/hash.
+     */
+    public void recordEventAnonymized(String pkUserId, String event, String policyVersion, String policySha256, String details, String anonymizedUserId) {
+        if (table == null) {
+            return;
+        }
         String timestamp = Instant.now().toString();
 
         for (int attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt++) {
-            AuditRecord record = new AuditRecord(userId, timestamp, event);
+            AuditRecord record = new AuditRecord(pkUserId, timestamp, event);
+            if (anonymizedUserId != null) {
+                record.setUserId(anonymizedUserId);
+            }
             if (attempt > 1) {
                 record.setSk(record.getSk() + "#" + UUID.randomUUID().toString().substring(0, 8));
             }
@@ -71,8 +90,7 @@ public class AuditRepo {
     public List<AuditRecord> listAuditTrail(String userId) {
         String pk = userId.startsWith("USER#") ? userId : "USER#" + userId;
         QueryConditional conditional = QueryConditional.sortBeginsWith(
-                Key.builder().partitionValue(pk).sortValue("AUDIT#").build()
-        );
+                Key.builder().partitionValue(pk).sortValue("AUDIT#").build());
 
         List<AuditRecord> list = new ArrayList<>();
         if (table != null) {
@@ -113,6 +131,6 @@ public class AuditRepo {
         String hash = hashUid(userId);
         String today = LocalDate.now().toString();
         String details = "Tài khoản [" + hash + "] đã yêu cầu xoá dữ liệu vào ngày " + today;
-        recordEvent(userId, "DATA_DELETED", policyVersion, policySha256, details);
+        recordEventAnonymized(userId, "DATA_DELETED", policyVersion, policySha256, details, hash);
     }
 }

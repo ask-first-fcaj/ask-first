@@ -51,6 +51,21 @@ Resources:
               Condition:
                 StringEquals:
                   kms:ViaService: !Sub ssm.${AWS::Region}.amazonaws.com
+            # Quyền S3 cho prefix donated/*: phục vụ đóng góp mẫu (§5.6) và xoá dữ liệu BE-31
+            - Effect: Allow
+              Action:
+                - s3:ListBucket
+              Resource: !GetAtt DataBucket.Arn
+              Condition:
+                StringLike:
+                  s3:prefix:
+                    - "donated/*"
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:DeleteObject
+                - s3:PutObject
+              Resource: !Sub "${DataBucket.Arn}/donated/*"
       FunctionUrlConfig:
         # Function URL công khai: lớp xác thực duy nhất là header X-Telegram-Bot-Api-Secret-Token
         AuthType: NONE
@@ -60,6 +75,7 @@ Resources:
           # Tên biến phải khớp WebhookHandler (thiếu biến nào là Lambda lỗi ngay lúc khởi tạo)
           DYNAMODB_TABLE_NAME: !Ref AskFirstTable
           WEBHOOK_QUEUE_URL: !Ref JobsQueue
+          DATA_BUCKET_NAME: !Ref DataBucket
           # Token và secret là SecureString: Lambda đọc lúc khởi tạo qua tên tham số, KHÔNG đưa giá trị vào đây
           TELEGRAM_BOT_TOKEN_PARAM: !Sub /askfirst/${Stage}/telegram/bot_token
           TELEGRAM_WEBHOOK_SECRET_PARAM: !Sub /askfirst/${Stage}/telegram/webhook_secret

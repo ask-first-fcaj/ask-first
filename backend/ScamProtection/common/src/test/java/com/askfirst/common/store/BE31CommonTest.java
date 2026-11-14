@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 class BE31CommonTest {
 
@@ -45,7 +46,7 @@ class BE31CommonTest {
     }
 
     @Test
-    @DisplayName("AuditRepo.recordDataDeleted: verifies anonymous format and event name")
+    @DisplayName("AuditRepo.recordDataDeleted: verifies anonymous format, event name and hash uid attribute")
     void testRecordDataDeletedFormat() {
         String uid = "tg:555444";
         String expectedHash = AuditRepo.hashUid(uid);
@@ -55,18 +56,33 @@ class BE31CommonTest {
         repo.recordDataDeleted(uid, "1.0", "sha256");
 
         assertThat(repo.recordedEvent).isEqualTo("DATA_DELETED");
+        assertThat(repo.recordedUserId).isEqualTo(expectedHash);
         assertThat(repo.recordedDetails)
                 .isEqualTo("Tài khoản [" + expectedHash + "] đã yêu cầu xoá dữ liệu vào ngày " + expectedToday);
+    }
+
+    @Test
+    @DisplayName("AuditRepo.recordEvent: safely returns without NullPointerException when table is null")
+    void testRecordEvent_SafeWhenTableIsNull() {
+        AuditRepo noTableRepo = new AuditRepo();
+        assertDoesNotThrow(() -> {
+            noTableRepo.recordEvent("tg:123", "TEST_EVENT", "1.0", "sha", "details");
+            noTableRepo.recordEventAnonymized("tg:123", "TEST_EVENT", "1.0", "sha", "details", "anon");
+            noTableRepo.deleteAuditTrail("tg:123");
+            noTableRepo.listAuditTrail("tg:123");
+        });
     }
 
     static class FakeTestAuditRepo extends AuditRepo {
         String recordedEvent;
         String recordedDetails;
+        String recordedUserId;
 
         @Override
-        public void recordEvent(String userId, String event, String policyVersion, String policySha256, String details) {
+        public void recordEventAnonymized(String pkUserId, String event, String policyVersion, String policySha256, String details, String anonymizedUserId) {
             this.recordedEvent = event;
             this.recordedDetails = details;
+            this.recordedUserId = anonymizedUserId;
         }
     }
 }

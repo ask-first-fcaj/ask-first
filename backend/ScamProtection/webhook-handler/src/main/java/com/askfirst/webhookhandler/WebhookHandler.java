@@ -19,6 +19,7 @@ import com.askfirst.common.store.GuardianRepo;
 import com.askfirst.common.store.InviteRecord;
 import com.askfirst.common.store.InviteRepo;
 import com.askfirst.common.store.RateLimitRepo;
+import com.askfirst.common.store.S3DonationStore;
 import com.askfirst.common.store.SessionStore;
 import com.askfirst.common.store.UserRecord;
 import com.askfirst.common.store.UserRepo;
@@ -26,6 +27,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
+import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 import software.amazon.awssdk.services.ssm.SsmClient;
@@ -142,7 +144,22 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.inviteRepo = new InviteRepo(enhanced, tableName);
         this.sessionStore = null;
         this.bufferStore = null;
-        this.donationStore = null;
+
+        String dataBucket = System.getenv("DATA_BUCKET_NAME");
+        if (dataBucket == null || dataBucket.isBlank()) {
+            dataBucket = System.getenv("DONATION_BUCKET_NAME");
+        }
+        if (dataBucket != null && !dataBucket.isBlank()) {
+            try {
+                S3Client s3 = S3Client.create();
+                this.donationStore = new S3DonationStore(s3, dataBucket.trim());
+            } catch (Exception e) {
+                this.donationStore = null;
+            }
+        } else {
+            this.donationStore = null;
+        }
+
         this.dedup = DynamoStoreService.create(ddb, tableName);
     }
 
@@ -453,6 +470,20 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             public void updateShareLevel(String elderUid, String guardianUid, int shareLevel) {
                 getGuardian(elderUid, guardianUid).ifPresent(r -> r.setShareLevel(shareLevel));
             }
+
+            @Override
+            public List<GuardianRecord> listWardsOf(String guardianUid) {
+                return store.values().stream()
+                        .filter(r -> guardianUid.equals(r.getGuardianUid()) || ("GUARDIAN#" + guardianUid).equals(r.getSk()))
+                        .toList();
+            }
+
+            @Override
+            public void deleteAllGuardians(String userId) {
+                store.entrySet().removeIf(e ->
+                        userId.equals(e.getValue().getElderUid()) || ("USER#" + userId).equals(e.getValue().getPk())
+                                || userId.equals(e.getValue().getGuardianUid()) || ("GUARDIAN#" + userId).equals(e.getValue().getSk()));
+            }
         };
     }
 
@@ -491,7 +522,13 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
             @Override
             public void recordEvent(String userId, String event, String policyVersion, String policySha256, String details) {
-                AuditRecord r = new AuditRecord(userId, Instant.now().toString(), event);
+                recordEventAnonymized(userId, event, policyVersion, policySha256, details, userId);
+            }
+
+            @Override
+            public void recordEventAnonymized(String pkUserId, String event, String policyVersion, String policySha256, String details, String anonymizedUserId) {
+                AuditRecord r = new AuditRecord(pkUserId, Instant.now().toString(), event);
+                r.setUserId(anonymizedUserId);
                 r.setPolicyVersion(policyVersion);
                 r.setPolicySha256(policySha256);
                 r.setDetails(details);
@@ -1337,16 +1374,30 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String userId,
             String queryId,
             Context context) {
+        // Kiểm tra tiền điều kiện: nếu đã rút đồng ý trước đó (idempotency check)
+        if (userRepo != null) {
+            Optional<UserRecord> userOpt = userRepo.getUser(userId);
+            if (userOpt.isPresent() && "CONSENT_REVOKED".equals(userOpt.get().getStatus())) {
+                if (telegram != null) {
+                    if (queryId != null) {
+                        telegram.answerCallbackQuery(queryId, "Bác đã rút đồng ý trước đó");
+                    }
+                    telegram.sendText(chatId,
+                            "Dạ, Bác đã rút đồng ý trước đó rồi ạ.\n\n"
+                                    + "Khi nào Bác cần sử dụng lại, chỉ cần gõ /start để xem và đồng ý lại nhé!");
+                }
+                return response(200, "CONSENT_ALREADY_REVOKED");
+            }
+        }
+
         // 1. Cập nhật trạng thái người dùng thành CONSENT_REVOKED trong UserRepo
         if (userRepo != null) {
             userRepo.revokeConsent(userId);
         }
 
-        // 2. Huỷ bỏ mọi liên kết người thân đang có
+        // 2. Huỷ bỏ mọi liên kết người thân đang có (cả 2 chiều)
         if (guardianRepo != null) {
-            for (GuardianRecord g : guardianRepo.listGuardians(userId)) {
-                guardianRepo.delete(userId, g.getGuardianUid());
-            }
+            guardianRepo.deleteAllGuardians(userId);
         }
 
         // 3. Ghi nhận một bản ghi vào AuditRepo
@@ -1373,7 +1424,28 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String userId,
             String text,
             Context context) {
-        return executeDataDeletion(null, chatId, userId, context);
+        String lower = text.toLowerCase().trim();
+        if (lower.contains("confirm") || lower.contains("xacnhan")) {
+            return executeDataDeletion(null, chatId, userId, context);
+        }
+
+        String addressForm = getAddressForm(userId);
+        String warningMsg = "⚠️ <b>CẢNH BÁO XÓA TOÀN BỘ DỮ LIỆU</b>\n\n"
+                + "Thao tác này sẽ xoá vĩnh viễn trên hệ thống:\n"
+                + "• Hồ sơ người dùng và lịch sử các lần kiểm tra\n"
+                + "• Mọi kết nối với người thân đang bảo vệ " + addressForm + "\n"
+                + "• Toàn bộ dữ liệu phiên chat và mẫu đã đóng góp\n\n"
+                + addressForm + " có chắc chắn muốn xoá sạch toàn bộ dữ liệu không?";
+
+        Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
+                List.of(
+                        new InlineButton("🗑️ Xác nhận xoá dữ liệu", "xoadulieu:confirm"),
+                        new InlineButton("Giữ lại", "xoadulieu:cancel"))));
+
+        if (telegram != null) {
+            telegram.sendText(chatId, warningMsg, keyboard);
+        }
+        return response(200, "COMMAND_HANDLED");
     }
 
     private APIGatewayProxyResponseEvent executeDataDeletion(
@@ -1383,58 +1455,89 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             Context context) {
         String chatStr = String.valueOf(chatId);
 
-        // 1. Quét và xoá sạch:
-        // 1a. DynamoDB single-table level (nếu dedup / standardClient có sẵn)
-        if (dedup != null) {
-            dedup.purgeUserData(userId, chatStr);
-        }
-
-        // 1b. Bản ghi thông tin người dùng (USER#)
-        if (userRepo != null) {
-            userRepo.deleteUser(userId);
-        }
-
-        // 1c. Các liên kết người thân (GUARDIAN#)
-        if (guardianRepo != null) {
-            for (GuardianRecord g : guardianRepo.listGuardians(userId)) {
-                guardianRepo.delete(userId, g.getGuardianUid());
+        // Kiểm tra tiền điều kiện (idempotency check): nếu tài khoản đã bị xoá trước đó
+        boolean hasUser = userRepo != null && userRepo.getUser(userId).isPresent();
+        boolean hasGuardians = guardianRepo != null && !guardianRepo.listGuardians(userId).isEmpty();
+        boolean hasS3 = donationStore != null && donationStore.hasDonatedSamples(userId);
+        if (!hasUser && !hasGuardians && !hasS3) {
+            List<AuditRecord> audits = auditRepo != null ? auditRepo.listAuditTrail(userId) : List.of();
+            boolean hasDeletedAudit = audits.stream().anyMatch(a -> "DATA_DELETED".equals(a.getEvent()));
+            if (hasDeletedAudit) {
+                if (telegram != null) {
+                    if (queryId != null) {
+                        telegram.answerCallbackQuery(queryId, "Dữ liệu đã được xoá trước đó");
+                    }
+                    telegram.sendText(chatId,
+                            "Dạ, toàn bộ dữ liệu của Bác trên hệ thống đã được xoá sạch trước đó rồi ạ!\n\n"
+                                    + "Nếu cần sử dụng lại, Bác chỉ cần gõ /start nhé.");
+                }
+                return response(200, "DATA_ALREADY_DELETED");
             }
         }
 
-        // 1d. Các phiên chat (SESSION#)
-        if (sessionStore != null) {
-            sessionStore.delete(chatStr);
-        }
-
-        // 1e. Các bộ đệm (BUFFER#)
-        if (bufferStore != null) {
-            bufferStore.delete(chatStr);
-        }
-
-        // 1f. Thư mục donated/<hash(uid)>/ trên S3
-        if (donationStore != null) {
-            donationStore.deleteDonatedSamples(userId);
-        }
-
-        // 2. Ghi vết kiểm toán ẩn danh vào AuditRepo:
-        // "Tài khoản [hash(uid)] đã yêu cầu xoá dữ liệu vào ngày YYYY-MM-DD"
-        if (auditRepo != null) {
-            auditRepo.deleteAuditTrail(userId);
-            auditRepo.recordDataDeleted(userId, POLICY_VERSION, policySha256);
-        }
-
-        // 3. Gửi tin nhắn thông báo hoàn tất:
-        // "Cháu đã xoá sạch toàn bộ dữ liệu của Bác trên hệ thống rồi ạ!"
-        if (telegram != null) {
-            if (queryId != null) {
-                telegram.answerCallbackQuery(queryId, "Đã xoá dữ liệu");
+        try {
+            // 1. Quét và xoá sạch:
+            // 1a. DynamoDB single-table level (nếu dedup / standardClient có sẵn)
+            if (dedup != null) {
+                dedup.purgeUserData(userId, chatStr);
             }
-            telegram.sendText(chatId,
-                    "Cháu đã xoá sạch toàn bộ dữ liệu của Bác trên hệ thống rồi ạ!\n\n"
-                            + "💡 Để bảo vệ quyền riêng tư tuyệt đối, Bác vui lòng tự xóa cuộc trò chuyện này trên ứng dụng Telegram giúp cháu nhé.");
-        }
 
-        return response(200, "DATA_DELETED");
+            // 1b. Bản ghi thông tin người dùng (USER#)
+            if (userRepo != null) {
+                userRepo.deleteUser(userId);
+            }
+
+            // 1c. Các liên kết người thân (GUARDIAN#) ở cả 2 chiều
+            if (guardianRepo != null) {
+                guardianRepo.deleteAllGuardians(userId);
+            }
+
+            // 1d. Các phiên chat (SESSION#)
+            if (sessionStore != null) {
+                sessionStore.delete(chatStr);
+            }
+
+            // 1e. Các bộ đệm (BUFFER#)
+            if (bufferStore != null) {
+                bufferStore.delete(chatStr);
+            }
+
+            // 1f. Thư mục donated/<hash(uid)>/ trên S3
+            if (donationStore != null) {
+                donationStore.deleteDonatedSamples(userId);
+            }
+
+            // 2. Ghi vết kiểm toán ẩn danh vào AuditRepo:
+            // "Tài khoản [hash(uid)] đã yêu cầu xoá dữ liệu vào ngày YYYY-MM-DD"
+            if (auditRepo != null) {
+                auditRepo.deleteAuditTrail(userId);
+                auditRepo.recordDataDeleted(userId, POLICY_VERSION, policySha256);
+            }
+
+            // 3. Gửi tin nhắn thông báo hoàn tất:
+            // "Cháu đã xoá sạch toàn bộ dữ liệu của Bác trên hệ thống rồi ạ!"
+            if (telegram != null) {
+                if (queryId != null) {
+                    telegram.answerCallbackQuery(queryId, "Đã xoá dữ liệu");
+                }
+                telegram.sendText(chatId,
+                        "Cháu đã xoá sạch toàn bộ dữ liệu của Bác trên hệ thống rồi ạ!\n\n"
+                                + "💡 Để bảo vệ quyền riêng tư tuyệt đối, Bác vui lòng tự xóa cuộc trò chuyện này trên ứng dụng Telegram giúp cháu nhé.");
+            }
+
+            return response(200, "DATA_DELETED");
+
+        } catch (Exception e) {
+            log(context, "Lỗi khi dọn dẹp dữ liệu của user " + userId + ": " + e.getMessage());
+            if (telegram != null) {
+                if (queryId != null) {
+                    telegram.answerCallbackQuery(queryId, "Lỗi dọn dẹp dữ liệu");
+                }
+                telegram.sendText(chatId,
+                        "⚠️ Đã có lỗi xảy ra trong quá trình dọn dẹp dữ liệu của Bác. Dữ liệu chưa được xoá hoàn tất, Bác vui lòng thử lại sau giây lát hoặc liên hệ hỗ trợ nhé.");
+            }
+            return response(200, "PURGE_FAILED");
+        }
     }
 
     private APIGatewayProxyResponseEvent handleContentInspection(

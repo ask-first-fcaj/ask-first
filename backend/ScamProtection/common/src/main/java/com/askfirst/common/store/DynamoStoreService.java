@@ -264,7 +264,8 @@ public class DynamoStoreService {
                 }
                 startKey = res.hasLastEvaluatedKey() && !res.lastEvaluatedKey().isEmpty() ? res.lastEvaluatedKey() : null;
             } while (startKey != null);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            throw new RuntimeException("Lỗi xoá dữ liệu USER# trong DynamoDB: " + e.getMessage(), e);
         }
 
         // 2. Xoá SESSION#<chatId>
@@ -277,7 +278,8 @@ public class DynamoStoreService {
                                 ATTR_PK, AttributeValue.builder().s(sessionPk).build(),
                                 ATTR_SK, AttributeValue.builder().s("META").build()))
                         .build());
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                throw new RuntimeException("Lỗi xoá SESSION# trong DynamoDB: " + e.getMessage(), e);
             }
 
             // 3. Xoá BUFFER#<chatId>
@@ -304,7 +306,8 @@ public class DynamoStoreService {
                     }
                     startKey = res.hasLastEvaluatedKey() && !res.lastEvaluatedKey().isEmpty() ? res.lastEvaluatedKey() : null;
                 } while (startKey != null);
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                throw new RuntimeException("Lỗi xoá BUFFER# trong DynamoDB: " + e.getMessage(), e);
             }
         }
     }
