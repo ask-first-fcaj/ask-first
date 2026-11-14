@@ -723,6 +723,13 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         }
 
         // BE-30: Xử lý nút [Bot báo sai] và luồng đóng góp mẫu (Donation Consent)
+        if ("fb:already_reported".equals(data)) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Ý kiến báo sai đã được ghi nhận rồi ạ!");
+            }
+            return response(200, "FEEDBACK_ALREADY_REPORTED");
+        }
+
         if (data != null && (data.equals("fb:wrong") || data.startsWith("fb:wrong:"))) {
             return handleFeedbackWrong(cb, chatId, userId, data, context);
         }
@@ -907,8 +914,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
 
             if (guardianRepo != null) {
-                Optional<GuardianRecord> existingOpt = guardianRepo.getGuardian(userId, relativeUid);
-                if (existingOpt.isEmpty() || !"pending".equals(existingOpt.get().getStatus())) {
+                boolean accepted = guardianRepo.acceptPending(userId, relativeUid, shareLevel, Instant.now().toString());
+                if (!accepted) {
                     if (telegram != null) {
                         telegram.answerCallbackQuery(cb.queryId(), "Yêu cầu kết nối này không còn hiệu lực.");
                         telegram.sendText(chatId,
@@ -916,17 +923,19 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                     }
                     return response(200, "GUARDIAN_NOT_PENDING");
                 }
-
-                GuardianRecord rec = existingOpt.get();
-                rec.setShareLevel(shareLevel);
-                rec.setStatus("active");
-                rec.setElderConsentAt(Instant.now().toString());
-                guardianRepo.save(rec);
             }
 
             if (auditRepo != null) {
                 auditRepo.recordEvent(userId, "GUARDIAN_LINKED", POLICY_VERSION, policySha256,
                         "Linked guardian " + relativeUid + " at level " + shareLevel);
+            }
+
+            Integer msgId = parseMessageId(cb.messageId());
+            if (telegram != null && msgId != null) {
+                try {
+                    telegram.editReplyMarkup(chatId, msgId, null);
+                } catch (Exception ignored) {
+                }
             }
 
             if (telegram != null) {
@@ -954,8 +963,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String relativeUid = data.substring("guardian:reject:".length());
 
             if (guardianRepo != null) {
-                Optional<GuardianRecord> existingOpt = guardianRepo.getGuardian(userId, relativeUid);
-                if (existingOpt.isEmpty() || !"pending".equals(existingOpt.get().getStatus())) {
+                boolean rejected = guardianRepo.rejectPending(userId, relativeUid);
+                if (!rejected) {
                     if (telegram != null) {
                         telegram.answerCallbackQuery(cb.queryId(), "Yêu cầu kết nối này không còn hiệu lực.");
                         telegram.sendText(chatId,
@@ -963,8 +972,14 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                     }
                     return response(200, "GUARDIAN_NOT_PENDING");
                 }
+            }
 
-                guardianRepo.delete(userId, relativeUid);
+            Integer msgId = parseMessageId(cb.messageId());
+            if (telegram != null && msgId != null) {
+                try {
+                    telegram.editReplyMarkup(chatId, msgId, null);
+                } catch (Exception ignored) {
+                }
             }
 
             if (telegram != null) {
@@ -1047,6 +1062,17 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         return response(200, "CALLBACK_IGNORED");
     }
 
+    private static Integer parseMessageId(String messageId) {
+        if (messageId == null || messageId.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(messageId.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
     private APIGatewayProxyResponseEvent handleFeedbackWrong(
             TelegramCallbackQuery cb,
             long chatId,
@@ -1065,7 +1091,27 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             checkId = sessionStore.get(String.valueOf(chatId)).map(SessionRecord::checkId).orElse(null);
         }
 
+        // Chống bấm lặp lại nút [Bot báo sai]: nếu đã ghi nhận rồi thì thông báo và vô hiệu hóa nút
         if (checkStore != null && checkId != null && !checkId.isBlank()) {
+            Optional<CheckRecord> checkOpt = checkStore instanceof CheckRepo repo
+                    ? repo.get(userId, checkId)
+                    : Optional.empty();
+            if (checkOpt.isPresent() && "wrong".equals(checkOpt.get().feedback())) {
+                if (telegram != null) {
+                    telegram.answerCallbackQuery(cb.queryId(), "Ý kiến báo sai của " + addressForm + " đã được ghi nhận trước đó rồi ạ!");
+                    Integer msgId = parseMessageId(cb.messageId());
+                    if (msgId != null) {
+                        try {
+                            Map<String, Object> ackKeyboard = TelegramClient.inlineKeyboard(List.of(
+                                    List.of(new InlineButton("✅ Đã ghi nhận báo sai", "fb:already_reported"))));
+                            telegram.editReplyMarkup(chatId, msgId, ackKeyboard);
+                        } catch (Exception ignored) {
+                        }
+                    }
+                }
+                return response(200, "FEEDBACK_ALREADY_REPORTED");
+            }
+
             checkStore.updateFeedback(userId, checkId, "wrong");
         }
 
@@ -1076,6 +1122,17 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
         if (telegram != null) {
             telegram.answerCallbackQuery(cb.queryId(), "Cảm ơn ý kiến của " + addressForm + "!");
+
+            // Đổi nút bấm trên tin nhắn kết quả thành [✅ Đã ghi nhận báo sai]
+            Integer msgId = parseMessageId(cb.messageId());
+            if (msgId != null) {
+                try {
+                    Map<String, Object> ackKeyboard = TelegramClient.inlineKeyboard(List.of(
+                            List.of(new InlineButton("✅ Đã ghi nhận báo sai", "fb:already_reported"))));
+                    telegram.editReplyMarkup(chatId, msgId, ackKeyboard);
+                } catch (Exception ignored) {
+                }
+            }
 
             String prompt = "Cảm ơn " + addressForm + " đã góp ý! " + addressForm
                     + " có đồng ý cho cháu lưu lại nội dung tin nhắn này (cháu đã che hết số điện thoại và tên riêng) để các kỹ sư hoàn thiện bot tốt hơn không ạ?";
@@ -1104,6 +1161,15 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             checkId = data.substring("dn:agree:".length()).trim();
         }
 
+        // Xóa nút bấm trên tin nhắn hỏi để người dùng không bấm lại
+        Integer msgId = parseMessageId(cb.messageId());
+        if (telegram != null && msgId != null) {
+            try {
+                telegram.editReplyMarkup(chatId, msgId, null);
+            } catch (Exception ignored) {
+            }
+        }
+
         String maskedText = null;
         if (sessionStore != null) {
             Optional<SessionRecord> sessionOpt = sessionStore.get(String.valueOf(chatId));
@@ -1113,12 +1179,14 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 if ((checkId == null || checkId.isBlank()) && s.checkId() != null) {
                     checkId = s.checkId();
                 }
+                // Xóa session ngay lập tức: các lần bấm tiếp theo sẽ coi là đã xử lý
+                sessionStore.delete(String.valueOf(chatId));
             }
         }
 
         if (maskedText == null || maskedText.isBlank()) {
             if (telegram != null) {
-                telegram.answerCallbackQuery(cb.queryId(), "Phiên đã hết hạn");
+                telegram.answerCallbackQuery(cb.queryId(), "Phiên đã hết hạn hoặc đã được ghi nhận");
                 telegram.sendText(chatId,
                         "Dạ phiên kiểm tra này đã kết thúc hoặc không tìm thấy nội dung để đóng góp ạ. Cảm ơn "
                                 + addressForm + "!");
@@ -1161,6 +1229,34 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             checkId = data.substring("donate:decline:".length()).trim();
         } else if (data.startsWith("dn:decline:")) {
             checkId = data.substring("dn:decline:".length()).trim();
+        }
+
+        // Xóa nút bấm trên tin nhắn hỏi để người dùng không bấm lại
+        Integer msgId = parseMessageId(cb.messageId());
+        if (telegram != null && msgId != null) {
+            try {
+                telegram.editReplyMarkup(chatId, msgId, null);
+            } catch (Exception ignored) {
+            }
+        }
+
+        boolean hadSession = false;
+        if (sessionStore != null) {
+            Optional<SessionRecord> sessionOpt = sessionStore.get(String.valueOf(chatId));
+            if (sessionOpt.isPresent()) {
+                hadSession = true;
+                if ((checkId == null || checkId.isBlank()) && sessionOpt.get().checkId() != null) {
+                    checkId = sessionOpt.get().checkId();
+                }
+                sessionStore.delete(String.valueOf(chatId));
+            }
+        }
+
+        if (!hadSession) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Ý kiến đã được ghi nhận rồi ạ!");
+            }
+            return response(200, "DONATION_ALREADY_PROCESSED");
         }
 
         if (auditRepo != null) {

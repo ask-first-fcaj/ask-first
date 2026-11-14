@@ -264,6 +264,96 @@ class WebhookHandlerBE30Test {
         assertThat(fakeCheckRepo.get(userId, checkId).get().feedback()).isEqualTo("wrong");
     }
 
+    @Test
+    @DisplayName("BE-30: Chống bấm lặp lại nút [Bot báo sai] - lần 2 trả về FEEDBACK_ALREADY_REPORTED và đổi nút")
+    void testFeedbackWrongDuplicateClickPrevented() {
+        String checkId = "01JD9ZCHECKDUP001";
+        String userId = "tg:111";
+
+        fakeCheckRepo.put(new CheckRecord(
+                checkId, userId, "unsafe", "HIGH", 90,
+                "impersonation", "fake_brand", "rule", List.of(), List.of(), List.of(),
+                true, null, Instant.now().toString(), Instant.now().getEpochSecond() + 1800));
+
+        // Lần 1: Bấm báo sai
+        String cb1 = callbackUpdate(201, "fb:wrong:" + checkId, 111, 222);
+        APIGatewayProxyResponseEvent res1 = handler.handleRequest(createRequest(cb1), mockContext);
+        assertThat(res1.getStatusCode()).isEqualTo(200);
+        assertThat(res1.getBody()).isEqualTo("FEEDBACK_WRONG_HANDLED");
+        assertThat(fakeCheckRepo.get(userId, checkId).get().feedback()).isEqualTo("wrong");
+        assertThat(fakeTelegram.lastEditMessageId).isEqualTo(99);
+
+        // Lần 2: Cố tình bấm lại fb:wrong
+        String cb2 = callbackUpdate(202, "fb:wrong:" + checkId, 111, 222);
+        APIGatewayProxyResponseEvent res2 = handler.handleRequest(createRequest(cb2), mockContext);
+        assertThat(res2.getStatusCode()).isEqualTo(200);
+        assertThat(res2.getBody()).isEqualTo("FEEDBACK_ALREADY_REPORTED");
+        assertThat(fakeTelegram.lastCallbackAnswer).contains("đã được ghi nhận");
+
+        // Lần 3: Bấm vào nút fb:already_reported
+        String cb3 = callbackUpdate(203, "fb:already_reported", 111, 222);
+        APIGatewayProxyResponseEvent res3 = handler.handleRequest(createRequest(cb3), mockContext);
+        assertThat(res3.getStatusCode()).isEqualTo(200);
+        assertThat(res3.getBody()).isEqualTo("FEEDBACK_ALREADY_REPORTED");
+    }
+
+    @Test
+    @DisplayName("BE-30: Chống bấm lặp lại nút [Đồng ý đóng góp] - xoá nút trên message và xoá session ngay lần 1")
+    void testDonateAgreeDuplicateClickPrevented() {
+        String checkId = "01JD9ZCHECKAGREE01";
+        String userId = "tg:111";
+        String chatId = "222";
+
+        fakeSessionStore.put(new SessionRecord(
+                chatId, checkId, userId, "Chuyển tiền gấp nha bạn", null, 1, Instant.now().getEpochSecond() + 1800));
+
+        // Lần 1: Bấm đồng ý
+        String cb1 = callbackUpdate(301, "donate:agree:" + checkId, 111, 222);
+        APIGatewayProxyResponseEvent res1 = handler.handleRequest(createRequest(cb1), mockContext);
+        assertThat(res1.getStatusCode()).isEqualTo(200);
+        assertThat(res1.getBody()).isEqualTo("DONATION_SAVED");
+        assertThat(fakeDonationStore.savedSamples).hasSize(1);
+        assertThat(fakeTelegram.lastEditMessageId).isEqualTo(99);
+        // Session phải bị xoá ngay lập tức
+        assertThat(fakeSessionStore.get(chatId)).isEmpty();
+
+        // Lần 2: Cố tình bấm lại đồng ý
+        String cb2 = callbackUpdate(302, "donate:agree:" + checkId, 111, 222);
+        APIGatewayProxyResponseEvent res2 = handler.handleRequest(createRequest(cb2), mockContext);
+        assertThat(res2.getStatusCode()).isEqualTo(200);
+        assertThat(res2.getBody()).isEqualTo("DONATION_SESSION_EXPIRED");
+        // Không lưu file lần 2 vào S3
+        assertThat(fakeDonationStore.savedSamples).hasSize(1);
+        assertThat(fakeTelegram.lastCallbackAnswer).contains("ghi nhận");
+    }
+
+    @Test
+    @DisplayName("BE-30: Chống bấm lặp lại nút [Không, cảm ơn] - xoá session và không lưu S3")
+    void testDonateDeclineDuplicateClickPrevented() {
+        String checkId = "01JD9ZCHECKDECL01";
+        String userId = "tg:111";
+        String chatId = "222";
+
+        fakeSessionStore.put(new SessionRecord(
+                chatId, checkId, userId, "Nội dung cần che", null, 1, Instant.now().getEpochSecond() + 1800));
+
+        // Lần 1: Bấm từ chối
+        String cb1 = callbackUpdate(401, "donate:decline:" + checkId, 111, 222);
+        APIGatewayProxyResponseEvent res1 = handler.handleRequest(createRequest(cb1), mockContext);
+        assertThat(res1.getStatusCode()).isEqualTo(200);
+        assertThat(res1.getBody()).isEqualTo("DONATION_DECLINED");
+        assertThat(fakeDonationStore.savedSamples).isEmpty();
+        assertThat(fakeSessionStore.get(chatId)).isEmpty();
+
+        // Lần 2: Cố tình bấm lại từ chối
+        String cb2 = callbackUpdate(402, "donate:decline:" + checkId, 111, 222);
+        APIGatewayProxyResponseEvent res2 = handler.handleRequest(createRequest(cb2), mockContext);
+        assertThat(res2.getStatusCode()).isEqualTo(200);
+        assertThat(res2.getBody()).isEqualTo("DONATION_ALREADY_PROCESSED");
+        assertThat(fakeDonationStore.savedSamples).isEmpty();
+        assertThat(fakeTelegram.lastCallbackAnswer).contains("đã được ghi nhận");
+    }
+
     // --- Helpers & Fakes ---
 
     private APIGatewayProxyRequestEvent createRequest(String body) {
@@ -368,6 +458,8 @@ class WebhookHandlerBE30Test {
         String lastText;
         Map<String, Object> lastMarkup;
         String lastCallbackAnswer;
+        Integer lastEditMessageId;
+        Map<String, Object> lastEditMarkup;
 
         FakeTelegramClient() {
             super("fake-token");
@@ -384,6 +476,13 @@ class WebhookHandlerBE30Test {
         @Override
         public void answerCallbackQuery(String callbackQueryId, String text) {
             this.lastCallbackAnswer = text;
+        }
+
+        @Override
+        public void editReplyMarkup(long chatId, int messageId, Map<String, Object> replyMarkup) {
+            this.lastChatId = chatId;
+            this.lastEditMessageId = messageId;
+            this.lastEditMarkup = replyMarkup;
         }
     }
 

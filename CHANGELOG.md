@@ -33,10 +33,15 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
   - Gửi lời cảm ơn kèm prompt xin phép đóng góp mẫu đã che mờ (`masked_text`) thích ứng theo xưng hô người dùng (Bác/Cô/Chú) và hiển thị 2 nút bấm: `[Đồng ý đóng góp]` (`donate:agree:<check_id>`) và `[Không, cảm ơn]` (`donate:decline:<check_id>`).
   - Khi người dùng bấm `[Đồng ý đóng góp]`: lấy `masked_text` từ ngữ cảnh `SESSION#{chat_id}` lưu vào thư mục `donated/<hash(uid)>/<check_id>.txt` trên S3 Bucket (`DataBucket`, tự động hết hạn sau 30 ngày qua S3 Lifecycle Configuration), cập nhật mục đích `"donate": true` trong `UserRepo`, ghi nhận `AUDIT#` (`CONSENT_GIVEN`).
   - Khi người dùng bấm `[Không, cảm ơn]`: tuyệt đối KHÔNG lưu vào S3, ghi nhận `AUDIT#` (`DONATION_DECLINED`), gửi tin nhắn xác nhận lịch sự không lưu trữ.
+  - Chống bấm lặp lại (idempotency & UI update):
+    + `[Bot báo sai]`: khi bấm lần đầu, cập nhật inline button thành `[✅ Đã ghi nhận báo sai]` (`fb:already_reported`); nếu bấm lại, popup toast thông báo đã ghi nhận và trả `FEEDBACK_ALREADY_REPORTED`.
+    + `[Đồng ý đóng góp]` & `[Không, cảm ơn]`: ngay lần bấm đầu tiên, tự động xóa bộ nút khỏi tin nhắn thông qua `TelegramClient.editReplyMarkup` (`reply_markup: null`), xóa session trong `SessionStore`; các lần bấm sau lập tức nhận thông báo đã xử lý, ngăn chặn hoàn toàn việc lưu trùng vào S3.
   - Mở rộng tầng dữ liệu: `SessionStore` & `DynamoSessionStore` (`SESSION#{chat_id}`, TTL 30 phút), `DonationStore` & `S3DonationStore`, `CheckRepo` & `DynamoCheckStore.updateFeedback`.
-  - Bộ test `WebhookHandlerBE30Test` (7 test cases) và `WorkerStoresTest` phủ toàn bộ các kịch bản thành công, đổi xưng hô, hết hạn phiên, từ chối lưu, kiểm thử hợp đồng callback và an toàn dữ liệu cá nhân.
+  - Bộ test `WebhookHandlerBE30Test` (10 test cases) và `WorkerStoresTest` phủ toàn bộ các kịch bản thành công, đổi xưng hô, hết hạn phiên, từ chối lưu, kiểm thử hợp đồng callback và chống bấm lặp lại.
 - BE-28 (#64): **luồng liên kết người thân an toàn 2 chiều (double opt-in) và deep link 1-chạm**:
   - Lệnh `/nguoithan`: sinh mã mời 6 chữ số ngẫu nhiên lưu `INVITE#<code>` (hạn 24 giờ, dùng 1 lần) kèm nút chia sẻ Telegram `t.me/share/url` và deep link 1-chạm `https://t.me/<bot>?start=g_<code>`.
+  - Chống race condition (Check-Then-Act) khi `accept` và `reject`: sử dụng kiểm tra điều kiện lạc quan `OptimisticUpdates.ifUnchanged(previousUpdatedAt)` trên DynamoDB (`GuardianRepo.acceptPending` và `rejectPending`), đảm bảo khi có nhiều request đồng thời chỉ có duy nhất 1 thao tác hợp lệ, request còn lại trả `GUARDIAN_NOT_PENDING`.
+  - Tự động xóa nút inline keyboard sau khi người cao tuổi đưa ra quyết định chấp nhận hoặc từ chối kết nối.
   - Tự động nhận diện bot username qua biến môi trường `TELEGRAM_BOT_USERNAME` (khai báo trong `infra/template.yaml`) hoặc fallback `/getMe` (`TelegramClient.getMeUsername()`).
   - Con/cháu bấm link mở bot và bấm Bắt đầu (Start): tự động bắt tham số `g_<code>` và kích hoạt luồng kết nối `/ketnoi <code>`.
   - Luồng double opt-in an toàn: hiển thị rõ tên và `@username` của người xin kết nối cho người cao tuổi duyệt (tránh duyệt mù - #64); lưu bản ghi `pending` khi nhập mã thành công và chỉ đổi sang `active` hoặc xoá khi còn ở trạng thái `pending`.

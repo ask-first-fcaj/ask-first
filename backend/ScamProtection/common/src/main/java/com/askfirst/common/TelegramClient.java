@@ -11,6 +11,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -188,6 +189,21 @@ public class TelegramClient {
             body.put("reply_markup", replyMarkup);
         }
         executePost("/editMessageText", body);
+    }
+
+    /**
+     * Edits only the inline keyboard markup of an existing message (e.g. to remove or update buttons).
+     */
+    public void editReplyMarkup(long chatId, int messageId, Map<String, Object> replyMarkup) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("chat_id", chatId);
+        body.put("message_id", messageId);
+        if (replyMarkup != null && !replyMarkup.isEmpty()) {
+            body.put("reply_markup", replyMarkup);
+        } else {
+            body.put("reply_markup", Map.of("inline_keyboard", List.of()));
+        }
+        executePost("/editMessageReplyMarkup", body);
     }
 
     /**

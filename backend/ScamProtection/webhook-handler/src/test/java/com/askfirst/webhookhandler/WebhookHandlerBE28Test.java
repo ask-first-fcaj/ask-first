@@ -288,6 +288,40 @@ class WebhookHandlerBE28Test {
     }
 
     @Test
+    @DisplayName("BE-28: Race condition: 2 yêu cầu accept đồng thời chỉ 1 thành công")
+    void testConcurrentAcceptRaceCondition() {
+        GuardianRecord pending = new GuardianRecord(ELDER_UID, RELATIVE_UID);
+        pending.setShareLevel(1);
+        pending.setStatus("pending");
+        guardianRepo.save(pending);
+
+        APIGatewayProxyResponseEvent res1 = handler.handleRequest(
+                buildCallbackRequest(ELDER_CHAT_ID, "guardian:accept:" + RELATIVE_UID + ":1"), fakeContext());
+        APIGatewayProxyResponseEvent res2 = handler.handleRequest(
+                buildCallbackRequest(ELDER_CHAT_ID, "guardian:accept:" + RELATIVE_UID + ":1"), fakeContext());
+
+        assertEquals("GUARDIAN_LINKED", res1.getBody());
+        assertEquals("GUARDIAN_NOT_PENDING", res2.getBody());
+    }
+
+    @Test
+    @DisplayName("BE-28: Race condition: 2 yêu cầu reject đồng thời chỉ 1 thành công")
+    void testConcurrentRejectRaceCondition() {
+        GuardianRecord pending = new GuardianRecord(ELDER_UID, RELATIVE_UID);
+        pending.setShareLevel(1);
+        pending.setStatus("pending");
+        guardianRepo.save(pending);
+
+        APIGatewayProxyResponseEvent res1 = handler.handleRequest(
+                buildCallbackRequest(ELDER_CHAT_ID, "guardian:reject:" + RELATIVE_UID), fakeContext());
+        APIGatewayProxyResponseEvent res2 = handler.handleRequest(
+                buildCallbackRequest(ELDER_CHAT_ID, "guardian:reject:" + RELATIVE_UID), fakeContext());
+
+        assertEquals("GUARDIAN_REJECTED", res1.getBody());
+        assertEquals("GUARDIAN_NOT_PENDING", res2.getBody());
+    }
+
+    @Test
     @DisplayName("BE-28: Tất cả callback guardian:* phải gọi answerCallbackQuery để tránh xoay loading")
     void testAllGuardianCallbacksAnswerCallbackQuery() {
         // create_invite
@@ -608,6 +642,11 @@ class WebhookHandlerBE28Test {
         @Override
         public void sendMessage(long chatId, String text) {
             sentMessages.add(new SentMsg(chatId, text));
+        }
+
+        @Override
+        public void editReplyMarkup(long chatId, int messageId, Map<String, Object> replyMarkup) {
+            // No-op for tests
         }
     }
 }
