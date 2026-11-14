@@ -101,7 +101,6 @@ public class TelegramAdapter {
             String fileName = a.hasNonNull("file_name") ? a.path("file_name").asText() : null;
             media = new MediaRef(fileId, fileUniqueId, mime, size, duration, fileName);
         } else if (msg.has("document") && msg.path("document").isObject()) {
-            kind = "document";
             JsonNode d = msg.path("document");
             String fileId = d.path("file_id").asText();
             String fileUniqueId = d.path("file_unique_id").asText();
@@ -109,6 +108,16 @@ public class TelegramAdapter {
             Long size = d.hasNonNull("file_size") ? d.path("file_size").asLong() : null;
             String fileName = d.hasNonNull("file_name") ? d.path("file_name").asText() : null;
             media = new MediaRef(fileId, fileUniqueId, mime, size, null, fileName);
+
+            // BE-35: Nhận diện tệp cài đặt Android (.apk) độc hại
+            if ((fileName != null && fileName.toLowerCase().endsWith(".apk"))
+                    || "application/vnd.android.package-archive".equalsIgnoreCase(mime)) {
+                kind = "apk";
+            } else {
+                kind = "document";
+            }
+        } else if (msg.has("video") || msg.has("animation") || msg.has("contact") || msg.has("location")) {
+            kind = "unsupported_media";
         } else if (text == null) {
             // No text and no supported media -> ignore update
             return Optional.empty();
