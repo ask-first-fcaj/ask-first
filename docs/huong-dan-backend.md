@@ -241,9 +241,9 @@ Nhưng ở hệ thống chịu tải cao, phép `JOIN` trong database rất ch�
 |---|---|---|---|---|
 | **Thông tin người dùng** | `USER#{uid}` | `PROFILE` | Cài đặt xưng hô, trạng thái đồng ý điều khoản, ngày tạo | Vĩnh viễn |
 | **Liên kết người thân** | `USER#{uid}` | `GUARDIAN#{gid}` | Trạng thái (đang bật/tắt), mức độ chia sẻ (1, 2, 3), chat_id con | Vĩnh viễn |
-| **Kết quả kiểm tra tin** | `USER#{uid}` | `CHECK#{timestamp}#{id}` | Mức độ nguy hiểm, tên kịch bản, điểm số, thời gian chạy. **CẤM LƯU CHỮ GỐC** | 30 ngày |
+| **Kết quả kiểm tra tin** | `USER#{uid}` | `CHECK#{check_id}` | Mức độ nguy hiểm, tên kịch bản, điểm số, thời gian chạy. **CẤM LƯU CHỮ GỐC** | 30 ngày |
 | **Chống xử lý trùng lặp** | `DEDUP#telegram#{update_id}`| `META` | Để trống (Chỉ cần sự tồn tại của khóa để chặn trùng) | 24 giờ |
-| **Hộp đệm gom tin** | `BUFFER#{chat_id}` | `META` | Danh sách các tin nhắn vừa gửi trong 3s, số thứ tự `seq` | 10 phút |
+| **Hộp đệm gom tin** | `BUFFER#{chat_id}` | `META` và `MSG#<seq>` | META giữ `max_seq`, `done_seq`, `placeholder_id`; mỗi tin là một item `MSG#<seq>` | 10 phút |
 | **Khóa chống spam báo động**| `ALERTLOCK#{uid}#{scenario}`| `META` | Đánh dấu vừa báo kịch bản này rồi, không báo lại nữa | 30 phút |
 | **Mã mời người thân** | `INVITE#{code}` | `META` | ID người mời, thời gian hết hạn | 24 giờ |
 | **Giới hạn lượt dùng** | `RATE#{uid}#{ngày_giờ}` | `COUNTER` | Số lượt đã kiểm tra trong giờ/ngày (Cộng dồn nguyên tử) | 2 giờ / 2 ngày |
@@ -476,9 +476,9 @@ Tuần 1 là tuần quan trọng nhất để xây móng. Hai bạn ngồi cạn
   * So sánh Secret Token bằng `MessageDigest.isEqual`.
   * Chống trùng lặp bằng `DEDUP#<update_id>`.
   * Phân luồng: Tin nhắn text/ảnh thì gửi tin `⏳` rồi ném vào SQS; lệnh như `/start` thì chuyển sang nhánh của BE2.
-* **BE-07 (W2–W3): Nối SQS vào Worker Lambda:** Cấu hình để SQS kích hoạt Lambda Worker. Đặt thời gian ẩn tin nhắn `VisibilityTimeout = 720` giây. Bật SnapStart cho Worker.
-* **BE-24b (W2): Tạo các Repository cho Lane A:** Viết code thao tác database cho các bảng `CHECK#`, `BUFFER#`, `DEDUP#`, `ALERT#`.
-* **BE-27 (W2–W3): Xử lý cốt lõi trong Worker:** Đọc tin nhắn từ SQS → Gọi AI lấy kết luận → Gọi AI lấy mẫu tin cảnh báo → Sửa tin nhắn tạm `⏳` thành kết quả.
+* **BE-07 (W2–W3): Nối SQS vào Worker Lambda:** Cấu hình để SQS kích hoạt Lambda Worker (batch 1, concurrency 5, `ReportBatchItemFailures`, timeout 120 giây). `VisibilityTimeout = 720` giây, `maxReceiveCount = 5`, alarm DLQ (`JobsDlqAlarm`). Ở lần giao thứ 5 worker báo người dùng "đang bận". SnapStart là tham số `WorkerSnapStart` (mặc định None, bật sau khi đo cold start, ADR-008). Hướng dẫn deploy và test DLQ: `infra/WORKER.md`.
+* **BE-24b (W2): Tạo các Repository cho Lane A:** Viết code thao tác database cho các bảng `CHECK#`, `BUFFER#`, `ALERT#`, `ALERTLOCK#`, `CONFIG#global/FLAGS` (`DEDUP#` đã có ở `DynamoStoreService`).
+* **BE-27 (W2–W3): Xử lý cốt lõi trong Worker:** Đọc tin nhắn từ SQS → Gọi AI lấy kết luận → Gọi AI lấy mẫu tin cảnh báo → Sửa tin nhắn tạm `⏳` thành kết quả. Chi tiết và cách chống gửi trùng khi SQS giao lại: `docs/decisions/ADR-009-worker-orchestration.md`.
 * **BE-23 (W3): Thuật toán Gom tin liên tiếp (Debounce):** Cài đặt logic gom tin trễ 3 giây như đã hướng dẫn ở [Mục 7.1](#71-bài-toán-1-gom-tin-debounce-khi-người-già-gửi-nhiều-tin-liên-tiếp).
 * **INT-01 (W3): Ghép nối đợt 1:** Kết hợp với Team AI để kiểm tra luồng tin nhắn văn bản từ Telegram chạy mượt mà từ đầu đến cuối.
 
