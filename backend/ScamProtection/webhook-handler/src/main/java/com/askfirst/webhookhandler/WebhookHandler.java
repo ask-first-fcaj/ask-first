@@ -6,6 +6,7 @@ import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
 import com.askfirst.common.TelegramClient;
 import com.askfirst.common.TelegramClient.InlineButton;
+import com.askfirst.common.Ulid;
 import com.askfirst.common.channel.TelegramAdapter;
 import com.askfirst.common.channel.model.InboundMessage;
 import com.askfirst.common.channel.model.TelegramCallbackQuery;
