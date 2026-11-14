@@ -1199,6 +1199,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return handleKetNoiCommand(chatId, userId, text, firstName, username, context);
         }
 
+        // Hỗ trợ lệnh test nút báo sai cho môi trường local
+        if (cmd.startsWith("/testbaosai") || cmd.startsWith("/baosai")) {
+            return sendSimulatedCheckResult(chatId, userId, "Tin nhắn mẫu: 'Bác ơi đọc giúp cháu mã số vừa gửi qua SMS'");
+        }
+
         if (cmd.startsWith("/start") || cmd.startsWith("/batdau")) {
             // BE-28: deep link từ lời mời người thân → /start g_<code>
             // Telegram tự gửi lệnh này khi người thân bấm vào deep link
@@ -1559,7 +1564,12 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
         }
 
-        // 6. Enqueue vào SQS
+        // 6. Chế độ Local Development (không có SQS/Worker): tự động trả kết quả kèm nút [Bot báo sai]
+        if (localDevelopment && !queueReady) {
+            return sendSimulatedCheckResult(chatId, userId, inbound.text());
+        }
+
+        // 7. Enqueue vào SQS (môi trường Cloud/Production)
         if (queueReady) {
             try {
                 String payload = MAPPER.writeValueAsString(inbound);
@@ -1582,6 +1592,47 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return userRepo.getUser(userId).map(UserRecord::getAddressForm).orElse(UserRecord.DEFAULT_ADDRESS_FORM);
         }
         return UserRecord.DEFAULT_ADDRESS_FORM;
+    }
+
+    private APIGatewayProxyResponseEvent sendSimulatedCheckResult(long chatId, String userId, String text) {
+        String addressForm = getAddressForm(userId);
+        String checkId = Ulid.next();
+        String maskedText = "Nội dung đã che mờ: " + (text != null && !text.isBlank() ? text : "Tin nhắn nghi ngờ lừa đảo");
+
+        if (sessionStore != null) {
+            sessionStore.put(new SessionRecord(
+                    String.valueOf(chatId),
+                    checkId,
+                    userId,
+                    maskedText,
+                    null,
+                    1,
+                    Instant.now().getEpochSecond() + 1800));
+        }
+
+        if (checkStore != null) {
+            checkStore.put(new CheckRecord(
+                    checkId, userId, "verdict", "DANGEROUS", 85,
+                    "N1", "N1.4", "fast",
+                    List.of("R_OTP_REQUEST"), List.of("share_otp"), List.of("text"),
+                    false, null, Instant.now().toString(), Instant.now().getEpochSecond() + 1800));
+        }
+
+        if (telegram != null) {
+            String verdictHtml = "🛡️ <b>KẾT QUẢ KIỂM TRA</b>\n\n"
+                    + "⚠️ <b>Đánh giá:</b> Tin nhắn có dấu hiệu lừa đảo nguy hiểm!\n"
+                    + "• <b>Dấu hiệu:</b> Yêu cầu cung cấp thông tin nhạy cảm / mã OTP.\n"
+                    + "• <b>Kịch bản:</b> Giả mạo cơ quan / trúng thưởng tri ân.\n"
+                    + "• <b>Lời khuyên:</b> Tuyệt đối không làm theo yêu cầu trong tin nhắn.\n\n"
+                    + "<i>(Nếu kết luận này chưa đúng, " + addressForm.toLowerCase() + " vui lòng bấm nút bên dưới để góp ý nhé)</i>";
+
+            Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
+                    List.of(new InlineButton("🚨 Bot báo sai", "fb:wrong:" + checkId))));
+
+            telegram.sendText(chatId, verdictHtml, keyboard);
+        }
+
+        return response(200, "LOCAL_SIMULATED_SENT");
     }
 
     /**
