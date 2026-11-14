@@ -118,6 +118,7 @@ public class UserRepo {
             revoked.put("analyze", false);
             user.setPurposes(revoked);
             user.setConsentedAt(null);
+            user.setStatus("CONSENT_REVOKED");
         });
     }
 
