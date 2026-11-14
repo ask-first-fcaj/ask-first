@@ -142,11 +142,11 @@ public final class DynamoBufferStore implements BufferStore {
             client.deleteItem(DeleteItemRequest.builder()
                     .tableName(table)
                     .key(key(pk(chatId), META))
-                    .conditionExpression("max_seq = :seq")
+                    .conditionExpression("attribute_not_exists(PK) OR max_seq = :seq")
                     .expressionAttributeValues(Map.of(":seq", n(seq)))
                     .build());
             return true;
-        } catch (ConditionalCheckFailedException newerOrGone) {
+        } catch (ConditionalCheckFailedException newer) {
             try {
                 client.updateItem(UpdateItemRequest.builder()
                         .tableName(table)
@@ -156,7 +156,7 @@ public final class DynamoBufferStore implements BufferStore {
                         .expressionAttributeValues(Map.of(":seq", n(seq)))
                         .build());
             } catch (ConditionalCheckFailedException alreadyDone) {
-                // đã xong từ lần trước hoặc buffer đã mất: không sao
+                // đã xong từ lần trước: không sao
             }
             return false;
         }
