@@ -145,6 +145,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.sessionStore = null;
         this.bufferStore = null;
 
+        DonationStore dStore = null;
         String dataBucket = System.getenv("DATA_BUCKET_NAME");
         if (dataBucket == null || dataBucket.isBlank()) {
             dataBucket = System.getenv("DONATION_BUCKET_NAME");
@@ -152,13 +153,12 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         if (dataBucket != null && !dataBucket.isBlank()) {
             try {
                 S3Client s3 = S3Client.create();
-                this.donationStore = new S3DonationStore(s3, dataBucket.trim());
-            } catch (Exception e) {
-                this.donationStore = null;
+                dStore = new S3DonationStore(s3, dataBucket.trim());
+            } catch (Exception ignored) {
+                dStore = null;
             }
-        } else {
-            this.donationStore = null;
         }
+        this.donationStore = dStore;
 
         this.dedup = DynamoStoreService.create(ddb, tableName);
     }
