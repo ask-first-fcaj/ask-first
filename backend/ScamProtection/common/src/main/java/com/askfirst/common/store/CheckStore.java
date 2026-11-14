@@ -7,4 +7,8 @@ public interface CheckStore {
 
     /** Ghi một lần; ghi lại cùng checkId là không làm gì. */
     void put(CheckRecord record);
+
+    /** Cập nhật trường feedback (ví dụ "wrong") cho bản ghi kiểm tra. */
+    default void updateFeedback(String userId, String checkId, String feedback) {
+    }
 }

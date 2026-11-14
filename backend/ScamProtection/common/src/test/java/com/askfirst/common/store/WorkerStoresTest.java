@@ -49,6 +49,7 @@ class WorkerStoresTest {
     private DynamoBufferStore buffer;
     private DynamoFlagsStore flags;
     private DynamoCheckStore checks;
+    private DynamoSessionStore sessions;
     private DynamoAlertStore alerts;
     private DynamoAlertLockStore locks;
     private String chat;
@@ -64,6 +65,7 @@ class WorkerStoresTest {
         buffer = new DynamoBufferStore(client, TABLE);
         flags = new DynamoFlagsStore(client, TABLE);
         checks = new DynamoCheckStore(client, TABLE);
+        sessions = new DynamoSessionStore(client, TABLE);
         alerts = new DynamoAlertStore(client, TABLE);
         locks = new DynamoAlertLockStore(client, TABLE);
         chat = "chat-" + System.nanoTime();   // mỗi test một chat riêng vì bảng dùng chung (-sharedDb)
@@ -170,18 +172,50 @@ class WorkerStoresTest {
     // ---------- CHECK# ----------
 
     @Test
-    @DisplayName("CheckStore: exists, put một lần, ghi lại không đè")
+    @DisplayName("CheckStore: exists, put một lần, ghi lại không đè, updateFeedback và get bản ghi")
     void checkStore() {
         String uid = "tg:" + chat;
         assertThat(checks.exists(uid, "C1")).isFalse();
 
         checks.put(new CheckRecord("C1", uid, "verdict", "DANGEROUS", 90, "N1", "N1.4", "fast",
-                List.of("R_OTP_REQUEST"), List.of("share_otp"), List.of("text"), true, NOW.toString(), ttl()));
+                List.of("R_OTP_REQUEST"), List.of("share_otp"), List.of("text"), true, null, NOW.toString(), ttl()));
         checks.put(new CheckRecord("C1", uid, "degraded", "UNSURE", 0, "OTHER", "OTHER", "none",
-                List.of(), List.of(), List.of(), false, NOW.toString(), ttl()));
+                List.of(), List.of(), List.of(), false, null, NOW.toString(), ttl()));
 
         assertThat(checks.exists(uid, "C1")).isTrue();
         assertThat(checks.exists(uid, "C2")).isFalse();
+
+        // get bản ghi và kiểm tra feedback ban đầu null
+        assertThat(checks.get(uid, "C1")).hasValueSatisfying(r -> {
+            assertThat(r.score()).isEqualTo(90);
+            assertThat(r.feedback()).isNull();
+        });
+
+        // update feedback thành wrong
+        checks.updateFeedback(uid, "C1", "wrong");
+        assertThat(checks.get(uid, "C1")).hasValueSatisfying(r -> {
+            assertThat(r.feedback()).isEqualTo("wrong");
+        });
+    }
+
+    // ---------- SESSION# ----------
+
+    @Test
+    @DisplayName("SessionStore: put, get và delete ngữ cảnh phiên SESSION#{chat_id}")
+    void sessionStoreOperations() {
+        SessionRecord rec = new SessionRecord(chat, "CHK-100", "tg:" + chat, "masked text sample", "cau hoi phu", 1, ttl());
+        sessions.put(rec);
+
+        assertThat(sessions.get(chat)).hasValueSatisfying(s -> {
+            assertThat(s.chatId()).isEqualTo(chat);
+            assertThat(s.checkId()).isEqualTo("CHK-100");
+            assertThat(s.maskedText()).isEqualTo("masked text sample");
+            assertThat(s.followupQuestion()).isEqualTo("cau hoi phu");
+            assertThat(s.turn()).isEqualTo(1);
+        });
+
+        sessions.delete(chat);
+        assertThat(sessions.get(chat)).isEmpty();
     }
 
     // ---------- ALERT# ----------

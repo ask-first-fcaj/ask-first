@@ -147,6 +147,15 @@ final class Fakes {
             records.putIfAbsent(record.userId() + "/" + record.checkId(), record);
         }
 
+        @Override
+        public void updateFeedback(String userId, String checkId, String feedback) {
+            records.computeIfPresent(userId + "/" + checkId, (k, old) -> new CheckRecord(
+                    old.checkId(), old.userId(), old.outcome(), old.level(), old.score(),
+                    old.group(), old.scenario(), old.path(), old.signalCodes(),
+                    old.riskyActions(), old.inputKinds(), old.alerted(), feedback,
+                    old.createdAt(), old.ttlEpochSeconds()));
+        }
+
         CheckRecord get(String userId, String checkId) {
             return records.get(userId + "/" + checkId);
         }

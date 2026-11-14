@@ -23,6 +23,8 @@ import com.askfirst.common.store.AlertStore;
 import com.askfirst.common.store.BufferStore;
 import com.askfirst.common.store.CheckRecord;
 import com.askfirst.common.store.CheckStore;
+import com.askfirst.common.store.SessionRecord;
+import com.askfirst.common.store.SessionStore;
 import com.askfirst.worker.GuardianDirectory.Elder;
 import com.askfirst.worker.GuardianDirectory.Guardian;
 import com.askfirst.worker.TelegramGateway.Btn;
@@ -73,11 +75,20 @@ public final class AnalyzeProcessor {
     private final Clock clock;
     private final Supplier<String> idGenerator;
     private final Consumer<String> log;
+    private final SessionStore sessions;
 
     public AnalyzeProcessor(BufferStore buffer, FlagsCache flags, CheckStore checks, AlertStore alerts,
                             AlertLockStore locks, GuardianDirectory directory, AiClient ai,
                             TelegramGateway telegram, JobQueue queue, Clock clock,
                             Supplier<String> idGenerator, Consumer<String> log) {
+        this(buffer, flags, checks, alerts, locks, directory, ai, telegram, queue, clock, idGenerator, log, null);
+    }
+
+    public AnalyzeProcessor(BufferStore buffer, FlagsCache flags, CheckStore checks, AlertStore alerts,
+                            AlertLockStore locks, GuardianDirectory directory, AiClient ai,
+                            TelegramGateway telegram, JobQueue queue, Clock clock,
+                            Supplier<String> idGenerator, Consumer<String> log,
+                            SessionStore sessions) {
         this.buffer = buffer;
         this.flags = flags;
         this.checks = checks;
@@ -90,6 +101,7 @@ public final class AnalyzeProcessor {
         this.clock = clock;
         this.idGenerator = idGenerator;
         this.log = log;
+        this.sessions = sessions;
     }
 
     private record Out(String html, List<List<Btn>> buttons, boolean silent) {
@@ -183,6 +195,16 @@ public final class AnalyzeProcessor {
                 !alertOutcome.deliveredIds().isEmpty(),
                 clock.instant().toString(),
                 clock.instant().getEpochSecond() + RECORD_TTL_SECONDS));
+        if (sessions != null && verdict.maskedText() != null && !verdict.maskedText().isBlank()) {
+            sessions.put(new SessionRecord(
+                    chat,
+                    checkId,
+                    uid,
+                    verdict.maskedText(),
+                    verdict.followupQuestion(),
+                    1,
+                    clock.instant().getEpochSecond() + 30 * 60L));
+        }
         buffer.finish(chat, job.seq());
         log.accept("analyze job=" + checkId + " done level=" + verdict.level() + " path=" + verdict.path()
                 + " alerts=" + alertOutcome.deliveredIds().size());
