@@ -6,6 +6,7 @@ import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
 import com.askfirst.common.TelegramClient;
 import com.askfirst.common.TelegramClient.InlineButton;
+import com.askfirst.common.Ulid;
 import com.askfirst.common.channel.TelegramAdapter;
 import com.askfirst.common.channel.model.InboundMessage;
 import com.askfirst.common.channel.model.TelegramCallbackQuery;
@@ -16,12 +17,22 @@ import com.askfirst.common.store.GuardianRepo;
 import com.askfirst.common.store.InviteRecord;
 import com.askfirst.common.store.InviteRepo;
 import com.askfirst.common.store.RateLimitRepo;
+import com.askfirst.common.store.CheckRecord;
+import com.askfirst.common.store.CheckRepo;
+import com.askfirst.common.store.CheckStore;
+import com.askfirst.common.store.DonationStore;
+import com.askfirst.common.store.DynamoCheckStore;
+import com.askfirst.common.store.DynamoSessionStore;
+import com.askfirst.common.store.S3DonationStore;
+import com.askfirst.common.store.SessionRecord;
+import com.askfirst.common.store.SessionStore;
 import com.askfirst.common.store.UserRecord;
 import com.askfirst.common.store.UserRepo;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
+import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 import software.amazon.awssdk.services.ssm.SsmClient;
@@ -81,6 +92,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     private final RateLimitRepo rateLimitRepo;
     private final GuardianRepo guardianRepo;
     private final InviteRepo inviteRepo;
+    private final CheckStore checkStore;
+    private final SessionStore sessionStore;
+    private final DonationStore donationStore;
 
     /**
      * Chống xử lý trùng cùng một update_id (Telegram retry). Null = không dedup
@@ -133,6 +147,15 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.rateLimitRepo = new RateLimitRepo(ddb, tableName);
         this.guardianRepo = new GuardianRepo(enhanced, tableName);
         this.inviteRepo = new InviteRepo(enhanced, tableName);
+        this.checkStore = new DynamoCheckStore(ddb, tableName);
+        this.sessionStore = new DynamoSessionStore(ddb, tableName);
+        String bucketName = System.getenv("DATA_BUCKET_NAME");
+        if (bucketName == null || bucketName.isBlank()) {
+            bucketName = System.getenv("S3_BUCKET_NAME");
+        }
+        this.donationStore = (bucketName != null && !bucketName.isBlank())
+                ? new S3DonationStore(S3Client.create(), bucketName)
+                : null;
         this.dedup = DynamoStoreService.create(ddb, tableName);
     }
 
@@ -212,12 +235,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     }
 
     /**
-     * Constructor đầy đủ (13 tham số). Tất cả các constructor khác delegate vào
-     * đây.
-     *
-     * @param botUsername username của bot (ví dụ "AskFirstBot"), dùng để tạo deep
-     *                    link.
-     *                    Null = không hiển thị nút share (graceful degradation).
+     * Constructor 13 tham số (tương thích ngược). Delegate sang constructor đầy đủ 16 tham số.
      */
     public WebhookHandler(
             TelegramClient telegram,
@@ -233,6 +251,33 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             DynamoStoreService dedup,
             boolean localDevelopment,
             String botUsername) {
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
+                guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
+                null, null, null);
+    }
+
+    /**
+     * Constructor đầy đủ (16 tham số). Tất cả các constructor khác delegate vào đây.
+     *
+     * @param botUsername username của bot (ví dụ "AskFirstBot"), dùng để tạo deep link.
+     */
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            GuardianRepo guardianRepo,
+            InviteRepo inviteRepo,
+            String policySha256,
+            DynamoStoreService dedup,
+            boolean localDevelopment,
+            String botUsername,
+            CheckStore checkStore,
+            SessionStore sessionStore,
+            DonationStore donationStore) {
         this.telegram = telegram;
         this.sqs = sqs;
         this.queueUrl = queueUrl;
@@ -247,6 +292,37 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.dedup = dedup;
         this.localDevelopment = localDevelopment;
         this.botUsername = (botUsername != null && !botUsername.isBlank()) ? botUsername : null;
+        this.checkStore = checkStore;
+        this.sessionStore = sessionStore;
+        this.donationStore = donationStore;
+    }
+
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            CheckStore checkStore,
+            SessionStore sessionStore,
+            DonationStore donationStore,
+            String policySha256) {
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, null,
+                null, null, policySha256, null, false, null,
+                checkStore, sessionStore, donationStore);
+    }
+
+    public CheckStore getCheckStore() {
+        return checkStore;
+    }
+
+    public SessionStore getSessionStore() {
+        return sessionStore;
+    }
+
+    public DonationStore getDonationStore() {
+        return donationStore;
     }
 
     /**
@@ -274,7 +350,10 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 null,
                 createInMemoryGuardianRepo(),
                 createInMemoryInviteRepo(),
-                DEFAULT_POLICY_SHA256, null, true, botUser);
+                DEFAULT_POLICY_SHA256, null, true, botUser,
+                createInMemoryCheckRepo(),
+                createInMemorySessionStore(),
+                createInMemoryDonationStore());
     }
 
     private static String readEnvFileBotUsername() {
@@ -329,7 +408,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 r.setConsentVersion(version);
                 r.setPolicySha256(policySha256);
                 if (purposes != null) {
-                    r.setPurposes(new HashMap<>(purposes));
+                    Map<String, Boolean> merged = new HashMap<>(r.getPurposes());
+                    merged.putAll(purposes);
+                    r.setPurposes(merged);
                 }
                 r.setConsentedAt(Instant.now().toString());
             }
@@ -414,6 +495,78 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             @Override
             public void recordEvent(String userId, String event, String policyVersion, String policySha256, String details) {
                 // In-memory event logger (không cần lưu database thật khi dev local)
+            }
+        };
+    }
+
+    private static CheckRepo createInMemoryCheckRepo() {
+        return new CheckRepo() {
+            private final Map<String, CheckRecord> store = new java.util.concurrent.ConcurrentHashMap<>();
+
+            @Override
+            public boolean exists(String userId, String checkId) {
+                return store.containsKey(userId + "#" + checkId);
+            }
+
+            @Override
+            public void put(CheckRecord record) {
+                store.putIfAbsent(record.userId() + "#" + record.checkId(), record);
+            }
+
+            @Override
+            public Optional<CheckRecord> get(String userId, String checkId) {
+                return Optional.ofNullable(store.get(userId + "#" + checkId));
+            }
+
+            @Override
+            public void updateFeedback(String userId, String checkId, String feedback) {
+                CheckRecord old = store.get(userId + "#" + checkId);
+                if (old != null) {
+                    store.put(userId + "#" + checkId, new CheckRecord(
+                            old.checkId(), old.userId(), old.outcome(), old.level(), old.score(),
+                            old.group(), old.scenario(), old.path(), old.signalCodes(),
+                            old.riskyActions(), old.inputKinds(), old.alerted(), feedback,
+                            old.createdAt(), old.ttlEpochSeconds()));
+                } else {
+                    store.put(userId + "#" + checkId, new CheckRecord(
+                            checkId, userId, "unknown", "UNSURE", 0, "", "", "",
+                            List.of(), List.of(), List.of(), false, feedback,
+                            Instant.now().toString(), 0L));
+                }
+            }
+        };
+    }
+
+    private static SessionStore createInMemorySessionStore() {
+        return new SessionStore() {
+            private final Map<String, SessionRecord> store = new java.util.concurrent.ConcurrentHashMap<>();
+
+            @Override
+            public Optional<SessionRecord> get(String chatId) {
+                return Optional.ofNullable(store.get(chatId));
+            }
+
+            @Override
+            public void put(SessionRecord record) {
+                store.put(record.chatId(), record);
+            }
+
+            @Override
+            public void delete(String chatId) {
+                store.remove(chatId);
+            }
+        };
+    }
+
+    private static DonationStore createInMemoryDonationStore() {
+        return new DonationStore() {
+            private final Map<String, String> store = new java.util.concurrent.ConcurrentHashMap<>();
+
+            @Override
+            public String saveDonatedSample(String userId, String checkId, String maskedText) {
+                String key = "donated/" + S3DonationStore.hashUid(userId) + "/" + (checkId != null ? checkId : "sample") + ".txt";
+                store.put(key, maskedText);
+                return key;
             }
         };
     }
@@ -567,6 +720,30 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
         if (data != null && data.startsWith("guardian:")) {
             return handleGuardianCallback(cb, chatId, userId, data, context);
+        }
+
+        // BE-30: Xử lý nút [Bot báo sai] và luồng đóng góp mẫu (Donation Consent)
+        if ("fb:already_reported".equals(data)) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Ý kiến báo sai đã được ghi nhận rồi ạ!");
+            }
+            return response(200, "FEEDBACK_ALREADY_REPORTED");
+        }
+
+        if (data != null && (data.equals("fb:wrong") || data.startsWith("fb:wrong:"))) {
+            return handleFeedbackWrong(cb, chatId, userId, data, context);
+        }
+
+        if (data != null && (data.equals("donate:agree") || data.startsWith("donate:agree:") || data.startsWith("dn:agree:"))) {
+            return handleDonateAgree(cb, chatId, userId, data, context);
+        }
+
+        if (data != null && (data.equals("donate:decline") || data.startsWith("donate:decline:") || data.startsWith("dn:decline:"))) {
+            return handleDonateDecline(cb, chatId, userId, data, context);
+        }
+
+        if (data != null && data.startsWith("dn:")) {
+            return handleFeedbackWrong(cb, chatId, userId, data, context);
         }
 
         if ("consent:agree".equals(data)) {
@@ -737,8 +914,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
 
             if (guardianRepo != null) {
-                Optional<GuardianRecord> existingOpt = guardianRepo.getGuardian(userId, relativeUid);
-                if (existingOpt.isEmpty() || !"pending".equals(existingOpt.get().getStatus())) {
+                boolean accepted = guardianRepo.acceptPending(userId, relativeUid, shareLevel, Instant.now().toString());
+                if (!accepted) {
                     if (telegram != null) {
                         telegram.answerCallbackQuery(cb.queryId(), "Yêu cầu kết nối này không còn hiệu lực.");
                         telegram.sendText(chatId,
@@ -746,17 +923,19 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                     }
                     return response(200, "GUARDIAN_NOT_PENDING");
                 }
-
-                GuardianRecord rec = existingOpt.get();
-                rec.setShareLevel(shareLevel);
-                rec.setStatus("active");
-                rec.setElderConsentAt(Instant.now().toString());
-                guardianRepo.save(rec);
             }
 
             if (auditRepo != null) {
                 auditRepo.recordEvent(userId, "GUARDIAN_LINKED", POLICY_VERSION, policySha256,
                         "Linked guardian " + relativeUid + " at level " + shareLevel);
+            }
+
+            Integer msgId = parseMessageId(cb.messageId());
+            if (telegram != null && msgId != null) {
+                try {
+                    telegram.editReplyMarkup(chatId, msgId, null);
+                } catch (Exception ignored) {
+                }
             }
 
             if (telegram != null) {
@@ -784,8 +963,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String relativeUid = data.substring("guardian:reject:".length());
 
             if (guardianRepo != null) {
-                Optional<GuardianRecord> existingOpt = guardianRepo.getGuardian(userId, relativeUid);
-                if (existingOpt.isEmpty() || !"pending".equals(existingOpt.get().getStatus())) {
+                boolean rejected = guardianRepo.rejectPending(userId, relativeUid);
+                if (!rejected) {
                     if (telegram != null) {
                         telegram.answerCallbackQuery(cb.queryId(), "Yêu cầu kết nối này không còn hiệu lực.");
                         telegram.sendText(chatId,
@@ -793,8 +972,14 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                     }
                     return response(200, "GUARDIAN_NOT_PENDING");
                 }
+            }
 
-                guardianRepo.delete(userId, relativeUid);
+            Integer msgId = parseMessageId(cb.messageId());
+            if (telegram != null && msgId != null) {
+                try {
+                    telegram.editReplyMarkup(chatId, msgId, null);
+                } catch (Exception ignored) {
+                }
             }
 
             if (telegram != null) {
@@ -877,6 +1062,217 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         return response(200, "CALLBACK_IGNORED");
     }
 
+    private static Integer parseMessageId(String messageId) {
+        if (messageId == null || messageId.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(messageId.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private APIGatewayProxyResponseEvent handleFeedbackWrong(
+            TelegramCallbackQuery cb,
+            long chatId,
+            String userId,
+            String data,
+            Context context) {
+        String addressForm = getAddressForm(userId);
+        String checkId = null;
+        if (data.startsWith("fb:wrong:")) {
+            checkId = data.substring("fb:wrong:".length()).trim();
+        } else if (data.startsWith("dn:")) {
+            checkId = data.substring("dn:".length()).trim();
+        }
+
+        if ((checkId == null || checkId.isBlank()) && sessionStore != null) {
+            checkId = sessionStore.get(String.valueOf(chatId)).map(SessionRecord::checkId).orElse(null);
+        }
+
+        // Chống bấm lặp lại nút [Bot báo sai]: nếu đã ghi nhận rồi thì thông báo và vô hiệu hóa nút
+        if (checkStore != null && checkId != null && !checkId.isBlank()) {
+            Optional<CheckRecord> checkOpt = checkStore instanceof CheckRepo repo
+                    ? repo.get(userId, checkId)
+                    : Optional.empty();
+            if (checkOpt.isPresent() && "wrong".equals(checkOpt.get().feedback())) {
+                if (telegram != null) {
+                    telegram.answerCallbackQuery(cb.queryId(), "Ý kiến báo sai của " + addressForm + " đã được ghi nhận trước đó rồi ạ!");
+                    Integer msgId = parseMessageId(cb.messageId());
+                    if (msgId != null) {
+                        try {
+                            Map<String, Object> ackKeyboard = TelegramClient.inlineKeyboard(List.of(
+                                    List.of(new InlineButton("✅ Đã ghi nhận báo sai", "fb:already_reported"))));
+                            telegram.editReplyMarkup(chatId, msgId, ackKeyboard);
+                        } catch (Exception ignored) {
+                        }
+                    }
+                }
+                return response(200, "FEEDBACK_ALREADY_REPORTED");
+            }
+
+            checkStore.updateFeedback(userId, checkId, "wrong");
+        }
+
+        if (auditRepo != null) {
+            auditRepo.recordEvent(userId, "FEEDBACK_REPORTED", POLICY_VERSION, policySha256,
+                    "Wrong verdict reported for check " + (checkId != null ? checkId : ""));
+        }
+
+        if (telegram != null) {
+            telegram.answerCallbackQuery(cb.queryId(), "Cảm ơn ý kiến của " + addressForm + "!");
+
+            // Đổi nút bấm trên tin nhắn kết quả thành [✅ Đã ghi nhận báo sai]
+            Integer msgId = parseMessageId(cb.messageId());
+            if (msgId != null) {
+                try {
+                    Map<String, Object> ackKeyboard = TelegramClient.inlineKeyboard(List.of(
+                            List.of(new InlineButton("✅ Đã ghi nhận báo sai", "fb:already_reported"))));
+                    telegram.editReplyMarkup(chatId, msgId, ackKeyboard);
+                } catch (Exception ignored) {
+                }
+            }
+
+            String prompt = "Cảm ơn " + addressForm + " đã góp ý! " + addressForm
+                    + " có đồng ý cho cháu lưu lại nội dung tin nhắn này (cháu đã che hết số điện thoại và tên riêng) để các kỹ sư hoàn thiện bot tốt hơn không ạ?";
+
+            Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(List.of(
+                    new InlineButton("Đồng ý đóng góp", "donate:agree:" + (checkId != null ? checkId : "")),
+                    new InlineButton("Không, cảm ơn", "donate:decline:" + (checkId != null ? checkId : "")))));
+
+            telegram.sendText(chatId, prompt, keyboard);
+        }
+
+        return response(200, "FEEDBACK_WRONG_HANDLED");
+    }
+
+    private APIGatewayProxyResponseEvent handleDonateAgree(
+            TelegramCallbackQuery cb,
+            long chatId,
+            String userId,
+            String data,
+            Context context) {
+        String addressForm = getAddressForm(userId);
+        String checkId = null;
+        if (data.startsWith("donate:agree:")) {
+            checkId = data.substring("donate:agree:".length()).trim();
+        } else if (data.startsWith("dn:agree:")) {
+            checkId = data.substring("dn:agree:".length()).trim();
+        }
+
+        // Xóa nút bấm trên tin nhắn hỏi để người dùng không bấm lại
+        Integer msgId = parseMessageId(cb.messageId());
+        if (telegram != null && msgId != null) {
+            try {
+                telegram.editReplyMarkup(chatId, msgId, null);
+            } catch (Exception ignored) {
+            }
+        }
+
+        String maskedText = null;
+        if (sessionStore != null) {
+            Optional<SessionRecord> sessionOpt = sessionStore.get(String.valueOf(chatId));
+            if (sessionOpt.isPresent()) {
+                SessionRecord s = sessionOpt.get();
+                maskedText = s.maskedText();
+                if ((checkId == null || checkId.isBlank()) && s.checkId() != null) {
+                    checkId = s.checkId();
+                }
+                // Xóa session ngay lập tức: các lần bấm tiếp theo sẽ coi là đã xử lý
+                sessionStore.delete(String.valueOf(chatId));
+            }
+        }
+
+        if (maskedText == null || maskedText.isBlank()) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Phiên đã hết hạn hoặc đã được ghi nhận");
+                telegram.sendText(chatId,
+                        "Dạ phiên kiểm tra này đã kết thúc hoặc không tìm thấy nội dung để đóng góp ạ. Cảm ơn "
+                                + addressForm + "!");
+            }
+            return response(200, "DONATION_SESSION_EXPIRED");
+        }
+
+        if (donationStore != null) {
+            donationStore.saveDonatedSample(userId, checkId, maskedText);
+        }
+
+        if (userRepo != null) {
+            userRepo.updateConsent(userId, policySha256, POLICY_VERSION, Map.of("donate", true));
+        }
+
+        if (auditRepo != null) {
+            auditRepo.recordEvent(userId, "CONSENT_GIVEN", POLICY_VERSION, policySha256,
+                    "Agreed to donate masked sample for check " + (checkId != null ? checkId : ""));
+        }
+
+        if (telegram != null) {
+            telegram.answerCallbackQuery(cb.queryId(), "Cảm ơn " + addressForm + " đã đóng góp!");
+            telegram.sendText(chatId,
+                    "Dạ, cháu đã lưu lại nội dung tin nhắn để các kỹ sư kiểm tra và hoàn thiện bot. Cháu cảm ơn "
+                            + addressForm + " nhiều ạ!");
+        }
+
+        return response(200, "DONATION_SAVED");
+    }
+
+    private APIGatewayProxyResponseEvent handleDonateDecline(
+            TelegramCallbackQuery cb,
+            long chatId,
+            String userId,
+            String data,
+            Context context) {
+        String addressForm = getAddressForm(userId);
+        String checkId = null;
+        if (data.startsWith("donate:decline:")) {
+            checkId = data.substring("donate:decline:".length()).trim();
+        } else if (data.startsWith("dn:decline:")) {
+            checkId = data.substring("dn:decline:".length()).trim();
+        }
+
+        // Xóa nút bấm trên tin nhắn hỏi để người dùng không bấm lại
+        Integer msgId = parseMessageId(cb.messageId());
+        if (telegram != null && msgId != null) {
+            try {
+                telegram.editReplyMarkup(chatId, msgId, null);
+            } catch (Exception ignored) {
+            }
+        }
+
+        boolean hadSession = false;
+        if (sessionStore != null) {
+            Optional<SessionRecord> sessionOpt = sessionStore.get(String.valueOf(chatId));
+            if (sessionOpt.isPresent()) {
+                hadSession = true;
+                if ((checkId == null || checkId.isBlank()) && sessionOpt.get().checkId() != null) {
+                    checkId = sessionOpt.get().checkId();
+                }
+                sessionStore.delete(String.valueOf(chatId));
+            }
+        }
+
+        if (!hadSession) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Ý kiến đã được ghi nhận rồi ạ!");
+            }
+            return response(200, "DONATION_ALREADY_PROCESSED");
+        }
+
+        if (auditRepo != null) {
+            auditRepo.recordEvent(userId, "DONATION_DECLINED", POLICY_VERSION, policySha256,
+                    "User declined donation for check " + (checkId != null ? checkId : ""));
+        }
+
+        if (telegram != null) {
+            telegram.answerCallbackQuery(cb.queryId(), "Đã ghi nhận ý kiến");
+            telegram.sendText(chatId,
+                    "Dạ vâng, cháu cảm ơn " + addressForm + "! Cháu sẽ không lưu lại nội dung tin nhắn này ạ.");
+        }
+
+        return response(200, "DONATION_DECLINED");
+    }
+
     private APIGatewayProxyResponseEvent handleCommand(long chatId, String userId, String text, Context context) {
         return handleCommand(chatId, userId, text, "", "", context);
     }
@@ -898,6 +1294,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         // BE-28: /ketnoi <code> — người thân nhập mã mời
         if (cmd.startsWith("/ketnoi")) {
             return handleKetNoiCommand(chatId, userId, text, firstName, username, context);
+        }
+
+        // Hỗ trợ lệnh test nút báo sai cho môi trường local
+        if (cmd.startsWith("/testbaosai") || cmd.startsWith("/baosai")) {
+            return sendSimulatedCheckResult(chatId, userId, "Tin nhắn mẫu: 'Bác ơi đọc giúp cháu mã số vừa gửi qua SMS'");
         }
 
         if (cmd.startsWith("/start") || cmd.startsWith("/batdau")) {
@@ -1260,7 +1661,12 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
         }
 
-        // 6. Enqueue vào SQS
+        // 6. Chế độ Local Development (không có SQS/Worker): tự động trả kết quả kèm nút [Bot báo sai]
+        if (localDevelopment && !queueReady) {
+            return sendSimulatedCheckResult(chatId, userId, inbound.text());
+        }
+
+        // 7. Enqueue vào SQS (môi trường Cloud/Production)
         if (queueReady) {
             try {
                 String payload = MAPPER.writeValueAsString(inbound);
@@ -1283,6 +1689,47 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return userRepo.getUser(userId).map(UserRecord::getAddressForm).orElse(UserRecord.DEFAULT_ADDRESS_FORM);
         }
         return UserRecord.DEFAULT_ADDRESS_FORM;
+    }
+
+    private APIGatewayProxyResponseEvent sendSimulatedCheckResult(long chatId, String userId, String text) {
+        String addressForm = getAddressForm(userId);
+        String checkId = Ulid.next();
+        String maskedText = "Nội dung đã che mờ: " + (text != null && !text.isBlank() ? text : "Tin nhắn nghi ngờ lừa đảo");
+
+        if (sessionStore != null) {
+            sessionStore.put(new SessionRecord(
+                    String.valueOf(chatId),
+                    checkId,
+                    userId,
+                    maskedText,
+                    null,
+                    1,
+                    Instant.now().getEpochSecond() + 1800));
+        }
+
+        if (checkStore != null) {
+            checkStore.put(new CheckRecord(
+                    checkId, userId, "verdict", "DANGEROUS", 85,
+                    "N1", "N1.4", "fast",
+                    List.of("R_OTP_REQUEST"), List.of("share_otp"), List.of("text"),
+                    false, null, Instant.now().toString(), Instant.now().getEpochSecond() + 1800));
+        }
+
+        if (telegram != null) {
+            String verdictHtml = "🛡️ <b>KẾT QUẢ KIỂM TRA</b>\n\n"
+                    + "⚠️ <b>Đánh giá:</b> Tin nhắn có dấu hiệu lừa đảo nguy hiểm!\n"
+                    + "• <b>Dấu hiệu:</b> Yêu cầu cung cấp thông tin nhạy cảm / mã OTP.\n"
+                    + "• <b>Kịch bản:</b> Giả mạo cơ quan / trúng thưởng tri ân.\n"
+                    + "• <b>Lời khuyên:</b> Tuyệt đối không làm theo yêu cầu trong tin nhắn.\n\n"
+                    + "<i>(Nếu kết luận này chưa đúng, " + addressForm.toLowerCase() + " vui lòng bấm nút bên dưới để góp ý nhé)</i>";
+
+            Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
+                    List.of(new InlineButton("🚨 Bot báo sai", "fb:wrong:" + checkId))));
+
+            telegram.sendText(chatId, verdictHtml, keyboard);
+        }
+
+        return response(200, "LOCAL_SIMULATED_SENT");
     }
 
     /**
