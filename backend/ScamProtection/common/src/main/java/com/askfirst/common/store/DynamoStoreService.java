@@ -8,9 +8,11 @@ import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.enhanced.dynamodb.model.PutItemEnhancedRequest;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeDefinition;
+import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.BillingMode;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
 import software.amazon.awssdk.services.dynamodb.model.CreateTableRequest;
+import software.amazon.awssdk.services.dynamodb.model.DeleteItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.DescribeTableRequest;
 import software.amazon.awssdk.services.dynamodb.model.DescribeTimeToLiveRequest;
 import software.amazon.awssdk.services.dynamodb.model.GlobalSecondaryIndex;
@@ -18,6 +20,8 @@ import software.amazon.awssdk.services.dynamodb.model.KeySchemaElement;
 import software.amazon.awssdk.services.dynamodb.model.KeyType;
 import software.amazon.awssdk.services.dynamodb.model.Projection;
 import software.amazon.awssdk.services.dynamodb.model.ProjectionType;
+import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
+import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
 import software.amazon.awssdk.services.dynamodb.model.ResourceInUseException;
 import software.amazon.awssdk.services.dynamodb.model.ResourceNotFoundException;
 import software.amazon.awssdk.services.dynamodb.model.ScalarAttributeType;
@@ -26,6 +30,7 @@ import software.amazon.awssdk.services.dynamodb.model.TimeToLiveStatus;
 import software.amazon.awssdk.services.dynamodb.model.UpdateTimeToLiveRequest;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -222,5 +227,85 @@ public class DynamoStoreService {
                 .build();
 
         dedupTable.deleteItem(key);
+    }
+
+    /**
+     * BE-31: Quét và xoá sạch toàn bộ dữ liệu DynamoDB liên quan đến người dùng:
+     * - Mọi item có PK=USER#<uid> (USER#, GUARDIAN#, CHECK#, ALERT#, v.v.)
+     * - Phiên chat SESSION#<chatId>
+     * - Bộ đệm BUFFER#<chatId>
+     */
+    public void purgeUserData(String userId, String chatId) {
+        if (standardClient == null || userId == null || userId.isBlank()) {
+            return;
+        }
+        String pk = userId.startsWith("USER#") ? userId : "USER#" + userId;
+
+        // 1. Quét và xoá mọi item dưới PK=USER#<uid>
+        try {
+            Map<String, AttributeValue> startKey = null;
+            do {
+                QueryRequest.Builder qb = QueryRequest.builder()
+                        .tableName(tableName)
+                        .keyConditionExpression(ATTR_PK + " = :pk")
+                        .expressionAttributeValues(Map.of(":pk", AttributeValue.builder().s(pk).build()))
+                        .projectionExpression(ATTR_PK + ", " + ATTR_SK);
+                if (startKey != null) {
+                    qb.exclusiveStartKey(startKey);
+                }
+                QueryResponse res = standardClient.query(qb.build());
+                for (Map<String, AttributeValue> item : res.items()) {
+                    standardClient.deleteItem(DeleteItemRequest.builder()
+                            .tableName(tableName)
+                            .key(Map.of(
+                                    ATTR_PK, item.get(ATTR_PK),
+                                    ATTR_SK, item.get(ATTR_SK)))
+                            .build());
+                }
+                startKey = res.hasLastEvaluatedKey() && !res.lastEvaluatedKey().isEmpty() ? res.lastEvaluatedKey() : null;
+            } while (startKey != null);
+        } catch (Exception ignored) {
+        }
+
+        // 2. Xoá SESSION#<chatId>
+        if (chatId != null && !chatId.isBlank()) {
+            String sessionPk = chatId.startsWith("SESSION#") ? chatId : "SESSION#" + chatId;
+            try {
+                standardClient.deleteItem(DeleteItemRequest.builder()
+                        .tableName(tableName)
+                        .key(Map.of(
+                                ATTR_PK, AttributeValue.builder().s(sessionPk).build(),
+                                ATTR_SK, AttributeValue.builder().s("META").build()))
+                        .build());
+            } catch (Exception ignored) {
+            }
+
+            // 3. Xoá BUFFER#<chatId>
+            String bufferPk = chatId.startsWith("BUFFER#") ? chatId : "BUFFER#" + chatId;
+            try {
+                Map<String, AttributeValue> startKey = null;
+                do {
+                    QueryRequest.Builder qb = QueryRequest.builder()
+                            .tableName(tableName)
+                            .keyConditionExpression(ATTR_PK + " = :pk")
+                            .expressionAttributeValues(Map.of(":pk", AttributeValue.builder().s(bufferPk).build()))
+                            .projectionExpression(ATTR_PK + ", " + ATTR_SK);
+                    if (startKey != null) {
+                        qb.exclusiveStartKey(startKey);
+                    }
+                    QueryResponse res = standardClient.query(qb.build());
+                    for (Map<String, AttributeValue> item : res.items()) {
+                        standardClient.deleteItem(DeleteItemRequest.builder()
+                                .tableName(tableName)
+                                .key(Map.of(
+                                        ATTR_PK, item.get(ATTR_PK),
+                                        ATTR_SK, item.get(ATTR_SK)))
+                                .build());
+                    }
+                    startKey = res.hasLastEvaluatedKey() && !res.lastEvaluatedKey().isEmpty() ? res.lastEvaluatedKey() : null;
+                } while (startKey != null);
+            } catch (Exception ignored) {
+            }
+        }
     }
 }

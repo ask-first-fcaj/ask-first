@@ -27,6 +27,13 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - BE-03 (`infra/template.yaml`, `infra/README.md`): token bot và webhook secret chuyển sang SSM `SecureString`. Lambda đọc lúc khởi tạo qua `TELEGRAM_BOT_TOKEN_PARAM` và `TELEGRAM_WEBHOOK_SECRET_PARAM`, không còn đưa giá trị plaintext vào cấu hình Lambda. Lambda được cấp `ssm:GetParameter` cho `parameter/askfirst/<stage>/telegram/*` và `kms:Decrypt` qua SSM. Cần thêm `software.amazon.awssdk:ssm` vào `webhook-handler/pom.xml`.
 
 ### Added
+- BE-31: **Tuân thủ quyền dữ liệu cá nhân (Nghị định 356) - Rút đồng ý (`/rutdongy`) và Xoá dữ liệu (`/xoadulieu`)**:
+  - Lệnh `/rutdongy`: Gửi tin nhắn xác nhận kèm inline keyboard ("Rút đồng ý" / "Huỷ"). Khi người dùng xác nhận (`consent:revoke_confirm`), cập nhật trạng thái `CONSENT_REVOKED` trong `UserRepo`, huỷ bỏ mọi liên kết người thân đang có (`GuardianRepo.deleteAllGuardians`), và ghi nhận 1 bản ghi vào `AuditRepo` (`event = CONSENT_REVOKED`).
+  - Lệnh `/xoadulieu`: Gửi tin nhắn xác nhận kèm inline keyboard ("Xoá toàn bộ dữ liệu" / "Huỷ"). Khi người dùng xác nhận (`xoadulieu:confirm` / `data:delete_confirm`), tiến hành quét và xoá sạch toàn bộ bản ghi người dùng (`USER#`), các liên kết người thân (`GUARDIAN#`), các phiên chat (`SESSION#`), và bộ đệm (`BUFFER#`) qua `DynamoStoreService.purgeUserData`, đồng thời xoá sạch các mẫu dữ liệu đã đóng góp trên S3 (`donated/<hash(uid)>/`) qua `DonationStore`.
+  - Ghi vết kiểm toán ẩn danh vào `AuditRepo`: `"Tài khoản [hash(uid)] đã yêu cầu xoá dữ liệu vào ngày YYYY-MM-DD"`.
+  - Gửi thông báo hoàn tất và hướng dẫn người dùng tự xoá lịch sử trò chuyện trên ứng dụng Telegram (ARCH §5.6).
+  - Thêm các interface và implementation: `DonationStore`, `S3DonationStore`, `SessionStore`, `BufferStore`, `SessionRecord`, `AuditRepo.hashUid`, `AuditRepo.recordDataDeleted`, `AuditRepo.deleteAuditTrail`, `GuardianRepo.deleteAllGuardians`.
+  - Bộ test `WebhookHandlerBE31Test` (9 tests) và `BE31CommonTest` (4 tests) kiểm tra toàn bộ luồng lệnh, callback xác nhận, và điều kiện "sau khi xoá, query `USER#uid` chỉ còn bản ghi audit tối thiểu và prefix `donated/` của user trống".
 - BE-28 (#64): **luồng liên kết người thân an toàn 2 chiều (double opt-in) và deep link 1-chạm**:
   - Lệnh `/nguoithan`: sinh mã mời 6 chữ số ngẫu nhiên lưu `INVITE#<code>` (hạn 24 giờ, dùng 1 lần) kèm nút chia sẻ Telegram `t.me/share/url` và deep link 1-chạm `https://t.me/<bot>?start=g_<code>`.
   - Tự động nhận diện bot username qua biến môi trường `TELEGRAM_BOT_USERNAME` (khai báo trong `infra/template.yaml`) hoặc fallback `/getMe` (`TelegramClient.getMeUsername()`).

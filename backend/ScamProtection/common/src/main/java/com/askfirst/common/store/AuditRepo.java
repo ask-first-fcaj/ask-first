@@ -9,7 +9,11 @@ import software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional;
 import software.amazon.awssdk.enhanced.dynamodb.model.QueryEnhancedRequest;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -71,9 +75,44 @@ public class AuditRepo {
         );
 
         List<AuditRecord> list = new ArrayList<>();
-        table.query(QueryEnhancedRequest.builder().queryConditional(conditional).build())
-                .items()
-                .forEach(list::add);
+        if (table != null) {
+            table.query(QueryEnhancedRequest.builder().queryConditional(conditional).build())
+                    .items()
+                    .forEach(list::add);
+        }
         return list;
+    }
+
+    public void deleteAuditTrail(String userId) {
+        if (table == null || userId == null) {
+            return;
+        }
+        for (AuditRecord rec : listAuditTrail(userId)) {
+            table.deleteItem(rec);
+        }
+    }
+
+    public static String hashUid(String uid) {
+        if (uid == null) {
+            uid = "";
+        }
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(uid.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+
+    public void recordDataDeleted(String userId, String policyVersion, String policySha256) {
+        String hash = hashUid(userId);
+        String today = LocalDate.now().toString();
+        String details = "Tài khoản [" + hash + "] đã yêu cầu xoá dữ liệu vào ngày " + today;
+        recordEvent(userId, "DATA_DELETED", policyVersion, policySha256, details);
     }
 }

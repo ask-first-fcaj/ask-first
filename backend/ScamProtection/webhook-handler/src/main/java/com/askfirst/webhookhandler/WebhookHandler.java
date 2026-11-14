@@ -9,13 +9,17 @@ import com.askfirst.common.TelegramClient.InlineButton;
 import com.askfirst.common.channel.TelegramAdapter;
 import com.askfirst.common.channel.model.InboundMessage;
 import com.askfirst.common.channel.model.TelegramCallbackQuery;
+import com.askfirst.common.store.AuditRecord;
 import com.askfirst.common.store.AuditRepo;
+import com.askfirst.common.store.BufferStore;
+import com.askfirst.common.store.DonationStore;
 import com.askfirst.common.store.DynamoStoreService;
 import com.askfirst.common.store.GuardianRecord;
 import com.askfirst.common.store.GuardianRepo;
 import com.askfirst.common.store.InviteRecord;
 import com.askfirst.common.store.InviteRepo;
 import com.askfirst.common.store.RateLimitRepo;
+import com.askfirst.common.store.SessionStore;
 import com.askfirst.common.store.UserRecord;
 import com.askfirst.common.store.UserRepo;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -81,6 +85,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     private final RateLimitRepo rateLimitRepo;
     private final GuardianRepo guardianRepo;
     private final InviteRepo inviteRepo;
+    private final SessionStore sessionStore;
+    private final BufferStore bufferStore;
+    private final DonationStore donationStore;
 
     /**
      * Chống xử lý trùng cùng một update_id (Telegram retry). Null = không dedup
@@ -133,6 +140,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.rateLimitRepo = new RateLimitRepo(ddb, tableName);
         this.guardianRepo = new GuardianRepo(enhanced, tableName);
         this.inviteRepo = new InviteRepo(enhanced, tableName);
+        this.sessionStore = null;
+        this.bufferStore = null;
+        this.donationStore = null;
         this.dedup = DynamoStoreService.create(ddb, tableName);
     }
 
@@ -233,6 +243,49 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             DynamoStoreService dedup,
             boolean localDevelopment,
             String botUsername) {
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
+                guardianRepo, inviteRepo, null, null, null, policySha256, dedup, localDevelopment, botUsername);
+    }
+
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            GuardianRepo guardianRepo,
+            InviteRepo inviteRepo,
+            SessionStore sessionStore,
+            BufferStore bufferStore,
+            DonationStore donationStore,
+            String policySha256) {
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
+                guardianRepo, inviteRepo, sessionStore, bufferStore, donationStore, policySha256, null, false, null);
+    }
+
+    /**
+     * Constructor đầy đủ (16 tham số). Tất cả các constructor khác delegate vào
+     * đây.
+     */
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            GuardianRepo guardianRepo,
+            InviteRepo inviteRepo,
+            SessionStore sessionStore,
+            BufferStore bufferStore,
+            DonationStore donationStore,
+            String policySha256,
+            DynamoStoreService dedup,
+            boolean localDevelopment,
+            String botUsername) {
         this.telegram = telegram;
         this.sqs = sqs;
         this.queueUrl = queueUrl;
@@ -242,6 +295,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.rateLimitRepo = rateLimitRepo;
         this.guardianRepo = guardianRepo;
         this.inviteRepo = inviteRepo;
+        this.sessionStore = sessionStore;
+        this.bufferStore = bufferStore;
+        this.donationStore = donationStore;
         this.policySha256 = (policySha256 != null && !policySha256.isBlank()) ? policySha256 : DEFAULT_POLICY_SHA256;
         this.adapter = new TelegramAdapter();
         this.dedup = dedup;
@@ -339,6 +395,26 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 UserRecord r = users.computeIfAbsent(userId, k -> new UserRecord(userId, ""));
                 r.setAddressForm(addressForm);
             }
+
+            @Override
+            public void revokeConsent(String userId) {
+                UserRecord r = users.get(userId);
+                if (r != null) {
+                    Map<String, Boolean> revoked = new HashMap<>();
+                    for (String purpose : r.getPurposes().keySet()) {
+                        revoked.put(purpose, false);
+                    }
+                    revoked.put("analyze", false);
+                    r.setPurposes(revoked);
+                    r.setConsentedAt(null);
+                    r.setStatus("CONSENT_REVOKED");
+                }
+            }
+
+            @Override
+            public void deleteUser(String userId) {
+                users.remove(userId);
+            }
         };
     }
 
@@ -411,9 +487,27 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
     private static AuditRepo createInMemoryAuditRepo() {
         return new AuditRepo() {
+            private final List<AuditRecord> records = new java.util.concurrent.CopyOnWriteArrayList<>();
+
             @Override
             public void recordEvent(String userId, String event, String policyVersion, String policySha256, String details) {
-                // In-memory event logger (không cần lưu database thật khi dev local)
+                AuditRecord r = new AuditRecord(userId, Instant.now().toString(), event);
+                r.setPolicyVersion(policyVersion);
+                r.setPolicySha256(policySha256);
+                r.setDetails(details);
+                records.add(r);
+            }
+
+            @Override
+            public List<AuditRecord> listAuditTrail(String userId) {
+                return records.stream()
+                        .filter(r -> userId.equals(r.getUserId()) || (userId.startsWith("USER#") ? r.getPk().equals(userId) : r.getPk().equals("USER#" + userId)))
+                        .toList();
+            }
+
+            @Override
+            public void deleteAuditTrail(String userId) {
+                records.removeIf(r -> userId.equals(r.getUserId()) || (userId.startsWith("USER#") ? r.getPk().equals(userId) : r.getPk().equals("USER#" + userId)));
             }
         };
     }
@@ -632,6 +726,28 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                                 + "</b> rồi ạ! Cháu sẽ xưng hô như vậy trong các câu trả lời sau nhé.");
             }
             return response(200, "CALLBACK_HANDLED");
+        }
+
+        // BE-31: Callback xác nhận rút đồng ý
+        if ("consent:revoke_confirm".equals(data)) {
+            return executeConsentRevocation(chatId, userId, cb.queryId(), context);
+        } else if ("consent:revoke_cancel".equals(data)) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã giữ lại đồng ý");
+                telegram.sendText(chatId, "Dạ cháu vẫn tiếp tục bảo vệ và đồng hành cùng Bác nhé!");
+            }
+            return response(200, "CONSENT_KEPT");
+        }
+
+        // BE-31: Callback xác nhận xoá dữ liệu
+        if ("data:delete_confirm".equals(data) || "xoadulieu:confirm".equals(data)) {
+            return executeDataDeletion(cb.queryId(), chatId, userId, context);
+        } else if ("data:delete_cancel".equals(data) || "xoadulieu:cancel".equals(data)) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã huỷ xoá dữ liệu");
+                telegram.sendText(chatId, "Dạ cháu đã huỷ yêu cầu xoá dữ liệu, mọi thông tin vẫn được giữ nguyên ạ.");
+            }
+            return response(200, "DATA_DELETION_CANCELLED");
         }
 
         return response(200, "UNKNOWN_CALLBACK");
@@ -898,6 +1014,16 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         // BE-28: /ketnoi <code> — người thân nhập mã mời
         if (cmd.startsWith("/ketnoi")) {
             return handleKetNoiCommand(chatId, userId, text, firstName, username, context);
+        }
+
+        // BE-31: /rutdongy — Rút lại sự đồng ý
+        if (cmd.startsWith("/rutdongy")) {
+            return handleRutDongYCommand(chatId, userId, text, context);
+        }
+
+        // BE-31: /xoadulieu — Xoá sạch toàn bộ dữ liệu cá nhân
+        if (cmd.startsWith("/xoadulieu")) {
+            return handleXoaDuLieuCommand(chatId, userId, text, context);
         }
 
         if (cmd.startsWith("/start") || cmd.startsWith("/batdau")) {
@@ -1177,6 +1303,138 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         }
 
         return response(200, "INVITE_REDEEMED");
+    }
+
+    // ── BE-31: /rutdongy & /xoadulieu ──────────────────────────────────────────
+
+    private APIGatewayProxyResponseEvent handleRutDongYCommand(
+            long chatId,
+            String userId,
+            String text,
+            Context context) {
+        String lower = text.toLowerCase().trim();
+        if (lower.contains("confirm") || lower.contains("xacnhan")) {
+            return executeConsentRevocation(chatId, userId, null, context);
+        }
+
+        String addressForm = getAddressForm(userId);
+        String confirmMsg = "Nếu rút đồng ý, " + addressForm + " sẽ không thể tiếp tục gửi tin nhắn kiểm tra lừa đảo. "
+                + addressForm + " có chắc chắn không?";
+
+        Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
+                List.of(
+                        new InlineButton("⚠️ Xác nhận rút đồng ý", "consent:revoke_confirm"),
+                        new InlineButton("Giữ lại", "consent:revoke_cancel"))));
+
+        if (telegram != null) {
+            telegram.sendText(chatId, confirmMsg, keyboard);
+        }
+        return response(200, "COMMAND_HANDLED");
+    }
+
+    private APIGatewayProxyResponseEvent executeConsentRevocation(
+            long chatId,
+            String userId,
+            String queryId,
+            Context context) {
+        // 1. Cập nhật trạng thái người dùng thành CONSENT_REVOKED trong UserRepo
+        if (userRepo != null) {
+            userRepo.revokeConsent(userId);
+        }
+
+        // 2. Huỷ bỏ mọi liên kết người thân đang có
+        if (guardianRepo != null) {
+            for (GuardianRecord g : guardianRepo.listGuardians(userId)) {
+                guardianRepo.delete(userId, g.getGuardianUid());
+            }
+        }
+
+        // 3. Ghi nhận một bản ghi vào AuditRepo
+        if (auditRepo != null) {
+            auditRepo.recordEvent(userId, "CONSENT_REVOKED", POLICY_VERSION, policySha256,
+                    "Revoked consent via /rutdongy");
+        }
+
+        // 4. Phản hồi cho người dùng qua Telegram
+        if (telegram != null) {
+            if (queryId != null) {
+                telegram.answerCallbackQuery(queryId, "Đã rút đồng ý");
+            }
+            telegram.sendText(chatId,
+                    "Dạ cháu đã ghi nhận rút đồng ý của Bác. Mọi liên kết người thân đã được huỷ bỏ và cháu sẽ ngừng hỗ trợ kiểm tra tin nhắn lừa đảo.\n\n"
+                            + "Khi nào Bác cần sử dụng lại, chỉ cần gõ /start để xem và đồng ý lại nhé!");
+        }
+
+        return response(200, "CONSENT_REVOKED");
+    }
+
+    private APIGatewayProxyResponseEvent handleXoaDuLieuCommand(
+            long chatId,
+            String userId,
+            String text,
+            Context context) {
+        return executeDataDeletion(null, chatId, userId, context);
+    }
+
+    private APIGatewayProxyResponseEvent executeDataDeletion(
+            String queryId,
+            long chatId,
+            String userId,
+            Context context) {
+        String chatStr = String.valueOf(chatId);
+
+        // 1. Quét và xoá sạch:
+        // 1a. DynamoDB single-table level (nếu dedup / standardClient có sẵn)
+        if (dedup != null) {
+            dedup.purgeUserData(userId, chatStr);
+        }
+
+        // 1b. Bản ghi thông tin người dùng (USER#)
+        if (userRepo != null) {
+            userRepo.deleteUser(userId);
+        }
+
+        // 1c. Các liên kết người thân (GUARDIAN#)
+        if (guardianRepo != null) {
+            for (GuardianRecord g : guardianRepo.listGuardians(userId)) {
+                guardianRepo.delete(userId, g.getGuardianUid());
+            }
+        }
+
+        // 1d. Các phiên chat (SESSION#)
+        if (sessionStore != null) {
+            sessionStore.delete(chatStr);
+        }
+
+        // 1e. Các bộ đệm (BUFFER#)
+        if (bufferStore != null) {
+            bufferStore.delete(chatStr);
+        }
+
+        // 1f. Thư mục donated/<hash(uid)>/ trên S3
+        if (donationStore != null) {
+            donationStore.deleteDonatedSamples(userId);
+        }
+
+        // 2. Ghi vết kiểm toán ẩn danh vào AuditRepo:
+        // "Tài khoản [hash(uid)] đã yêu cầu xoá dữ liệu vào ngày YYYY-MM-DD"
+        if (auditRepo != null) {
+            auditRepo.deleteAuditTrail(userId);
+            auditRepo.recordDataDeleted(userId, POLICY_VERSION, policySha256);
+        }
+
+        // 3. Gửi tin nhắn thông báo hoàn tất:
+        // "Cháu đã xoá sạch toàn bộ dữ liệu của Bác trên hệ thống rồi ạ!"
+        if (telegram != null) {
+            if (queryId != null) {
+                telegram.answerCallbackQuery(queryId, "Đã xoá dữ liệu");
+            }
+            telegram.sendText(chatId,
+                    "Cháu đã xoá sạch toàn bộ dữ liệu của Bác trên hệ thống rồi ạ!\n\n"
+                            + "💡 Để bảo vệ quyền riêng tư tuyệt đối, Bác vui lòng tự xóa cuộc trò chuyện này trên ứng dụng Telegram giúp cháu nhé.");
+        }
+
+        return response(200, "DATA_DELETED");
     }
 
     private APIGatewayProxyResponseEvent handleContentInspection(

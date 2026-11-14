@@ -80,6 +80,12 @@ public class GuardianRepo {
         table.deleteItem(Key.builder().partitionValue(pk).sortValue(sk).build());
     }
 
+    public void deleteAllGuardians(String elderUid) {
+        for (GuardianRecord g : listGuardians(elderUid)) {
+            delete(elderUid, g.getGuardianUid());
+        }
+    }
+
     /**
      * Đọc-sửa-ghi có khóa lạc quan; chưa có liên kết thì bỏ qua như trước đây.
      */
