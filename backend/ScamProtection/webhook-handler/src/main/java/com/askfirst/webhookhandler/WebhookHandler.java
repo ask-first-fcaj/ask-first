@@ -493,6 +493,19 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             // Đã có tác dụng phụ một phần -> giữ khóa dedup, trả 200 để Telegram không
             // retry gây xử lý đôi
             log(context, "Lỗi không mong đợi khi xử lý update " + updateId + ": " + e);
+            if (telegram != null && root != null) {
+                try {
+                    long errChatId = root.path("message").path("chat").path("id").asLong();
+                    if (errChatId == 0) {
+                        errChatId = root.path("callback_query").path("message").path("chat").path("id").asLong();
+                    }
+                    if (errChatId != 0) {
+                        telegram.sendText(errChatId, "Dạ hệ thống đang gặp sự cố gián đoạn tạm thời. Quý khách vui lòng thử lại hoặc gửi lại sau ít phút nhé!");
+                    }
+                } catch (Exception sendEx) {
+                    log(context, "Không gửi được thông báo lỗi cho người dùng khi gặp lỗi không mong đợi: " + sendEx);
+                }
+            }
             return response(200, "INTERNAL_ERROR_LOGGED");
         }
     }
@@ -520,7 +533,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 JsonNode msg = root.path("message");
                 long sChatId = msg.path("chat").path("id").asLong();
                 String sUserId = "tg:" + msg.path("from").path("id").asText();
-                String sAddressForm = getAddressForm(sUserId);
+                String sAddressForm = getAddressForm(sUserId, context);
                 if (telegram != null) {
                     telegram.sendText(sChatId, "Dạ cháu chào " + sAddressForm + "! Cháu là trợ lý phòng chống lừa đảo AskFirst.\n\n"
                             + sAddressForm + " hãy gửi tin nhắn chữ, hình ảnh chụp màn hình hoặc đường link nghi ngờ để cháu kiểm tra giúp nhé!");
@@ -945,7 +958,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 }
                 return response(200, "COMMAND_HANDLED");
             } else {
-                String addressForm = getAddressForm(userId);
+                String addressForm = getAddressForm(userId, context);
                 String msg = "Chào mừng " + addressForm + " quay trở lại với AskFirst! " + addressForm
                         + " hãy gửi tin nhắn, đường link hoặc ảnh chụp màn hình cần kiểm tra cho cháu nhé.";
                 if (telegram != null) {
@@ -1197,138 +1210,152 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String userId,
             Context context) {
 
-        String addressForm = getAddressForm(userId);
+        String addressForm = getAddressForm(userId, context);
 
-        // BE-35: 1. Kiểm tra tệp cài đặt Android (.apk) độc hại - Xử lý ngay lập tức (Zero SQS, Zero Download)
-        if ("apk".equalsIgnoreCase(inbound.kind())) {
-            return handleApkBlocked(inbound, chatId, userId, addressForm, context);
-        }
-
-        // BE-35: 2. Kiểm tra các định dạng không hỗ trợ (Document non-image, unsupported_media, audio, sticker)
-        if ("document".equalsIgnoreCase(inbound.kind())) {
-            String docMsg = "Dạ hiện tại cháu chưa hỗ trợ đọc trực tiếp định dạng tệp này. "
-                    + addressForm + " hãy mở tệp ra rồi <b>CHỤP ẢNH MÀN HÌNH</b> gửi lại cho cháu kiểm tra nhé!";
-            if (telegram != null) {
-                telegram.sendText(chatId, docMsg);
+        try {
+            // BE-35: 1. Kiểm tra tệp cài đặt Android (.apk) độc hại - Xử lý ngay lập tức (Zero SQS, Zero Download)
+            if ("apk".equalsIgnoreCase(inbound.kind())) {
+                return handleApkBlocked(inbound, chatId, userId, addressForm, context);
             }
-            return response(200, "UNSUPPORTED_DOCUMENT");
-        }
 
-        if ("unsupported_media".equalsIgnoreCase(inbound.kind())) {
-            String mediaMsg = "Dạ hiện tại cháu chưa hỗ trợ kiểm tra trực tiếp video, vị trí hoặc danh bạ. "
-                    + addressForm + " hãy <b>CHỤP ẢNH MÀN HÌNH</b> hoặc <b>gõ lại nội dung</b> gửi cho cháu kiểm tra nhé!";
-            if (telegram != null) {
-                telegram.sendText(chatId, mediaMsg);
+            // BE-35: 2. Kiểm tra các định dạng không hỗ trợ (Document non-image, unsupported_media, audio, sticker)
+            if ("document".equalsIgnoreCase(inbound.kind())) {
+                String docMsg = "Dạ hiện tại cháu chưa hỗ trợ đọc trực tiếp định dạng tệp này. "
+                        + addressForm + " hãy mở tệp ra rồi <b>CHỤP ẢNH MÀN HÌNH</b> gửi lại cho cháu kiểm tra nhé!";
+                if (telegram != null) {
+                    telegram.sendText(chatId, docMsg);
+                }
+                return response(200, "UNSUPPORTED_DOCUMENT");
             }
-            return response(200, "UNSUPPORTED_MEDIA");
-        }
 
-        if ("audio".equalsIgnoreCase(inbound.kind())) {
-            String audioMsg = "Dạ hiện tại cháu chưa hỗ trợ kiểm tra tệp âm thanh. "
-                    + addressForm + " hãy <b>gõ lại nội dung</b> hoặc <b>chụp ảnh màn hình</b> gửi cho cháu kiểm tra nhé!";
-            if (telegram != null) {
-                telegram.sendText(chatId, audioMsg);
+            if ("unsupported_media".equalsIgnoreCase(inbound.kind())) {
+                String mediaMsg = "Dạ hiện tại cháu chưa hỗ trợ kiểm tra trực tiếp video, vị trí hoặc danh bạ. "
+                        + addressForm + " hãy <b>CHỤP ẢNH MÀN HÌNH</b> hoặc <b>gõ lại nội dung</b> gửi cho cháu kiểm tra nhé!";
+                if (telegram != null) {
+                    telegram.sendText(chatId, mediaMsg);
+                }
+                return response(200, "UNSUPPORTED_MEDIA");
             }
-            return response(200, "UNSUPPORTED_AUDIO");
-        }
 
-        if ("sticker".equalsIgnoreCase(inbound.kind())) {
-            if (telegram != null) {
-                telegram.sendText(chatId, "Dạ cháu chào " + addressForm + "! Cháu là trợ lý phòng chống lừa đảo AskFirst.\n\n"
-                        + addressForm + " hãy gửi tin nhắn chữ, hình ảnh chụp màn hình hoặc đường link nghi ngờ để cháu kiểm tra giúp nhé!");
+            if ("audio".equalsIgnoreCase(inbound.kind())) {
+                String audioMsg = "Dạ hiện tại cháu chưa hỗ trợ kiểm tra tệp âm thanh. "
+                        + addressForm + " hãy <b>gõ lại nội dung</b> hoặc <b>chụp ảnh màn hình</b> gửi cho cháu kiểm tra nhé!";
+                if (telegram != null) {
+                    telegram.sendText(chatId, audioMsg);
+                }
+                return response(200, "UNSUPPORTED_AUDIO");
             }
-            return response(200, "STICKER_REPLIED");
-        }
 
-        // 1. Kiểm tra trạng thái Đồng ý điều khoản (Consent Check - BE-25)
-        if (userRepo != null && !userRepo.hasValidConsent(userId, policySha256)) {
-            String promptConsent = addressForm + " ơi, để bảo vệ dữ liệu cá nhân theo quy định của pháp luật, " +
-                    addressForm
-                    + " vui lòng bấm <b>Tôi đồng ý</b> bên dưới trước để cháu được phép kiểm tra tin nhắn nhé!";
-
-            Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
-                    List.of(
-                            new InlineButton("✅ Tôi đồng ý", "consent:agree"),
-                            new InlineButton("❌ Không đồng ý", "consent:decline"))));
-
-            if (telegram != null) {
-                telegram.sendText(chatId, promptConsent, keyboard);
+            if ("sticker".equalsIgnoreCase(inbound.kind())) {
+                if (telegram != null) {
+                    telegram.sendText(chatId, "Dạ cháu chào " + addressForm + "! Cháu là trợ lý phòng chống lừa đảo AskFirst.\n\n"
+                            + addressForm + " hãy gửi tin nhắn chữ, hình ảnh chụp màn hình hoặc đường link nghi ngờ để cháu kiểm tra giúp nhé!");
+                }
+                return response(200, "STICKER_REPLIED");
             }
-            return response(200, "CONSENT_REQUIRED");
-        }
 
-        // 2. Kiểm tra đồng ý tin nhắn thoại (Voice Consent Check - BE-25)
-        if ("voice".equalsIgnoreCase(inbound.kind())) {
-            boolean hasVoice = (userRepo != null) && userRepo.hasVoiceConsent(userId);
-            if (!hasVoice) {
-                String voiceMsg = addressForm
-                        + " ơi, tính năng kiểm tra tin nhắn thoại (voice) cần có sự đồng ý riêng về xử lý dữ liệu âm thanh. "
-                        +
-                        "Hiện tại mục này chưa được bật. " + addressForm
-                        + " vui lòng chụp màn hình hoặc gửi tin nhắn văn bản cho cháu nhé!";
+            // 1. Kiểm tra trạng thái Đồng ý điều khoản (Consent Check - BE-25)
+            if (userRepo != null && !userRepo.hasValidConsent(userId, policySha256)) {
+                String promptConsent = addressForm + " ơi, để bảo vệ dữ liệu cá nhân theo quy định của pháp luật, " +
+                        addressForm
+                        + " vui lòng bấm <b>Tôi đồng ý</b> bên dưới trước để cháu được phép kiểm tra tin nhắn nhé!";
+
+                Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
+                        List.of(
+                                new InlineButton("✅ Tôi đồng ý", "consent:agree"),
+                                new InlineButton("❌ Không đồng ý", "consent:decline"))));
 
                 if (telegram != null) {
-                    telegram.sendText(chatId, voiceMsg);
+                    telegram.sendText(chatId, promptConsent, keyboard);
                 }
-                return response(200, "VOICE_CONSENT_REQUIRED");
+                return response(200, "CONSENT_REQUIRED");
             }
-        }
 
-        // 3. Hàng đợi SQS phải sẵn sàng TRƯỚC khi nhận việc: không gửi "⏳" cho một job
-        // chắc chắn bị mất.
-        // (Chế độ local long polling không có SQS nên được bỏ qua bước enqueue.)
-        boolean queueReady = queueUrl != null && !queueUrl.isBlank() && sqs != null;
-        if (!queueReady && !localDevelopment) {
-            log(context, "Chưa cấu hình hàng đợi SQS (WEBHOOK_QUEUE_URL) -> từ chối xử lý để không mất job im lặng");
-            return response(500, "QUEUE_NOT_CONFIGURED");
-        }
+            // 2. Kiểm tra đồng ý tin nhắn thoại (Voice Consent Check - BE-25)
+            if ("voice".equalsIgnoreCase(inbound.kind())) {
+                boolean hasVoice = (userRepo != null) && userRepo.hasVoiceConsent(userId);
+                if (!hasVoice) {
+                    String voiceMsg = addressForm
+                            + " ơi, tính năng kiểm tra tin nhắn thoại (voice) cần có sự đồng ý riêng về xử lý dữ liệu âm thanh. "
+                            +
+                            "Hiện tại mục này chưa được bật. " + addressForm
+                            + " vui lòng chụp màn hình hoặc gửi tin nhắn văn bản cho cháu nhé!";
 
-        // 4. Kiểm tra Giới hạn tốc độ người dùng (Rate Limiting - BE-26)
-        if (rateLimitRepo != null) {
-            RateLimitRepo.RateLimitResult rlResult = rateLimitRepo.checkAndIncrement(userId);
-            if (!rlResult.allowed()) {
-                String rateLimitMsg = addressForm + " ơi, hiện tại " + addressForm
-                        + " đã gửi kiểm tra khá nhiều tin trong ngày rồi ạ " +
-                        "(giới hạn 30 tin/giờ và 100 tin/ngày). Cháu xin phép tạm nghỉ một chút để đảm bảo an toàn cho hệ thống, "
-                        +
-                        addressForm + " vui lòng quay lại sau nhé!";
-
-                if (telegram != null) {
-                    telegram.sendText(chatId, rateLimitMsg);
+                    if (telegram != null) {
+                        telegram.sendText(chatId, voiceMsg);
+                    }
+                    return response(200, "VOICE_CONSENT_REQUIRED");
                 }
-                return response(200, "RATE_LIMITED");
             }
-        }
 
-        // 5. Bước tin nhắn chờ ("⏳")
-        if (telegram != null) {
-            try {
-                telegram.sendText(
-                        chatId,
-                        "⏳ Cháu đang kiểm tra, " + addressForm.toLowerCase() + " chờ cháu vài giây nhé...");
-            } catch (Exception e) {
-                // Tin chờ chỉ là phụ: lỗi ở đây không được làm Telegram retry (gây xử lý/đếm
-                // đôi), vẫn đưa job vào hàng đợi
-                log(context, "Không gửi được tin nhắn chờ: " + e);
+            // 3. Hàng đợi SQS phải sẵn sàng TRƯỚC khi nhận việc: không gửi "⏳" cho một job
+            // chắc chắn bị mất.
+            // (Chế độ local long polling không có SQS nên được bỏ qua bước enqueue.)
+            boolean queueReady = queueUrl != null && !queueUrl.isBlank() && sqs != null;
+            if (!queueReady && !localDevelopment) {
+                log(context, "Chưa cấu hình hàng đợi SQS (WEBHOOK_QUEUE_URL) -> từ chối xử lý để không mất job im lặng");
+                return response(500, "QUEUE_NOT_CONFIGURED");
             }
-        }
 
-        // 6. Enqueue vào SQS
-        if (queueReady) {
-            try {
-                String payload = MAPPER.writeValueAsString(inbound);
-                sqs.sendMessage(
-                        SendMessageRequest.builder()
-                                .queueUrl(queueUrl)
-                                .messageBody(payload)
-                                .build());
-            } catch (Exception e) {
-                log(context, "Lỗi gửi message vào SQS: " + e);
-                return response(500, "SQS_FAILED");
+            // 4. Kiểm tra Giới hạn tốc độ người dùng (Rate Limiting - BE-26)
+            if (rateLimitRepo != null) {
+                RateLimitRepo.RateLimitResult rlResult = rateLimitRepo.checkAndIncrement(userId);
+                if (!rlResult.allowed()) {
+                    String rateLimitMsg = addressForm + " ơi, hiện tại " + addressForm
+                            + " đã gửi kiểm tra khá nhiều tin trong ngày rồi ạ " +
+                            "(giới hạn 30 tin/giờ và 100 tin/ngày). Cháu xin phép tạm nghỉ một chút để đảm bảo an toàn cho hệ thống, "
+                            +
+                            addressForm + " vui lòng quay lại sau nhé!";
+
+                    if (telegram != null) {
+                        telegram.sendText(chatId, rateLimitMsg);
+                    }
+                    return response(200, "RATE_LIMITED");
+                }
             }
-        }
 
-        return response(200, "OK");
+            // 5. Bước tin nhắn chờ ("⏳")
+            if (telegram != null) {
+                try {
+                    telegram.sendText(
+                            chatId,
+                            "⏳ Cháu đang kiểm tra, " + addressForm.toLowerCase() + " chờ cháu vài giây nhé...");
+                } catch (Exception e) {
+                    // Tin chờ chỉ là phụ: lỗi ở đây không được làm Telegram retry (gây xử lý/đếm
+                    // đôi), vẫn đưa job vào hàng đợi
+                    log(context, "Không gửi được tin nhắn chờ: " + e);
+                }
+            }
+
+            // 6. Enqueue vào SQS
+            if (queueReady) {
+                try {
+                    String payload = MAPPER.writeValueAsString(inbound);
+                    sqs.sendMessage(
+                            SendMessageRequest.builder()
+                                    .queueUrl(queueUrl)
+                                    .messageBody(payload)
+                                    .build());
+                } catch (Exception e) {
+                    log(context, "Lỗi gửi message vào SQS: " + e);
+                    return response(500, "SQS_FAILED");
+                }
+            }
+
+            return response(200, "OK");
+        } catch (Exception e) {
+            log(context, "Lỗi không mong muốn trong handleContentInspection cho user " + userId + ": " + e);
+            if (telegram != null) {
+                try {
+                    String errMsg = "Dạ hệ thống đang gặp gián đoạn tạm thời nên chưa thể xử lý yêu cầu này. "
+                            + addressForm + " vui lòng gửi lại tin nhắn hoặc tệp giúp cháu sau ít phút nhé!";
+                    telegram.sendText(chatId, errMsg);
+                } catch (Exception sendEx) {
+                    log(context, "Không gửi được tin nhắn báo lỗi cho user " + chatId + ": " + sendEx);
+                }
+            }
+            return response(200, "CONTENT_INSPECTION_FAILED");
+        }
     }
 
     private APIGatewayProxyResponseEvent handleApkBlocked(
@@ -1348,7 +1375,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 + "3. Báo ngay cho con cháu hoặc Công an gần nhất để được hỗ trợ.";
 
         if (telegram != null) {
-            telegram.sendText(chatId, apkAlert);
+            try {
+                telegram.sendText(chatId, apkAlert);
+            } catch (Exception ex) {
+                log(context, "Lỗi gửi cảnh báo APK tới người dùng " + chatId + ": " + ex.getMessage());
+            }
         }
 
         // 2. Kích hoạt cảnh báo khẩn cấp cho người thân (nếu đã liên kết)
@@ -1382,19 +1413,32 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
         // 3. Ghi audit log
         if (auditRepo != null) {
-            String fileName = (inbound.media() != null && inbound.media().fileName() != null)
-                    ? inbound.media().fileName()
-                    : "unknown.apk";
-            auditRepo.recordEvent(userId, "APK_BLOCKED", POLICY_VERSION, policySha256,
-                    "Blocked APK file: " + fileName);
+            try {
+                String fileName = (inbound.media() != null && inbound.media().fileName() != null)
+                        ? inbound.media().fileName()
+                        : "unknown.apk";
+                auditRepo.recordEvent(userId, "APK_BLOCKED", POLICY_VERSION, policySha256,
+                        "Blocked APK file: " + fileName);
+            } catch (Exception ex) {
+                log(context, "Lỗi ghi audit log khi chặn APK: " + ex.getMessage());
+            }
         }
 
         return response(200, "APK_BLOCKED");
     }
 
     private String getAddressForm(String userId) {
+        return getAddressForm(userId, null);
+    }
+
+    private String getAddressForm(String userId, Context context) {
         if (userRepo != null) {
-            return userRepo.getUser(userId).map(UserRecord::getAddressForm).orElse(UserRecord.DEFAULT_ADDRESS_FORM);
+            try {
+                return userRepo.getUser(userId).map(UserRecord::getAddressForm).orElse(UserRecord.DEFAULT_ADDRESS_FORM);
+            } catch (Exception e) {
+                log(context, "Lỗi truy vấn cách xưng hô từ DB cho user " + userId + " (" + e.getMessage() + ") -> dùng mặc định: " + UserRecord.DEFAULT_ADDRESS_FORM);
+                return UserRecord.DEFAULT_ADDRESS_FORM;
+            }
         }
         return UserRecord.DEFAULT_ADDRESS_FORM;
     }

@@ -366,6 +366,81 @@ class WebhookHandlerBE35Test {
         assertTrue(telegramClient.sentMessages.get(0).text().contains("Cháu là trợ lý phòng chống lừa đảo"));
     }
 
+    // ── Test 13: Xử lý lỗi DB khi lấy xưng hô cho APK ────────────────────────
+    @Test
+    @DisplayName("BE-35: getAddressForm gặp lỗi DynamoDB khi gửi APK -> Fallback xưng hô mặc định (Bác) và vẫn phát cảnh báo đỏ khẩn cấp")
+    void testApkWhenUserRepoThrowsDbExceptionUsesDefaultAddressFormAndAlerts() {
+        // Mô phỏng DynamoDB bị lỗi kết nối / timeout khi đọc user profile
+        userRepo.failGetUser = true;
+
+        String updateJson = buildDocumentUpdateJson(ELDER_CHAT_ID, "DocHai_Bank.apk", "application/vnd.android.package-archive");
+        APIGatewayProxyResponseEvent res = handler.handleRequest(buildRequest(updateJson), fakeContext());
+
+        // Phải thành công chặn APK, không bị đứt đoạn giữa chừng
+        assertEquals(200, res.getStatusCode());
+        assertEquals("APK_BLOCKED", res.getBody());
+        assertEquals(0, sqsClient.enqueuedMessages.size());
+
+        // Vẫn phải gửi cảnh báo khẩn cấp cho người cao tuổi với xưng hô mặc định "Bác"
+        assertEquals(1, telegramClient.sentMessages.size());
+        FakeTelegramClient.SentMsg sent = telegramClient.sentMessages.get(0);
+        assertEquals(ELDER_CHAT_ID, sent.chatId());
+        assertTrue(sent.text().contains("CẢNH BÁO NGUY HIỂM"));
+        assertTrue(sent.text().contains("TUYỆT ĐỐI KHÔNG BẤM CÀI ĐẶT"));
+        assertTrue(sent.text().contains("Bác"));
+    }
+
+    // ── Test 14: Lỗi DB khi kiểm tra nội dung -> Thông báo lỗi và hướng dẫn gửi lại ──
+    @Test
+    @DisplayName("BE-35: Kiểm tra nội dung gặp lỗi hệ thống -> Thông báo lỗi rõ ràng và hướng dẫn người dùng gửi lại")
+    void testContentInspectionWhenUserRepoThrowsExceptionNotifiesUser() {
+        // Cho consent check quăng ngoại lệ DB
+        userRepo.failConsent = true;
+
+        String updateJson = """
+            {
+              "update_id": 1014,
+              "message": {
+                "message_id": 14,
+                "date": 1729000000,
+                "chat": { "id": %d, "type": "private" },
+                "from": { "id": %d, "is_bot": false, "first_name": "Nam" },
+                "text": "Kiểm tra link https://nganhang-fake.com"
+              }
+            }
+            """.formatted(ELDER_CHAT_ID, ELDER_CHAT_ID);
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(buildRequest(updateJson), fakeContext());
+
+        assertEquals(200, res.getStatusCode());
+        assertEquals("CONTENT_INSPECTION_FAILED", res.getBody());
+
+        // Phải gửi thông báo giải thích và hướng dẫn người dùng gửi lại
+        assertEquals(1, telegramClient.sentMessages.size());
+        FakeTelegramClient.SentMsg sent = telegramClient.sentMessages.get(0);
+        assertEquals(ELDER_CHAT_ID, sent.chatId());
+        assertTrue(sent.text().contains("gián đoạn tạm thời"));
+        assertTrue(sent.text().contains("gửi lại"));
+    }
+
+    // ── Test 15: Lỗi AuditRepo hoặc GuardianRepo khi chặn APK -> Vẫn bảo đảm cảnh báo người cao tuổi ──
+    @Test
+    @DisplayName("BE-35: GuardianRepo và AuditRepo gặp lỗi DB khi chặn APK -> Người cao tuổi vẫn nhận được cảnh báo")
+    void testApkWhenGuardianAndAuditThrowExceptionStillAlertsElder() {
+        guardianRepo.failListGuardians = true;
+        auditRepo.failAudit = true;
+
+        String updateJson = buildDocumentUpdateJson(ELDER_CHAT_ID, "Malware.apk", "application/vnd.android.package-archive");
+        APIGatewayProxyResponseEvent res = handler.handleRequest(buildRequest(updateJson), fakeContext());
+
+        assertEquals(200, res.getStatusCode());
+        assertEquals("APK_BLOCKED", res.getBody());
+
+        // Tin cảnh báo người cao tuổi vẫn gửi thành công
+        assertEquals(1, telegramClient.sentMessages.size());
+        assertTrue(telegramClient.sentMessages.get(0).text().contains("CẢNH BÁO NGUY HIỂM"));
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
     private String buildDocumentUpdateJson(long chatId, String fileName, String mimeType) {
         return """
@@ -457,9 +532,14 @@ class WebhookHandlerBE35Test {
 
     static class FakeUserRepo extends UserRepo {
         final Map<String, UserRecord> store = new ConcurrentHashMap<>();
+        boolean failGetUser = false;
+        boolean failConsent = false;
 
         @Override
         public Optional<UserRecord> getUser(String userId) {
+            if (failGetUser) {
+                throw new RuntimeException("DynamoDB connection timeout / Service Unavailable");
+            }
             return Optional.ofNullable(store.get(userId));
         }
 
@@ -479,6 +559,9 @@ class WebhookHandlerBE35Test {
 
         @Override
         public boolean hasValidConsent(String userId, String currentSha256) {
+            if (failConsent) {
+                throw new RuntimeException("DynamoDB query failed for consent check");
+            }
             UserRecord u = store.get(userId);
             return u != null && currentSha256.equals(u.getPolicySha256())
                     && u.getPurposes() != null
@@ -488,6 +571,7 @@ class WebhookHandlerBE35Test {
 
     static class FakeGuardianRepo extends GuardianRepo {
         final Map<String, GuardianRecord> store = new ConcurrentHashMap<>();
+        boolean failListGuardians = false;
 
         @Override
         public void save(GuardianRecord record) {
@@ -496,6 +580,9 @@ class WebhookHandlerBE35Test {
 
         @Override
         public List<GuardianRecord> listGuardians(String elderUid) {
+            if (failListGuardians) {
+                throw new RuntimeException("DynamoDB guardian query failed");
+            }
             return store.values().stream()
                     .filter(r -> elderUid.equals(r.getElderUid()))
                     .toList();
@@ -505,9 +592,13 @@ class WebhookHandlerBE35Test {
     static class FakeAuditRepo extends AuditRepo {
         record AuditEntry(String userId, String event, String details) {}
         final List<AuditEntry> events = new ArrayList<>();
+        boolean failAudit = false;
 
         @Override
         public void recordEvent(String userId, String event, String ver, String sha, String details) {
+            if (failAudit) {
+                throw new RuntimeException("DynamoDB audit write failed");
+            }
             events.add(new AuditEntry(userId, event, details));
         }
     }
