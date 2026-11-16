@@ -66,9 +66,10 @@ def test_corrupt_local_file_is_replaced(tmp_path) -> None:
 
 
 def test_unknown_or_unconfigured_artifact(tmp_path) -> None:
-    st = S3ArtifactStore("bkt", CONFIG, tmp_path, FakeS3({}))     # kb_index còn là khung G0: version/files rỗng
+    st = S3ArtifactStore("bkt", manifest(tmp_path, {}), tmp_path / "tmp", FakeS3({}))   # mục khung G0: files rỗng
     with pytest.raises(ArtifactError):
-        st.path("kb_index")
+        st.path("ocr")
+    st = S3ArtifactStore("bkt", CONFIG, tmp_path, FakeS3({}))
     with pytest.raises(ArtifactError):
         st.path("khong_co")
 

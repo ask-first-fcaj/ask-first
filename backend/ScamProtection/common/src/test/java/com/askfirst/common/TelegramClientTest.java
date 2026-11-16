@@ -42,6 +42,29 @@ class TelegramClientTest {
     }
 
     @Test
+    @DisplayName("getMeUsername returns bot username from getMe API")
+    void testGetMeUsernameSuccess() {
+        mockServer.createContext("/botdummy_token/getMe", exchange -> {
+            readBody(exchange);
+            String response = """
+                {
+                  "ok": true,
+                  "result": {
+                    "id": 123456,
+                    "is_bot": true,
+                    "first_name": "TestBot",
+                    "username": "TestBot_username"
+                  }
+                }
+                """;
+            sendResponse(exchange, 200, response);
+        });
+
+        String username = client.getMeUsername();
+        assertThat(username).isEqualTo("TestBot_username");
+    }
+
+    @Test
     @DisplayName("sendText successfully sends HTML parse_mode and returns message_id")
     void testSendTextSuccess() {
         mockServer.createContext("/botdummy_token/sendMessage", exchange -> {

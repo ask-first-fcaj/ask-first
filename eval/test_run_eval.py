@@ -123,6 +123,18 @@ def test_errors_are_not_cached(tmp_path):
     assert not (tmp_path / "cache").exists()
 
 
+def test_rules_only_fallback_is_not_cached(tmp_path):
+    """LLM lỗi tạm thời (rules_only) không được ghim vào cache, kẻo lần chạy CI sau có Bedrock vẫn lấy kết quả chỉ luật."""
+    class RulesOnly(_Counting):
+        def analyze(self, bundle, ctx):
+            return super().analyze(bundle, ctx).model_copy(update={"path": "rules_only"})
+
+    pipe = RulesOnly()
+    run_eval.run(pipe, TEN[:1], "real", tmp_path / "cache")
+    run_eval.run(pipe, TEN[:1], "real", tmp_path / "cache")
+    assert pipe.calls == 2
+
+
 def test_code_version_changes_with_files(tmp_path):
     (tmp_path / "a.txt").write_text("1", encoding="utf-8")
     v1 = run_eval.code_version([tmp_path])
@@ -173,6 +185,18 @@ def test_main_gate_exit_code_and_baseline_delta(tmp_path):
     base.write_text(json.dumps({"metrics": {"recall": 0.5, "false_alarm": 1.0}}), encoding="utf-8")
     run_eval.main([str(data), "--out", str(out), "--baseline", str(base)])
     assert "66.7% (+16.7 điểm)" in (out / "report.md").read_text(encoding="utf-8")
+
+
+def test_drift_only_gate_ignores_thresholds_but_not_regression(tmp_path):
+    rules_only = {"recall": 0.22, "false_alarm": 0.0}   # chỉ luật: luôn dưới 90%, không được tự đỏ vì vậy
+    assert run_eval.gate(rules_only, {"recall": 0.23, "false_alarm": 0.0}, absolute=False) == []
+    assert run_eval.gate(rules_only, {"recall": 0.30, "false_alarm": 0.0}, absolute=False) == ["recall giảm 8.0% so với baseline"]
+    data, out, base = _write(tmp_path, TEN), tmp_path / "out", tmp_path / "base.json"
+    base.write_text(json.dumps({"metrics": {"recall": 0.9, "false_alarm": 0.0}}), encoding="utf-8")
+    assert run_eval.main([str(data), "--out", str(out), "--gate", "--drift-only", "--baseline", str(base)]) == 1
+    assert "Trượt: recall giảm" in (out / "report.md").read_text(encoding="utf-8")
+    with pytest.raises(SystemExit):
+        run_eval.main([str(data), "--out", str(out), "--gate", "--drift-only"])   # thiếu baseline
 
 
 def test_split_and_limit_filter(tmp_path):
