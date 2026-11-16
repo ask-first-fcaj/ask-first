@@ -125,14 +125,14 @@ def test_otp_genuine_text() -> None:
 def test_short_reply_is_one_message_with_disclaimer_last() -> None:
     plan = R.render(LOW, _ctx())
     assert len(plan.messages) == 1
-    assert plan.messages[0].text_html.endswith("Bot không bao giờ xin OTP, mật khẩu hay tiền.")
+    assert plan.messages[0].text_html.endswith("không bao giờ xin OTP, mật khẩu hay tiền.")
 
 
 def test_long_reply_keeps_conclusion_first_and_details_after() -> None:
     plan = R.render(FAST, _ctx())
     assert len(plan.messages) == 2
     assert plan.messages[0].text_html.startswith("🔴")
-    assert plan.messages[1].text_html.startswith("<b>Vì sao Bot nghi ngờ:</b>")
+    assert plan.messages[1].text_html.startswith("<b>Vì sao cháu nghi ngờ:</b>")
 
 
 @pytest.mark.parametrize(
@@ -153,8 +153,8 @@ def test_maintenance_line_when_llm_unavailable(verdict: m.Verdict, kill_switch: 
 def test_guardian_status_line_is_honest() -> None:
     ctx = _ctx(alerts=[{"guardian_name": "Nam", "status": "sent"}, {"guardian_name": "Hoa", "status": "failed"}])
     first = R.render(FAST, ctx).messages[0].text_html
-    assert "Cháu Nam đã được báo" in first
-    assert "Bot chưa báo được cho Hoa" in first and "Hoa đã được báo" not in first
+    assert "đã báo cho Nam" in first
+    assert "chưa báo được cho Hoa" in first and "đã báo cho Hoa" not in first
 
 
 def test_followup_only_when_unsure() -> None:

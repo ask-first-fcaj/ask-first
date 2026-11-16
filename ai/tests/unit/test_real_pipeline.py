@@ -169,7 +169,7 @@ def test_smalltalk_skips_llm(text):
     judge = Boto()
     v = pipe(judge).analyze(bundle(text), ctx())
     assert (v.outcome, v.level, v.path) == ("smalltalk", "LOW_RISK", "fast") and judge.requests == []
-    assert "Bot xem giúp" in render(v)
+    assert "xem giúp ngay" in render(v)
 
 
 def test_smalltalk_with_photo_or_in_session_is_analyzed():
