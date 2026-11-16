@@ -28,6 +28,7 @@ import software.amazon.awssdk.services.ssm.SsmClient;
 import software.amazon.awssdk.services.ssm.model.GetParameterRequest;
 
 import java.net.URLEncoder;
+import java.util.Locale;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
@@ -61,6 +62,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     public static final String DEFAULT_POLICY_SHA256 = "d1a8f9b2c3e4567890abcdef1234567890abcdef1234567890abcdef12345678";
 
     /**
+     * URL chính sách quyền riêng tư mặc định khi không cấu hình POLICY_URL.
+     */
+    public static final String DEFAULT_POLICY_URL = "https://github.com/ask-first-fcaj/ask-first/blob/main/docs/privacy-policy.md";
+
+    /**
      * Khóa dedup update_id sống 24 giờ (Telegram chỉ retry update trong thời gian
      * ngắn).
      */
@@ -72,6 +78,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     private final String queueUrl;
     private final String secret;
     private final String policySha256;
+    private final String policyUrl;
     private final TelegramClient telegram;
     private final SqsClient sqs;
     private final TelegramAdapter adapter;
@@ -112,6 +119,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.queueUrl = requireEnv("WEBHOOK_QUEUE_URL");
         this.secret = secretFromSsmOrEnv("TELEGRAM_WEBHOOK_SECRET");
         this.policySha256 = requireEnv("POLICY_SHA256");
+        String envPolicyUrl = System.getenv("POLICY_URL");
+        this.policyUrl = (envPolicyUrl != null && !envPolicyUrl.isBlank()) ? envPolicyUrl.trim() : DEFAULT_POLICY_URL;
         this.telegram = new TelegramClient(secretFromSsmOrEnv("TELEGRAM_BOT_TOKEN"));
         String tableName = requireEnv("DYNAMODB_TABLE_NAME");
 
@@ -211,14 +220,6 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, null);
     }
 
-    /**
-     * Constructor đầy đủ (13 tham số). Tất cả các constructor khác delegate vào
-     * đây.
-     *
-     * @param botUsername username của bot (ví dụ "AskFirstBot"), dùng để tạo deep
-     *                    link.
-     *                    Null = không hiển thị nút share (graceful degradation).
-     */
     public WebhookHandler(
             TelegramClient telegram,
             SqsClient sqs,
@@ -233,6 +234,28 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             DynamoStoreService dedup,
             boolean localDevelopment,
             String botUsername) {
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
+                guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername, null);
+    }
+
+    /**
+     * Constructor đầy đủ (14 tham số). Tất cả các constructor khác delegate vào đây.
+     */
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            GuardianRepo guardianRepo,
+            InviteRepo inviteRepo,
+            String policySha256,
+            DynamoStoreService dedup,
+            boolean localDevelopment,
+            String botUsername,
+            String policyUrl) {
         this.telegram = telegram;
         this.sqs = sqs;
         this.queueUrl = queueUrl;
@@ -247,6 +270,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.dedup = dedup;
         this.localDevelopment = localDevelopment;
         this.botUsername = (botUsername != null && !botUsername.isBlank()) ? botUsername : null;
+        this.policyUrl = (policyUrl != null && !policyUrl.isBlank()) ? policyUrl : DEFAULT_POLICY_URL;
     }
 
     /**
@@ -529,11 +553,12 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         String userId = inbound.userId();
 
         // 3. Fast path: Các lệnh điều khiển (/start, /caidat, /huongdan, /bilua,
-        // /nguoithan, /ketnoi)
-        if (TelegramAdapter.isCommand(inbound)) {
+        // /nguoithan, /ketnoi) hoặc bấm "Tôi bị lừa rồi"
+        if (TelegramAdapter.isCommand(inbound) || isEmergencyText(inbound.text())) {
             String firstName = root.path("message").path("from").path("first_name").asText("").trim();
             String username = root.path("message").path("from").path("username").asText("").trim();
-            return handleCommand(chatId, userId, inbound.text().trim(), firstName, username, context);
+            String cmdText = isEmergencyText(inbound.text()) ? "/bilua" : inbound.text().trim();
+            return handleCommand(chatId, userId, cmdText, firstName, username, context);
         }
 
         // 4. Slow path: Kiểm tra tin nhắn lừa đảo
@@ -582,14 +607,10 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                         "Agreed via inline button");
             }
             if (telegram != null) {
+                String XH = getAddressForm(userId);
+                String xh = getAddressFormLower(userId);
                 telegram.answerCallbackQuery(cb.queryId(), "Đã lưu đồng ý!");
-                telegram.sendText(chatId,
-                        "✅ <b>Cảm ơn Bác đã đồng ý điều khoản!</b>\n\n" +
-                                "Từ bây giờ Bác có thể gửi tin nhắn, đường link hoặc ảnh chụp màn hình bất cứ lúc nào để cháu kiểm tra nhé.\n\n"
-                                +
-                                "• Bác muốn đổi cách xưng hô thân mật? Gõ /caidat\n" +
-                                "• Xem cách gửi tin kiểm tra: Gõ /huongdan\n" +
-                                "• Khi lỡ dính bẫy lừa cần làm gì gấp: Gõ /bilua");
+                telegram.sendText(chatId, BotMessages.consentAgreeMessage(XH, xh));
             }
             return response(200, "CALLBACK_HANDLED");
 
@@ -603,12 +624,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                         "Declined via inline button");
             }
             if (telegram != null) {
+                String xh = getAddressFormLower(userId);
                 telegram.answerCallbackQuery(cb.queryId(), "Đã ghi nhận");
-                telegram.sendText(chatId,
-                        "Dạ cháu đã ghi nhận ạ. Theo quy định bảo vệ dữ liệu cá nhân (Nghị định 356), cháu xin phép " +
-                                "<b>không thu thập hoặc phân tích</b> bất kỳ nội dung nào khi chưa có sự đồng ý của Bác.\n\n"
-                                +
-                                "Khi nào cần sử dụng, Bác chỉ cần gõ /start để xem lại và đồng ý nhé!");
+                telegram.sendText(chatId, BotMessages.consentDeclineMessage(xh));
             }
             return response(200, "CALLBACK_HANDLED");
 
@@ -913,29 +931,23 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             boolean hasConsent = (userRepo != null) && userRepo.hasValidConsent(userId, policySha256);
 
             if (!hasConsent) {
-                // Gửi màn hình chào mừng & đồng ý điều khoản (Onboarding - BE-25)
-                String welcomeMsg = "<b>Chào mừng Bác đến với AskFirst!</b> 🛡️\n\n" +
-                        "Cháu là trợ lý bảo vệ và kiểm tra tin nhắn lừa đảo dành cho người cao tuổi và gia đình.\n\n" +
-                        "<b>Chính sách bảo vệ dữ liệu cá nhân (Nghị định 356):</b>\n" +
-                        "• Bot <b>KHÔNG BAO GIỜ</b> hỏi mã OTP, mật khẩu hay yêu cầu nạp tiền.\n" +
-                        "• Mọi thông tin gửi vào chỉ dùng để phân tích dấu hiệu lừa đảo, không chia sẻ trái phép cho bên thứ ba.\n"
-                        +
-                        "• Bác có quyền rút đồng ý hoặc yêu cầu xóa dữ liệu bất kỳ lúc nào.\n\n" +
-                        "Bác vui lòng bấm <b>Tôi đồng ý</b> bên dưới để bắt đầu sử dụng nhé!";
+                // Gửi màn hình chào mừng & đồng ý điều khoản (Onboarding - BE-25, SH-08)
+                String XH = getAddressForm(userId);
+                String xh = getAddressFormLower(userId);
+                String welcomeMsg = BotMessages.welcomeMessage(XH, xh, policyUrl);
 
                 Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
                         List.of(
-                                new InlineButton("✅ Tôi đồng ý", "consent:agree"),
-                                new InlineButton("❌ Không đồng ý", "consent:decline"))));
+                                new InlineButton("✅ Đồng ý", "consent:agree"),
+                                new InlineButton("Không đồng ý", "consent:decline"))));
 
                 if (telegram != null) {
                     telegram.sendText(chatId, welcomeMsg, keyboard);
                 }
                 return response(200, "COMMAND_HANDLED");
             } else {
-                String addressForm = getAddressForm(userId);
-                String msg = "Chào mừng " + addressForm + " quay trở lại với AskFirst! " + addressForm
-                        + " hãy gửi tin nhắn, đường link hoặc ảnh chụp màn hình cần kiểm tra cho cháu nhé.";
+                String xh = getAddressFormLower(userId);
+                String msg = BotMessages.returningWelcomeMessage(xh);
                 if (telegram != null) {
                     telegram.sendText(chatId, msg);
                 }
@@ -943,7 +955,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
 
         } else if (cmd.startsWith("/caidat")) {
-            String msg = "<b>Cài đặt cách xưng hô thân mật:</b>\nBác muốn cháu xưng hô với Bác là gì ạ? Bác vui lòng chọn bên dưới nhé:";
+            String XH = getAddressForm(userId);
+            String msg = "<b>Cài đặt cách xưng hô thân mật:</b>\n" + XH
+                    + " muốn cháu xưng hô với " + XH + " là gì ạ? " + XH + " vui lòng chọn bên dưới nhé:";
             Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
                     List.of(
                             new InlineButton("Bác", "xungho:bac"),
@@ -955,36 +969,16 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return response(200, "COMMAND_HANDLED");
 
         } else if (cmd.startsWith("/huongdan")) {
-            String guideMsg = "<b>Hướng dẫn sử dụng AskFirst:</b> 📖\n\n" +
-                    "1. <b>Chụp ảnh màn hình:</b> Chụp lại tin nhắn đáng ngờ, cuộc gọi hoặc hóa đơn rồi gửi thẳng vào đây cho cháu.\n"
-                    +
-                    "2. <b>Chép văn bản / chuyển tiếp:</b> Copy nội dung tin nhắn hoặc bấm chuyển tiếp (Forward) tin nhắn từ người lạ sang.\n"
-                    +
-                    "3. <b>Chờ kết quả:</b> Trong vài giây, hệ thống AI sẽ phân tích các dấu hiệu lừa đảo và cảnh báo ngay cho Bác.\n\n"
-                    +
-                    "<i>💡 Mẹo: Bác có thể ghim đoạn chat này lên đầu danh sách Telegram để dễ tìm kiếm khi cần kiểm tra gấp!</i>";
+            String guideMsg = BotMessages.guideMessage();
 
             if (telegram != null) {
                 telegram.sendText(chatId, guideMsg);
             }
             return response(200, "COMMAND_HANDLED");
 
-        } else if (cmd.startsWith("/bilua")) {
-            String emergencyMsg = "🚨 <b>CÁC VIỆC CẦN LÀM NGAY (30 PHÚT ĐẦU KHI NGHI BỊ LỪA)</b>\n\n" +
-                    "1. <b>Khóa thẻ / tài khoản ngân hàng ngay lập tức (0 - 5 phút):</b>\n" +
-                    "Gọi ngay tổng đài ngân hàng của Bác, nói rõ nghi bị lừa, yêu cầu khóa thẻ và tạm dừng mọi giao dịch. Đừng chần chừ chờ xác minh!\n\n"
-                    +
-                    "2. <b>Tắt nguồn / Ngắt mạng điện thoại (0 - 5 phút):</b>\n" +
-                    "Nếu Bác đã lỡ bấm vào đường link lạ hoặc cài app lạ, hãy tắt nguồn hoặc tắt Wi-Fi/4G ngay lập tức để kẻ gian không chiếm quyền điều khiển và không lấy được mã OTP.\n\n"
-                    +
-                    "3. <b>Đổi mật khẩu từ thiết bị khác (5 - 15 phút):</b>\n" +
-                    "Dùng điện thoại hoặc máy tính an toàn khác để đổi mật khẩu ngân hàng, ví điện tử, Facebook, Zalo. Gỡ ngay ứng dụng lạ vừa cài.\n\n"
-                    +
-                    "4. <b>Trình báo Công an gần nhất (15 - 30 phút):</b>\n" +
-                    "Đến Công an phường/xã gần nhất hoặc gọi đường dây nóng <b>113</b> để trình báo. Mang theo ảnh chụp tin nhắn, số điện thoại kẻ lừa đảo và biên lai chuyển tiền.\n\n"
-                    +
-                    "5. <b>Thông báo cho người thân tin cậy:</b>\n" +
-                    "Báo ngay cho con cháu trong nhà để cùng hỗ trợ xử lý và cảnh giác nếu kẻ gian tiếp tục liên hệ lừa thêm.";
+        } else if (cmd.startsWith("/bilua") || isEmergencyText(cmd)) {
+            String xh = getAddressFormLower(userId);
+            String emergencyMsg = BotMessages.emergencyChecklistMessage(xh);
 
             if (telegram != null) {
                 telegram.sendText(chatId, emergencyMsg);
@@ -1187,16 +1181,16 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
         String addressForm = getAddressForm(userId);
 
-        // 1. Kiểm tra trạng thái Đồng ý điều khoản (Consent Check - BE-25)
+        // 1. Kiểm tra trạng thái Đồng ý điều khoản (Consent Check - BE-25, SH-08)
         if (userRepo != null && !userRepo.hasValidConsent(userId, policySha256)) {
-            String promptConsent = addressForm + " ơi, để bảo vệ dữ liệu cá nhân theo quy định của pháp luật, " +
-                    addressForm
-                    + " vui lòng bấm <b>Tôi đồng ý</b> bên dưới trước để cháu được phép kiểm tra tin nhắn nhé!";
+            String XH = getAddressForm(userId);
+            String xh = getAddressFormLower(userId);
+            String promptConsent = BotMessages.promptConsentMessage(XH, xh);
 
             Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
                     List.of(
-                            new InlineButton("✅ Tôi đồng ý", "consent:agree"),
-                            new InlineButton("❌ Không đồng ý", "consent:decline"))));
+                            new InlineButton("✅ Đồng ý", "consent:agree"),
+                            new InlineButton("Không đồng ý", "consent:decline"))));
 
             if (telegram != null) {
                 telegram.sendText(chatId, promptConsent, keyboard);
@@ -1279,10 +1273,24 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     }
 
     private String getAddressForm(String userId) {
-        if (userRepo != null) {
+        if (userRepo != null && userId != null) {
             return userRepo.getUser(userId).map(UserRecord::getAddressForm).orElse(UserRecord.DEFAULT_ADDRESS_FORM);
         }
         return UserRecord.DEFAULT_ADDRESS_FORM;
+    }
+
+    private String getAddressFormLower(String userId) {
+        return BotMessages.toLower(getAddressForm(userId));
+    }
+
+    static boolean isEmergencyText(String text) {
+        if (text == null) {
+            return false;
+        }
+        String normalized = text.trim().toLowerCase(Locale.ROOT);
+        return normalized.equals("tôi bị lừa rồi") || normalized.equals("toi bi lua roi")
+                || normalized.equals("tôi bị lừa") || normalized.equals("toi bi lua")
+                || normalized.equals("/bilua");
     }
 
     /**
