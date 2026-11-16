@@ -496,11 +496,16 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             if (telegram != null && root != null) {
                 try {
                     long errChatId = root.path("message").path("chat").path("id").asLong();
+                    long errFromId = root.path("message").path("from").path("id").asLong();
                     if (errChatId == 0) {
                         errChatId = root.path("callback_query").path("message").path("chat").path("id").asLong();
+                        errFromId = root.path("callback_query").path("from").path("id").asLong();
                     }
                     if (errChatId != 0) {
-                        telegram.sendText(errChatId, "Dạ hệ thống đang gặp sự cố gián đoạn tạm thời. Quý khách vui lòng thử lại hoặc gửi lại sau ít phút nhé!");
+                        String sUserId = errFromId != 0 ? "tg:" + errFromId : null;
+                        String addressForm = sUserId != null ? getAddressForm(sUserId, context) : UserRecord.DEFAULT_ADDRESS_FORM;
+                        telegram.sendText(errChatId, "Dạ hệ thống đang gặp sự cố gián đoạn tạm thời. "
+                                + addressForm + " vui lòng thử lại hoặc gửi lại giúp cháu sau ít phút nhé!");
                     }
                 } catch (Exception sendEx) {
                     log(context, "Không gửi được thông báo lỗi cho người dùng khi gặp lỗi không mong đợi: " + sendEx);
@@ -562,7 +567,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         }
 
         // 4. Slow path: Kiểm tra tin nhắn lừa đảo
-        return handleContentInspection(inbound, chatId, userId, context);
+        return handleContentInspection(root, inbound, chatId, userId, context);
     }
 
     /**
@@ -1205,6 +1210,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     }
 
     private APIGatewayProxyResponseEvent handleContentInspection(
+            JsonNode root,
             InboundMessage inbound,
             long chatId,
             String userId,
@@ -1215,10 +1221,10 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         try {
             // BE-35: 1. Kiểm tra tệp cài đặt Android (.apk) độc hại - Xử lý ngay lập tức (Zero SQS, Zero Download)
             if ("apk".equalsIgnoreCase(inbound.kind())) {
-                return handleApkBlocked(inbound, chatId, userId, addressForm, context);
+                return handleApkBlocked(root, inbound, chatId, userId, addressForm, context);
             }
 
-            // BE-35: 2. Kiểm tra các định dạng không hỗ trợ (Document non-image, unsupported_media, audio, sticker)
+            // BE-35: 2. Kiểm tra các định dạng không hỗ trợ (Document non-image, unsupported_media, audio)
             if ("document".equalsIgnoreCase(inbound.kind())) {
                 String docMsg = "Dạ hiện tại cháu chưa hỗ trợ đọc trực tiếp định dạng tệp này. "
                         + addressForm + " hãy mở tệp ra rồi <b>CHỤP ẢNH MÀN HÌNH</b> gửi lại cho cháu kiểm tra nhé!";
@@ -1244,14 +1250,6 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                     telegram.sendText(chatId, audioMsg);
                 }
                 return response(200, "UNSUPPORTED_AUDIO");
-            }
-
-            if ("sticker".equalsIgnoreCase(inbound.kind())) {
-                if (telegram != null) {
-                    telegram.sendText(chatId, "Dạ cháu chào " + addressForm + "! Cháu là trợ lý phòng chống lừa đảo AskFirst.\n\n"
-                            + addressForm + " hãy gửi tin nhắn chữ, hình ảnh chụp màn hình hoặc đường link nghi ngờ để cháu kiểm tra giúp nhé!");
-                }
-                return response(200, "STICKER_REPLIED");
             }
 
             // 1. Kiểm tra trạng thái Đồng ý điều khoản (Consent Check - BE-25)
@@ -1359,6 +1357,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     }
 
     private APIGatewayProxyResponseEvent handleApkBlocked(
+            JsonNode root,
             InboundMessage inbound,
             long chatId,
             String userId,
@@ -1385,6 +1384,38 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         // 2. Kích hoạt cảnh báo khẩn cấp cho người thân (nếu đã liên kết)
         if (guardianRepo != null) {
             try {
+                // Lấy tên/hiển thị của người cao tuổi từ payload Telegram để người thân nhận diện rõ ràng
+                String elderDisplayName = "";
+                if (root != null && root.has("message") && root.path("message").has("from")) {
+                    JsonNode fromNode = root.path("message").path("from");
+                    String firstName = fromNode.path("first_name").asText("").trim();
+                    String lastName = fromNode.path("last_name").asText("").trim();
+                    String username = fromNode.path("username").asText("").trim();
+
+                    String fullName = (firstName + (lastName.isBlank() ? "" : " " + lastName)).trim();
+                    String safeName = TelegramClient.escapeHtml(fullName);
+                    String safeUser = TelegramClient.escapeHtml(username);
+
+                    if (!safeName.isBlank() && !safeUser.isBlank()) {
+                        elderDisplayName = safeName + " (@" + safeUser + ")";
+                    } else if (!safeName.isBlank()) {
+                        elderDisplayName = safeName;
+                    } else if (!safeUser.isBlank()) {
+                        elderDisplayName = "@" + safeUser;
+                    }
+                }
+
+                String elderLabel;
+                if (!elderDisplayName.isBlank()) {
+                    if (elderDisplayName.toLowerCase().startsWith(addressForm.toLowerCase())) {
+                        elderLabel = elderDisplayName;
+                    } else {
+                        elderLabel = addressForm + " " + elderDisplayName;
+                    }
+                } else {
+                    elderLabel = addressForm;
+                }
+
                 List<GuardianRecord> guardians = guardianRepo.listGuardians(userId);
                 for (GuardianRecord g : guardians) {
                     String status = g.getStatus() != null ? g.getStatus() : "active";
@@ -1394,7 +1425,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                             try {
                                 long gChatId = Long.parseLong(guardianUid.replace("tg:", ""));
                                 String guardianAlert = "🚨 <b>CẢNH BÁO KHẨN CẤP TỪ ASKFIRST</b>\n\n"
-                                        + "Người thân của bạn (" + addressForm + ") vừa nhận được một <b>tệp cài đặt ứng dụng Android lạ (.apk)</b> nguy hiểm!\n\n"
+                                        + "Người thân của bạn (" + elderLabel + ") vừa nhận được một <b>tệp cài đặt ứng dụng Android lạ (.apk)</b> nguy hiểm!\n\n"
                                         + "Kẻ gian thường giả danh Công an, Thuế, Dịch vụ công để lừa cài mã độc chiếm quyền điện thoại.\n"
                                         + "👉 <b>Hãy liên hệ ngay với người thân</b> để nhắc nhở tuyệt đối không bấm cài đặt!";
                                 if (telegram != null) {

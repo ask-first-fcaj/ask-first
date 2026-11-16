@@ -141,6 +141,7 @@ class WebhookHandlerBE35Test {
                 .findFirst().orElseThrow();
         assertTrue(guardianMsg.text().contains("CẢNH BÁO KHẨN CẤP TỪ ASKFIRST"));
         assertTrue(guardianMsg.text().contains("Hãy liên hệ ngay với người thân"));
+        assertTrue(guardianMsg.text().contains("Người thân của bạn (Bác Nam)"));
 
         // Người thân revoked không nhận được tin nào
         boolean revokedReceived = telegramClient.sentMessages.stream().anyMatch(m -> m.chatId() == GUARDIAN_2_CHAT_ID);
@@ -169,11 +170,11 @@ class WebhookHandlerBE35Test {
                 .findFirst().orElseThrow();
         assertTrue(elderMsg.text().contains("Cô <b>TUYỆT ĐỐI KHÔNG BẤM CÀI ĐẶT</b>"));
 
-        // Tin nhắn cho người thân ghi rõ "Người thân của bạn (Cô)"
+        // Tin nhắn cho người thân ghi rõ "Người thân của bạn (Cô Nam)"
         FakeTelegramClient.SentMsg guardianMsg = telegramClient.sentMessages.stream()
                 .filter(m -> m.chatId() == GUARDIAN_1_CHAT_ID)
                 .findFirst().orElseThrow();
-        assertTrue(guardianMsg.text().contains("Người thân của bạn (Cô)"));
+        assertTrue(guardianMsg.text().contains("Người thân của bạn (Cô Nam)"));
     }
 
     // ── Test 4: Tệp .apk từ người dùng CHƯA đồng ý điều khoản ──────────────────
@@ -439,6 +440,113 @@ class WebhookHandlerBE35Test {
         // Tin cảnh báo người cao tuổi vẫn gửi thành công
         assertEquals(1, telegramClient.sentMessages.size());
         assertTrue(telegramClient.sentMessages.get(0).text().contains("CẢNH BÁO NGUY HIỂM"));
+    }
+
+    // ── Test 16: Outer catch xưng hô Bác/cháu, không xưng Quý khách ───────────
+    @Test
+    @DisplayName("BE-35: Lỗi không mong đợi ở outer catch -> Phản hồi giọng Bác/cháu thân mật, không xưng Quý khách")
+    void testOuterCatchUsesAddressFormAndChauToneNotQuyKhach() {
+        userRepo.failConsent = true;
+
+        String startJson = """
+            {
+              "update_id": 9999,
+              "message": {
+                "message_id": 1,
+                "date": 1729000000,
+                "chat": { "id": %d, "type": "private" },
+                "from": { "id": %d, "is_bot": false, "first_name": "Nam" },
+                "text": "/start"
+              }
+            }
+            """.formatted(ELDER_CHAT_ID, ELDER_CHAT_ID);
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(buildRequest(startJson), fakeContext());
+
+        assertEquals(200, res.getStatusCode());
+        assertEquals("INTERNAL_ERROR_LOGGED", res.getBody());
+
+        assertEquals(1, telegramClient.sentMessages.size());
+        FakeTelegramClient.SentMsg sent = telegramClient.sentMessages.get(0);
+        assertEquals(ELDER_CHAT_ID, sent.chatId());
+        assertTrue(sent.text().contains("gián đoạn tạm thời"));
+        assertTrue(sent.text().contains("Bác"));
+        assertTrue(sent.text().contains("cháu"));
+        assertFalse(sent.text().contains("Quý khách"), "Tuyệt đối không xưng Quý khách lệch tông của Bot");
+    }
+
+    // ── Test 17: APK cảnh báo người thân kèm họ tên & username ─────────────────
+    @Test
+    @DisplayName("BE-35: Gửi file .apk khi người cao tuổi có họ tên và @username -> Người thân nhận cảnh báo kèm tên và @username")
+    void testApkWithGuardianAndElderFullNameAndUsername() {
+        GuardianRecord guardian = new GuardianRecord(ELDER_UID, GUARDIAN_1_UID);
+        guardian.setStatus("active");
+        guardianRepo.save(guardian);
+
+        String updateJson = """
+            {
+              "update_id": 2005,
+              "message": {
+                "message_id": 205,
+                "date": 1729000000,
+                "chat": { "id": %d, "type": "private" },
+                "from": { "id": %d, "is_bot": false, "first_name": "Nam", "last_name": "Nguyen", "username": "namnguyen" },
+                "document": {
+                  "file_id": "doc_file_105",
+                  "file_unique_id": "udoc_105",
+                  "file_name": "DichVuCong.apk",
+                  "mime_type": "application/vnd.android.package-archive",
+                  "file_size": 1024000
+                }
+              }
+            }
+            """.formatted(ELDER_CHAT_ID, ELDER_CHAT_ID);
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(buildRequest(updateJson), fakeContext());
+        assertEquals(200, res.getStatusCode());
+        assertEquals("APK_BLOCKED", res.getBody());
+
+        FakeTelegramClient.SentMsg guardianMsg = telegramClient.sentMessages.stream()
+                .filter(m -> m.chatId() == GUARDIAN_1_CHAT_ID)
+                .findFirst().orElseThrow();
+        assertTrue(guardianMsg.text().contains("Người thân của bạn (Bác Nam Nguyen (@namnguyen))"));
+    }
+
+    // ── Test 18: APK cảnh báo người thân khi không có name/username ────────────
+    @Test
+    @DisplayName("BE-35: Gửi file .apk khi người cao tuổi không có first_name/username -> Fallback xưng hô mặc định")
+    void testApkWithGuardianAndElderWithoutName() {
+        GuardianRecord guardian = new GuardianRecord(ELDER_UID, GUARDIAN_1_UID);
+        guardian.setStatus("active");
+        guardianRepo.save(guardian);
+
+        String updateJson = """
+            {
+              "update_id": 2006,
+              "message": {
+                "message_id": 206,
+                "date": 1729000000,
+                "chat": { "id": %d, "type": "private" },
+                "from": { "id": %d, "is_bot": false },
+                "document": {
+                  "file_id": "doc_file_106",
+                  "file_unique_id": "udoc_106",
+                  "file_name": "DichVuCong.apk",
+                  "mime_type": "application/vnd.android.package-archive",
+                  "file_size": 1024000
+                }
+              }
+            }
+            """.formatted(ELDER_CHAT_ID, ELDER_CHAT_ID);
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(buildRequest(updateJson), fakeContext());
+        assertEquals(200, res.getStatusCode());
+        assertEquals("APK_BLOCKED", res.getBody());
+
+        FakeTelegramClient.SentMsg guardianMsg = telegramClient.sentMessages.stream()
+                .filter(m -> m.chatId() == GUARDIAN_1_CHAT_ID)
+                .findFirst().orElseThrow();
+        assertTrue(guardianMsg.text().contains("Người thân của bạn (Bác)"));
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
