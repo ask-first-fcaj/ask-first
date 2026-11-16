@@ -2,7 +2,10 @@
 Chạy: python gen_mask_samples.py   → ghi lại mask_pii.jsonl (hand + sinh, có trường split). Cùng seed thì ra cùng kết quả.
 Số/email là ngẫu nhiên theo seed, KHÔNG lấy từ người thật; xác suất trùng số thật tồn tại (không có dải SĐT dành riêng), không đưa lên ngoài repo.
 """
-import collections, json, pathlib, random, re
+import collections
+import json
+import pathlib
+import random
 
 HERE = pathlib.Path(__file__).parent
 SEED = 20261116
@@ -152,7 +155,7 @@ def main():
     by = collections.defaultdict(list)
     for r in allr: by[key(r)].append(r)
     r2 = random.Random(SEED + 1)
-    for k, rows in by.items():
+    for rows in by.values():
         r2.shuffle(rows)
         cut = round(len(rows) * 0.7)
         for i, r in enumerate(rows): r["split"] = "dev" if i < cut else "heldout"

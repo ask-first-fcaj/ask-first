@@ -3,7 +3,13 @@
   uv run python ../eval/run_mask_eval.py --split heldout    # CHỈ khi chốt số liệu, không sửa mask theo lỗi của split này
   --ai-src <ai/src khác>   (mặc định: ai/src của repo chứa file này)
 Sót = value còn nguyên sau mask. Che nhầm = mẫu bẫy bị đổi thành token. Báo x/n kèm Wilson CI 95%."""
-import argparse, collections, json, math, pathlib, re, sys
+import argparse
+import collections
+import json
+import math
+import pathlib
+import re
+import sys
 
 HERE = pathlib.Path(__file__).parent
 DATA = HERE / "mask_pii" / "mask_pii.jsonl"
