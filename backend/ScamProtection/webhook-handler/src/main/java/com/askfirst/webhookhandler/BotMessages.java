@@ -12,6 +12,12 @@ import java.util.Locale;
  */
 public final class BotMessages {
 
+    public static final String BUTTON_AGREE = "✅ Đồng ý";
+    public static final String BUTTON_DECLINE = "Không đồng ý";
+    public static final String BUTTON_CREATE_INVITE = "➕ Tạo mã kết nối người thân";
+    public static final String BUTTON_CREATE_NEW_INVITE = "➕ Tạo mã kết nối mới";
+    public static final String BUTTON_SHARE_INVITE = "📤 Gửi lời mời cho người nhà";
+
     private BotMessages() {
     }
 
@@ -99,6 +105,150 @@ public final class BotMessages {
     public static String promptConsentMessage(String XH, String xh) {
         return XH + " ơi, để bảo vệ dữ liệu cá nhân theo quy định của pháp luật, " + xh
                 + " vui lòng bấm <b>Đồng ý</b> bên dưới trước để cháu được phép kiểm tra tin nhắn nhé!";
+    }
+
+    /**
+     * Cài đặt cách xưng hô (/caidat).
+     */
+    public static String settingsAddressFormPrompt(String XH) {
+        return "<b>Cài đặt cách xưng hô thân mật:</b>\n" + XH
+                + " muốn cháu xưng hô với " + XH + " là gì ạ? " + XH + " vui lòng chọn bên dưới nhé:";
+    }
+
+    /**
+     * Phản hồi sau khi chọn xưng hô thành công.
+     */
+    public static String settingsAddressFormUpdated(String form) {
+        return "Dạ, cháu đã lưu cách xưng hô là <b>" + form
+                + "</b> rồi ạ! Cháu sẽ xưng hô như vậy trong các câu trả lời sau nhé.";
+    }
+
+    /**
+     * Phản hồi khi tin nhắn thoại chưa được hỗ trợ hoặc chưa bật consent voice.
+     */
+    public static String voiceConsentRequiredMessage(String XH, String xh) {
+        return XH + " ơi, tính năng kiểm tra tin nhắn thoại (voice) cần có sự đồng ý riêng về xử lý dữ liệu âm thanh. "
+                + "Hiện tại mục này chưa được bật. " + XH
+                + " vui lòng chụp màn hình hoặc gửi tin nhắn văn bản cho cháu nhé!";
+    }
+
+    /**
+     * Phản hồi khi bị giới hạn tốc độ gửi tin (Rate limit - BE-26).
+     */
+    public static String rateLimitMessage(String XH, String xh) {
+        return XH + " ơi, hiện tại " + XH + " đã gửi kiểm tra khá nhiều tin trong ngày rồi ạ "
+                + "(giới hạn 30 tin/giờ và 100 tin/ngày). Cháu xin phép tạm nghỉ một chút để đảm bảo an toàn cho hệ thống, "
+                + XH + " vui lòng quay lại sau nhé!";
+    }
+
+    /**
+     * Tin nhắn chờ trong khi phân tích ("⏳").
+     */
+    public static String waitingInspectionMessage(String xh) {
+        return "⏳ Cháu đang kiểm tra, " + xh + " chờ cháu vài giây nhé...";
+    }
+
+    /**
+     * Lỗi xử lý callback phía Telegram.
+     */
+    public static String callbackErrorMessage(String XH) {
+        return "Cháu chưa lưu được, " + XH + " bấm lại giúp cháu nhé.";
+    }
+
+    /**
+     * Danh sách người thân trống (/nguoithan).
+     */
+    public static String guardianListEmptyMessage(String XH, String xh) {
+        return "👨‍👩‍👦 <b>Danh sách người thân</b>\n\n"
+                + XH + " chưa kết nối với người thân nào.\n\n"
+                + "Bấm nút bên dưới để tạo mã kết nối và gửi cho người nhà nhé:";
+    }
+
+    /**
+     * Mã kết nối người thân có deep link.
+     */
+    public static String guardianInviteDeepLinkMessage(String XH, String xh, String inviteCode) {
+        return "✅ Mã kết nối của " + XH + " là: <code><b>" + inviteCode + "</b></code>\n\n"
+                + "⏳ <i>(Mã có hiệu lực trong 24 giờ và chỉ dùng được một lần)</i>\n\n"
+                + "👇 <b>" + XH + " bấm nút bên dưới để gửi lời mời cho người nhà:</b>\n"
+                + "<i>(Người nhà chỉ cần bấm vào link, bot sẽ tự kết nối — không cần gõ gì cả!)</i>";
+    }
+
+    /**
+     * Mã kết nối người thân gửi thủ công.
+     */
+    public static String guardianInviteManualMessage(String XH, String xh, String inviteCode) {
+        return "✅ Mã kết nối của " + XH + " là: <code><b>" + inviteCode + "</b></code>\n\n"
+                + "⏳ <i>(Mã có hiệu lực trong 24 giờ và chỉ dùng được một lần)</i>\n\n"
+                + XH + " hãy gửi hoặc chuyển tiếp lời nhắn này cho người nhà qua Zalo/Tin nhắn nhé:\n"
+                + "━━━━━━━━━━━━━━━━━━━\n"
+                + "<i>\"Mình đang dùng trợ lý AskFirst trên Telegram để phòng chống tin nhắn lừa đảo. "
+                + "Mở bot này rồi gõ dòng lệnh bên dưới để khi có tin nguy hiểm bot sẽ cùng báo nhé:\"</i>\n\n"
+                + "<code>/ketnoi " + inviteCode + "</code>\n"
+                + "━━━━━━━━━━━━━━━━━━━";
+    }
+
+    /**
+     * Lời nhắn gửi kèm qua nút share Telegram.
+     */
+    public static String guardianShareText(String XH) {
+        return "Con ơi, bấm vào link này để kết nối bảo vệ cùng " + XH + " qua AskFirst nhé! 💙";
+    }
+
+    /**
+     * Báo lỗi khi tự dùng mã của chính mình.
+     */
+    public static String guardianSelfInviteErrorMessage(String XH) {
+        return "⚠️ " + XH + " không thể dùng mã kết nối của chính mình.";
+    }
+
+    /**
+     * Yêu cầu kết nối gửi về cho người cao tuổi.
+     */
+    public static String guardianConnectionRequestMessage(String XH, String senderDisplayName) {
+        return "🔔 <b>YÊU CẦU KẾT NỐI TỪ NGƯỜI THÂN</b>\n\n"
+                + "Tài khoản <b>" + senderDisplayName + "</b> muốn kết nối với " + XH + ".\n\n"
+                + "Vui lòng chọn <b>mức độ chia sẻ thông tin</b> khi có cảnh báo:\n\n"
+                + "• <b>Mức 1:</b> Chỉ báo có nguy cơ (Nguy hiểm / Nghi ngờ).\n"
+                + "• <b>Mức 2:</b> Kèm tên kịch bản và dấu hiệu chính.\n"
+                + "• <b>Mức 3:</b> Kèm tóm tắt nội dung đã che số.";
+    }
+
+    /**
+     * Thông báo xác nhận kết nối người thân thành công.
+     */
+    public static String guardianConnectedElderConfirmation(String XH, int shareLevel) {
+        return "✅ Đã kết nối thành công! Người thân của " + XH
+                + " sẽ nhận cảnh báo khi cần thiết (Mức " + shareLevel + ").";
+    }
+
+    /**
+     * Thông báo từ chối kết nối.
+     */
+    public static String guardianRejectedMessage() {
+        return "❌ Đã từ chối yêu cầu kết nối.";
+    }
+
+    /**
+     * Thông báo cho người thân khi yêu cầu kết nối bị từ chối.
+     */
+    public static String guardianRelativeRejectedMessage() {
+        return "❌ Người thân đã từ chối yêu cầu kết nối lần này.";
+    }
+
+    /**
+     * Thông báo gỡ kết nối người thân.
+     */
+    public static String guardianRemovedMessage() {
+        return "✅ Đã gỡ kết nối người thân thành công.";
+    }
+
+    /**
+     * Cảnh báo mặc định của worker khi phân tích có nguy cơ lừa đảo.
+     */
+    public static String workerDefaultWarning(String xh) {
+        return "⚠️ Tin này có nguy cơ lừa đảo cao. " + xh
+                + " tuyệt đối không làm theo, không chuyển tiền và không cung cấp mã OTP nhé!";
     }
 
     /**

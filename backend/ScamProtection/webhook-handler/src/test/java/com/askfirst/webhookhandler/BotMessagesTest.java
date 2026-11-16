@@ -91,6 +91,63 @@ class BotMessagesTest {
     }
 
     @Test
+    @DisplayName("SH-08: Settings and address form messages are polite and clear")
+    void testSettingsMessages() {
+        String prompt = BotMessages.settingsAddressFormPrompt("Bác");
+        assertThat(prompt).contains("Cài đặt cách xưng hô thân mật");
+        assertThat(prompt).contains("Bác");
+
+        String updated = BotMessages.settingsAddressFormUpdated("Cô");
+        assertThat(updated).contains("cháu đã lưu cách xưng hô là <b>Cô</b>");
+    }
+
+    @Test
+    @DisplayName("SH-08: Voice and rate limit messages guide user politely without harsh errors")
+    void testVoiceAndRateLimitMessages() {
+        String voice = BotMessages.voiceConsentRequiredMessage("Chú", "chú");
+        assertThat(voice).contains("cần có sự đồng ý riêng về xử lý dữ liệu âm thanh");
+        assertThat(voice).contains("chụp màn hình");
+
+        String rateLimit = BotMessages.rateLimitMessage("Bác", "bác");
+        assertThat(rateLimit).contains("30 tin/giờ");
+        assertThat(rateLimit).contains("Bác ơi");
+    }
+
+    @Test
+    @DisplayName("SH-08: Guardian connection and invite messages use polite address forms")
+    void testGuardianMessages() {
+        String empty = BotMessages.guardianListEmptyMessage("Cô", "cô");
+        assertThat(empty).contains("Danh sách người thân");
+        assertThat(empty).contains("Cô chưa kết nối");
+        assertThat(empty).contains("người nhà");
+
+        String deepLink = BotMessages.guardianInviteDeepLinkMessage("Chú", "chú", "123456");
+        assertThat(deepLink).contains("Mã kết nối của Chú là");
+        assertThat(deepLink).contains("123456");
+        assertThat(deepLink).contains("bấm nút");
+
+        String manual = BotMessages.guardianInviteManualMessage("Bác", "bác", "654321");
+        assertThat(manual).contains("654321");
+        assertThat(manual).contains("/ketnoi");
+
+        String selfErr = BotMessages.guardianSelfInviteErrorMessage("Bác");
+        assertThat(selfErr).contains("Bác không thể dùng mã kết nối của chính mình");
+
+        String req = BotMessages.guardianConnectionRequestMessage("Bác", "Anh Nam");
+        assertThat(req).contains("Anh Nam");
+        assertThat(req).contains("muốn kết nối với Bác");
+
+        String ack = BotMessages.guardianConnectedElderConfirmation("Cô", 2);
+        assertThat(ack).contains("Đã kết nối thành công");
+        assertThat(ack).contains("Cô");
+        assertThat(ack).contains("Mức 2");
+
+        assertThat(BotMessages.guardianRejectedMessage()).contains("Đã từ chối");
+        assertThat(BotMessages.guardianRelativeRejectedMessage()).contains("Người thân đã từ chối");
+        assertThat(BotMessages.guardianRemovedMessage()).contains("Đã gỡ kết nối");
+    }
+
+    @Test
     @DisplayName("SH-08: 15-minute reminder messages for elder and guardian (BE-29 support)")
     void testReminderMessages() {
         assertThat(BotMessages.reminderElderMessage("Bác", "Nam"))
@@ -111,5 +168,16 @@ class BotMessagesTest {
         assertThat(BotMessages.toLower("Chú")).isEqualTo("chú");
         assertThat(BotMessages.toLower(null)).isEqualTo("bác");
         assertThat(BotMessages.toLower("  ")).isEqualTo("bác");
+    }
+
+    @Test
+    @DisplayName("SH-08: Worker and waiting messages are respectful and polite")
+    void testWorkerAndWaitingMessages() {
+        assertThat(BotMessages.waitingInspectionMessage("bác"))
+                .isEqualTo("⏳ Cháu đang kiểm tra, bác chờ cháu vài giây nhé...");
+        assertThat(BotMessages.workerDefaultWarning("bác"))
+                .contains("bác tuyệt đối không làm theo");
+        assertThat(BotMessages.callbackErrorMessage("Bác"))
+                .contains("Cháu chưa lưu được, Bác bấm lại giúp cháu nhé.");
     }
 }
