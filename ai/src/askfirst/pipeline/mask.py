@@ -119,12 +119,15 @@ _URL = re.compile(
 )
 
 # ---------------------------------------------------------------- email
-_EMAIL = re.compile(r"(?<![a-z0-9._%+\-])[a-z0-9._%+\-]+(?:@|\[at\]|\(at\))[a-z0-9\-]+(?:(?:\.|\[\.\]|\[dot\]|\(dot\))[a-z0-9\-]+)+")
+_EMAIL = re.compile(
+    r"(?<![a-z0-9._%+\-])[a-z0-9._%+\-]+(?:@|\s?\[at\]\s?|\s?\(at\)\s?)[a-z0-9\-]+(?:(?:\.|\[\.\]|\s?\[dot\]\s?|\s?\(dot\)\s?)[a-z0-9\-]+)+"
+)
 
 # ---------------------------------------------------------------- OTP
 _OTP_KW = (
     r"(?:otp|one[- ]?time|verification code|security code|login code|activation code|auth(?:entication)? code|passcode|"
-    r"\bma xac (?:thuc|nhan|minh)|\bma bao mat|\bma dang nhap|\bma kich hoat|\bma (?:vua )?(?:gui|nhan)(?: ve)?|\bma id|\bma pin|"
+    r"\b(?:ma|so) xac (?:thuc|nhan|minh)|\bma bao mat|\bso bao mat|\bso bi mat|\bma bi mat|\bday so\b|\b[4-8] (?:chu )?so\b|\bmay so\b|\bso trong tin\b|"
+    r"\bma dang nhap|\bma kich hoat|\bma (?:vua )?(?:gui|nhan)(?: ve)?|\bma id|\bma pin|"
     r"\bpin\b|\bmat khau|\bpassword|\bcode\b)"
 )
 _OTP_NUM = (
@@ -145,14 +148,17 @@ _OTP_ADJ = re.compile(rf"\b(?:ma|code)\b(?:\s+so\b)?(?:\s+(?:is|la)\b)?\s*[:\-]?
 
 # ---------------------------------------------------------------- STK
 _STK_KW = re.compile(
-    rf"(?:\bstk\b|\bs\.t\.k\b|\bso tai khoan|\btai khoan|\bso tk\b|\btk\b|\baccount\b|\bacc\b|\bct (?:tu|den)\b|\b(?:{_BANK_ALT})\b)"
+    rf"(?:\bstk\b|\bs\.t\.k\b|\bso tai khoan|\btai khoan|\bso tk\b|\btk\b|\baccount\b|\bacc\b|\bct (?:tu|den)\b|\bso tiet kiem\b|\bso the\b|\bnapas\b|\b(?:{_BANK_ALT})\b)"
 )
-_STK_NUM = re.compile(rf"{_NOT_NUM_HEAD}(?P<c>{_D}{{6,16}}|{_D}{{3,5}}(?: {_D}{{3,5}}){{1,4}}){_NOT_NUM_TAIL}{_NOT_MONEY}")
+_STK_NUM = re.compile(rf"{_NOT_NUM_HEAD}(?P<c>{_D}{{6,19}}|{_D}{{3,5}}(?:[ .\-]{_D}{{1,5}}){{1,4}}){_NOT_NUM_TAIL}{_NOT_MONEY}")
+_DATE_LIKE = re.compile(r"(?:19|20)[0-9]{2}[.\-][0-9]{1,2}[.\-][0-9]{1,2}|[0-9]{1,2}[.\-][0-9]{1,2}[.\-](?:19|20)?[0-9]{2}")
 _STK_WINDOW = 40
-_STK_BANK_AFTER = re.compile(rf"{_NOT_NUM_HEAD}(?P<c>{_D}{{9,19}}){_NOT_NUM_TAIL}[^0-9]{{0,40}}?\b(?P<bank>{_BANK_ALT})\b")
+_STK_BANK_AFTER = re.compile(
+    rf"{_NOT_NUM_HEAD}(?P<c>{_D}{{9,19}}|{_D}{{3,5}}(?:[ .\-]{_D}{{1,5}}){{2,4}}){_NOT_NUM_TAIL}[^0-9]{{0,40}}?\b(?P<bank>{_BANK_ALT})\b"
+)
 
 # ---------------------------------------------------------------- CCCD / CMND
-_CCCD_KW = re.compile(r"(?:cccd|cmnd|\bcmt\b|can cuoc(?: cong dan)?|chung minh(?: nhan dan)?|so dinh danh)")
+_CCCD_KW = re.compile(r"(?:cccd|cmnd|\bcmt\b|can cuoc(?: cong dan)?|chung minh(?: nhan dan)?|so dinh danh|giay to tuy than)")
 _CCCD_CTX_NUM = re.compile(rf"(?<![0-9])(?P<c>{_D}(?:{_SEP}?{_D}){{11}}|{_D}(?:{_SEP}?{_D}){{8}})(?![0-9])")
 _CCCD_PLAIN = re.compile(
     rf"(?<![a-z]){_NOT_NUM_HEAD}(?P<c>{_D}{{12}}|{_D}{{3}}{_SEP}{_D}{{3}}{_SEP}{_D}{{3}}{_SEP}{_D}{{3}}){_NOT_NUM_TAIL}{_NOT_MONEY}"
@@ -173,6 +179,9 @@ _LOCAL = "|".join(
         rf"0{_SEP}[35789](?:{_SEP}{_D}){{8}}",  # 0 9 1 2 3 4 5 6 7 8 (từng chữ số cách nhau)
         rf"0[35789](?:{_SEP}{_D}{{2}}){{4}}",  # 09-12-34-56-78
         rf"0[35789]{_D}{{2}}{_SEP}{_D}{{2}}{_SEP}{_D}{{4}}",  # 0937 70 4636
+        rf"0[35789]{_SEP}{_D}{{2}}{_SEP}{_D}{{3}}{_SEP}{_D}{{3}}",  # 09 12 345 678
+        rf"\(0[35789]{_D}{{2}}\) ?{_D}{{6}}",  # (0912) 345678
+        rf"02{_D}{{1,2}}{_SEP}{_D}{{3,4}}{_SEP}{_D}{{4}}",  # số bàn 024 3567 8901
     ]
 )
 # Sau "84" trần (không có "+") chỉ nhận các cách nhóm quen thuộc để khỏi nhầm với số khác.
@@ -207,7 +216,7 @@ def _value_key(kind: str, folded_span: str) -> str:
 
 
 # ---------------------------------------------------------------- số đọc từng chữ số ("không chín tám …")
-_DIGIT_WORD = r"(?:khong|mot|hai|ba|bon|tu|nam|lam|sau|bay|tam|chin)"
+_DIGIT_WORD = r"(?:khong|zero|mot|hai|ba|bon|tu|nam|lam|sau|bay|tam|chin)"
 _SPOKEN = re.compile(rf"\b{_DIGIT_WORD}(?:[ ,.\-]+{_DIGIT_WORD}\b){{5,}}")
 
 
@@ -282,12 +291,15 @@ def _detect(folded: str, protected: list[tuple[int, int]]) -> list[_Hit]:
         s, e = m.span("c")
         raw = folded[s:e]
         digits = sum(c.isdigit() for c in raw)
-        if k.start() in stk_done or not 6 <= digits <= 16 or _MONEY_LIKE.fullmatch(raw):
+        if k.start() in stk_done or not 6 <= digits <= 19 or _MONEY_LIKE.fullmatch(raw) or _DATE_LIKE.fullmatch(raw):
             continue
         stk_done.add(k.start())
         near = _BANK_RE.search(folded, k.start(), s) or _BANK_RE.search(folded, e, min(e + 20, len(folded)))
         hits.append(_Hit(s, e, "stk", _BANKS[near.group()] if near else None))
     for m in _STK_BANK_AFTER.finditer(folded):
+        raw = m.group("c")
+        if not 9 <= sum(c.isdigit() for c in raw) <= 19 or _MONEY_LIKE.fullmatch(raw) or _DATE_LIKE.fullmatch(raw):
+            continue
         hits.append(_Hit(*m.span("c"), "stk", _BANKS[m.group("bank")]))
 
     for _, m in _scan_after(folded, _CCCD_KW, _CCCD_CTX_NUM, 30):
