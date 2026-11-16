@@ -416,6 +416,17 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
 
             @Override
+            public void setPurpose(String userId, String purpose, boolean value) {
+                UserRecord r = users.get(userId);
+                if (r == null) {
+                    return;
+                }
+                Map<String, Boolean> merged = new HashMap<>(r.getPurposes());
+                merged.put(purpose, value);
+                r.setPurposes(merged);
+            }
+
+            @Override
             public void updateAddressForm(String userId, String addressForm) {
                 UserRecord r = users.computeIfAbsent(userId, k -> new UserRecord(userId, ""));
                 r.setAddressForm(addressForm);
@@ -527,11 +538,6 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                             old.group(), old.scenario(), old.path(), old.signalCodes(),
                             old.riskyActions(), old.inputKinds(), old.alerted(), feedback,
                             old.createdAt(), old.ttlEpochSeconds()));
-                } else {
-                    store.put(userId + "#" + checkId, new CheckRecord(
-                            checkId, userId, "unknown", "UNSURE", 0, "", "", "",
-                            List.of(), List.of(), List.of(), false, feedback,
-                            Instant.now().toString(), 0L));
                 }
             }
         };
@@ -925,6 +931,16 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 }
             }
 
+            // Chấp nhận liên kết = người cao tuổi đồng ý mục đích "guardian". Worker chỉ báo người thân khi cờ
+            // này bật (RepoGuardianDirectory.elder -> Elder.guardianConsent); không set thì không cảnh báo nào được gửi.
+            if (userRepo != null) {
+                try {
+                    userRepo.setPurpose(userId, "guardian", true);
+                } catch (RuntimeException e) {
+                    log(context, "Không bật được mục đích guardian: " + e.getClass().getSimpleName());
+                }
+            }
+
             if (auditRepo != null) {
                 auditRepo.recordEvent(userId, "GUARDIAN_LINKED", POLICY_VERSION, policySha256,
                         "Linked guardian " + relativeUid + " at level " + shareLevel);
@@ -1091,28 +1107,22 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             checkId = sessionStore.get(String.valueOf(chatId)).map(SessionRecord::checkId).orElse(null);
         }
 
-        // Chống bấm lặp lại nút [Bot báo sai]: nếu đã ghi nhận rồi thì thông báo và vô hiệu hóa nút
-        if (checkStore != null && checkId != null && !checkId.isBlank()) {
-            Optional<CheckRecord> checkOpt = checkStore instanceof CheckRepo repo
-                    ? repo.get(userId, checkId)
-                    : Optional.empty();
-            if (checkOpt.isPresent() && "wrong".equals(checkOpt.get().feedback())) {
-                if (telegram != null) {
-                    telegram.answerCallbackQuery(cb.queryId(), "Ý kiến báo sai của " + addressForm + " đã được ghi nhận trước đó rồi ạ!");
-                    Integer msgId = parseMessageId(cb.messageId());
-                    if (msgId != null) {
-                        try {
-                            Map<String, Object> ackKeyboard = TelegramClient.inlineKeyboard(List.of(
-                                    List.of(new InlineButton("✅ Đã ghi nhận báo sai", "fb:already_reported"))));
-                            telegram.editReplyMarkup(chatId, msgId, ackKeyboard);
-                        } catch (Exception ignored) {
-                        }
-                    }
-                }
-                return response(200, "FEEDBACK_ALREADY_REPORTED");
+        if (checkStore != null) {
+            // Không có check_id thì không có gì để ghi: không được cảm ơn như thể đã ghi nhận
+            if (checkId == null || checkId.isBlank()) {
+                return feedbackCheckNotFound(cb);
             }
-
-            checkStore.updateFeedback(userId, checkId, "wrong");
+            // Chống bấm lặp lại nút [Bot báo sai]: nếu đã ghi nhận rồi thì thông báo và vô hiệu hóa nút
+            if (isReportedWrong(userId, checkId)) {
+                return feedbackAlreadyReported(cb, chatId, addressForm);
+            }
+            // Ghi nguyên tử (check phải còn tồn tại và chưa có feedback). Trả false khi thua request bấm đôi song song
+            // hoặc check đã hết TTL: phân biệt hai trường hợp bằng cách đọc lại.
+            if (!checkStore.tryMarkFeedback(userId, checkId, "wrong")) {
+                return isReportedWrong(userId, checkId)
+                        ? feedbackAlreadyReported(cb, chatId, addressForm)
+                        : feedbackCheckNotFound(cb);
+            }
         }
 
         if (auditRepo != null) {
@@ -1123,16 +1133,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         if (telegram != null) {
             telegram.answerCallbackQuery(cb.queryId(), "Cảm ơn ý kiến của " + addressForm + "!");
 
-            // Đổi nút bấm trên tin nhắn kết quả thành [✅ Đã ghi nhận báo sai]
-            Integer msgId = parseMessageId(cb.messageId());
-            if (msgId != null) {
-                try {
-                    Map<String, Object> ackKeyboard = TelegramClient.inlineKeyboard(List.of(
-                            List.of(new InlineButton("✅ Đã ghi nhận báo sai", "fb:already_reported"))));
-                    telegram.editReplyMarkup(chatId, msgId, ackKeyboard);
-                } catch (Exception ignored) {
-                }
-            }
+            // Đổi riêng nút [Bot báo sai] thành [✅ Đã ghi nhận báo sai], giữ nguyên các nút còn lại
+            markReportAcknowledged(cb, chatId);
 
             String prompt = "Cảm ơn " + addressForm + " đã góp ý! " + addressForm
                     + " có đồng ý cho cháu lưu lại nội dung tin nhắn này (cháu đã che hết số điện thoại và tên riêng) để các kỹ sư hoàn thiện bot tốt hơn không ạ?";
@@ -1145,6 +1147,96 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         }
 
         return response(200, "FEEDBACK_WRONG_HANDLED");
+    }
+
+    private boolean isReportedWrong(String userId, String checkId) {
+        return checkStore instanceof CheckRepo repo
+                && repo.get(userId, checkId).map(r -> "wrong".equals(r.feedback())).orElse(false);
+    }
+
+    private APIGatewayProxyResponseEvent feedbackAlreadyReported(
+            TelegramCallbackQuery cb, long chatId, String addressForm) {
+        if (telegram != null) {
+            telegram.answerCallbackQuery(cb.queryId(),
+                    "Ý kiến báo sai của " + addressForm + " đã được ghi nhận trước đó rồi ạ!");
+            markReportAcknowledged(cb, chatId);
+        }
+        return response(200, "FEEDBACK_ALREADY_REPORTED");
+    }
+
+    private APIGatewayProxyResponseEvent feedbackCheckNotFound(TelegramCallbackQuery cb) {
+        if (telegram != null) {
+            telegram.answerCallbackQuery(cb.queryId(),
+                    "Dạ, cháu không còn tìm thấy lượt kiểm tra này để ghi nhận góp ý ạ.");
+        }
+        return response(200, "FEEDBACK_CHECK_NOT_FOUND");
+    }
+
+    private void markReportAcknowledged(TelegramCallbackQuery cb, long chatId) {
+        Integer msgId = parseMessageId(cb.messageId());
+        if (telegram == null || msgId == null) {
+            return;
+        }
+        try {
+            telegram.editReplyMarkup(chatId, msgId, TelegramClient.inlineKeyboard(List.of(
+                    List.of(new InlineButton("✅ Đã ghi nhận báo sai", "fb:already_reported")))));
+        } catch (Exception ignored) {
+        }
+    }
+
+    static Map<String, Object> keyboardWithReportAck(List<List<Map<String, String>>> original) {
+        Map<String, String> ack = TelegramClient.callbackButtonMap(
+                new InlineButton("✅ Đã ghi nhận báo sai", "fb:already_reported"));
+        List<List<Map<String, String>>> rows = new ArrayList<>();
+        boolean replaced = false;
+        if (original != null) {
+            for (List<Map<String, String>> row : original) {
+                List<Map<String, String>> out = new ArrayList<>();
+                for (Map<String, String> button : row) {
+                    String d = button.get("callback_data");
+                    boolean reportButton = d != null
+                            && (d.equals("fb:wrong") || d.startsWith("fb:wrong:") || d.startsWith("dn:"));
+                    if (reportButton) {
+                        out.add(ack);
+                        replaced = true;
+                    } else {
+                        out.add(button);
+                    }
+                }
+                rows.add(out);
+            }
+        }
+        if (!replaced) {
+            // Không biết bàn phím gốc (hoặc không có nút báo sai): giữ cách cũ, chỉ hiện nút xác nhận
+            rows = List.of(List.of(ack));
+        }
+        return TelegramClient.inlineKeyboardRaw(rows);
+    }
+
+    private void removeButtons(TelegramCallbackQuery cb, long chatId) {
+        Integer msgId = parseMessageId(cb.messageId());
+        if (telegram != null && msgId != null) {
+            try {
+                telegram.editReplyMarkup(chatId, msgId, null);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+
+    /**
+     * Session chỉ dùng được khi ĐÚNG chủ, ĐÚNG check_id trên nút bấm và CHƯA quá hạn. SESSION# chỉ có một bản ghi
+     * cho mỗi chat (bị ghi đè sau mỗi lượt kiểm tra) và TTL của DynamoDB xoá trễ, nên không được tin vào việc
+     * "get() có trả về" là đủ.
+     */
+    private static boolean isSessionUsable(SessionRecord s, String userId, String requestedCheckId) {
+        if (s == null || s.userId() == null || !s.userId().equals(userId)) {
+            return false;
+        }
+        if (requestedCheckId != null && !requestedCheckId.isBlank() && !requestedCheckId.equals(s.checkId())) {
+            return false;
+        }
+        return s.ttlEpochSeconds() > Instant.now().getEpochSecond();
     }
 
     private APIGatewayProxyResponseEvent handleDonateAgree(
@@ -1161,30 +1253,14 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             checkId = data.substring("dn:agree:".length()).trim();
         }
 
-        // Xóa nút bấm trên tin nhắn hỏi để người dùng không bấm lại
-        Integer msgId = parseMessageId(cb.messageId());
-        if (telegram != null && msgId != null) {
-            try {
-                telegram.editReplyMarkup(chatId, msgId, null);
-            } catch (Exception ignored) {
-            }
-        }
+        String chat = String.valueOf(chatId);
+        final String requestedCheckId = checkId;
+        SessionRecord session = sessionStore == null ? null
+                : sessionStore.get(chat).filter(s -> isSessionUsable(s, userId, requestedCheckId)).orElse(null);
 
-        String maskedText = null;
-        if (sessionStore != null) {
-            Optional<SessionRecord> sessionOpt = sessionStore.get(String.valueOf(chatId));
-            if (sessionOpt.isPresent()) {
-                SessionRecord s = sessionOpt.get();
-                maskedText = s.maskedText();
-                if ((checkId == null || checkId.isBlank()) && s.checkId() != null) {
-                    checkId = s.checkId();
-                }
-                // Xóa session ngay lập tức: các lần bấm tiếp theo sẽ coi là đã xử lý
-                sessionStore.delete(String.valueOf(chatId));
-            }
-        }
-
-        if (maskedText == null || maskedText.isBlank()) {
+        if (session == null || session.maskedText() == null || session.maskedText().isBlank()) {
+            // Hết hạn, đã xử lý, hoặc session hiện tại là của lượt kiểm tra khác: không đụng vào session đó
+            removeButtons(cb, chatId);
             if (telegram != null) {
                 telegram.answerCallbackQuery(cb.queryId(), "Phiên đã hết hạn hoặc đã được ghi nhận");
                 telegram.sendText(chatId,
@@ -1193,13 +1269,40 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
             return response(200, "DONATION_SESSION_EXPIRED");
         }
-
-        if (donationStore != null) {
-            donationStore.saveDonatedSample(userId, checkId, maskedText);
+        if (checkId == null || checkId.isBlank()) {
+            checkId = session.checkId();
         }
 
+        if (donationStore == null) {
+            // Chưa cấu hình kho lưu (thiếu DATA_BUCKET_NAME): không được báo "đã lưu" hay ghi consent
+            log(context, "Chưa cấu hình DATA_BUCKET_NAME -> không lưu được mẫu đóng góp");
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Chức năng đóng góp tạm thời chưa dùng được ạ");
+            }
+            return response(200, "DONATION_UNAVAILABLE");
+        }
+
+        // Lưu S3 TRƯỚC, xoá session SAU: S3 lỗi thì session và nút vẫn còn để người dùng bấm lại
+        try {
+            donationStore.saveDonatedSample(userId, checkId, session.maskedText());
+        } catch (RuntimeException e) {
+            log(context, "Lỗi lưu mẫu đóng góp: " + e.getClass().getSimpleName());
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(),
+                        "Cháu chưa lưu được ạ, " + addressForm + " vui lòng bấm lại sau ít phút nhé");
+            }
+            return response(200, "DONATION_SAVE_FAILED");
+        }
+        sessionStore.delete(chat);
+        removeButtons(cb, chatId);
+
         if (userRepo != null) {
-            userRepo.updateConsent(userId, policySha256, POLICY_VERSION, Map.of("donate", true));
+            // Chỉ bật mục đích "donate": updateConsent sẽ đóng dấu lại cả policySha256/consentedAt
+            try {
+                userRepo.setPurpose(userId, "donate", true);
+            } catch (RuntimeException e) {
+                log(context, "Không ghi được mục đích donate: " + e.getClass().getSimpleName());
+            }
         }
 
         if (auditRepo != null) {
@@ -1232,23 +1335,20 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         }
 
         // Xóa nút bấm trên tin nhắn hỏi để người dùng không bấm lại
-        Integer msgId = parseMessageId(cb.messageId());
-        if (telegram != null && msgId != null) {
-            try {
-                telegram.editReplyMarkup(chatId, msgId, null);
-            } catch (Exception ignored) {
-            }
-        }
+        removeButtons(cb, chatId);
 
         boolean hadSession = false;
         if (sessionStore != null) {
-            Optional<SessionRecord> sessionOpt = sessionStore.get(String.valueOf(chatId));
+            String chat = String.valueOf(chatId);
+            final String requestedCheckId = checkId;
+            Optional<SessionRecord> sessionOpt = sessionStore.get(chat)
+                    .filter(s -> isSessionUsable(s, userId, requestedCheckId));
             if (sessionOpt.isPresent()) {
                 hadSession = true;
                 if ((checkId == null || checkId.isBlank()) && sessionOpt.get().checkId() != null) {
                     checkId = sessionOpt.get().checkId();
                 }
-                sessionStore.delete(String.valueOf(chatId));
+                sessionStore.delete(chat);
             }
         }
 
@@ -1296,8 +1396,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return handleKetNoiCommand(chatId, userId, text, firstName, username, context);
         }
 
-        // Hỗ trợ lệnh test nút báo sai cho môi trường local
-        if (cmd.startsWith("/testbaosai") || cmd.startsWith("/baosai")) {
+        // Lệnh test nút báo sai: CHỈ môi trường local. Trên production lệnh này sẽ cho bất kỳ ai tạo CHECK#/SESSION#
+        // giả chứa chính text gốc họ gõ (chưa mask) rồi đẩy lên S3 qua luồng đóng góp.
+        if (localDevelopment && (cmd.startsWith("/testbaosai") || cmd.startsWith("/baosai"))) {
             return sendSimulatedCheckResult(chatId, userId, "Tin nhắn mẫu: 'Bác ơi đọc giúp cháu mã số vừa gửi qua SMS'");
         }
 
@@ -1692,6 +1793,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     }
 
     private APIGatewayProxyResponseEvent sendSimulatedCheckResult(long chatId, String userId, String text) {
+        if (!localDevelopment) {
+            return response(200, "IGNORED");
+        }
         String addressForm = getAddressForm(userId);
         String checkId = Ulid.next();
         String maskedText = "Nội dung đã che mờ: " + (text != null && !text.isBlank() ? text : "Tin nhắn nghi ngờ lừa đảo");

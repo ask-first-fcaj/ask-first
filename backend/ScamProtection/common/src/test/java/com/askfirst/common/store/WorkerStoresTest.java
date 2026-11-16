@@ -198,6 +198,24 @@ class WorkerStoresTest {
         });
     }
 
+    @Test
+    @DisplayName("CheckStore: feedback không tạo bản ghi ma, và tryMarkFeedback chỉ thắng đúng một lần")
+    void checkStoreFeedbackIsConditional() {
+        String uid = "tg:" + chat;
+
+        // check không tồn tại: không được tạo item chỉ có feedback
+        checks.updateFeedback(uid, "GHOST", "wrong");
+        assertThat(checks.exists(uid, "GHOST")).isFalse();
+        assertThat(checks.tryMarkFeedback(uid, "GHOST", "wrong")).isFalse();
+        assertThat(checks.exists(uid, "GHOST")).isFalse();
+
+        checks.put(new CheckRecord("C9", uid, "verdict", "DANGEROUS", 90, "N1", "N1.4", "fast",
+                List.of(), List.of(), List.of("text"), false, null, NOW.toString(), ttl()));
+        assertThat(checks.tryMarkFeedback(uid, "C9", "wrong")).isTrue();
+        assertThat(checks.tryMarkFeedback(uid, "C9", "wrong")).isFalse();   // bấm đôi: bên thua nhận false
+        assertThat(checks.get(uid, "C9")).hasValueSatisfying(r -> assertThat(r.feedback()).isEqualTo("wrong"));
+    }
+
     // ---------- SESSION# ----------
 
     @Test

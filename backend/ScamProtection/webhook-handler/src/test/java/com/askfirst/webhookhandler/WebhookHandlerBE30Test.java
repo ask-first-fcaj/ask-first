@@ -148,6 +148,8 @@ class WebhookHandlerBE30Test {
         String chatId = "222";
         String masked = "Cháu nhận được tin nhắn từ số [SDT] thông báo trúng thưởng [TEN_RIENG]";
 
+        fakeUserRepo.saveUser(new UserRecord(userId, chatId));
+
         // Lưu ngữ cảnh phiên kiểm tra vào SESSION#{chat_id}
         fakeSessionStore.put(new SessionRecord(
                 chatId, checkId, userId, masked, null, 1, Instant.now().getEpochSecond() + 1800));
@@ -354,6 +356,146 @@ class WebhookHandlerBE30Test {
         assertThat(fakeTelegram.lastCallbackAnswer).contains("đã được ghi nhận");
     }
 
+    // --- Regression: các lỗi phát hiện khi review PR ---
+
+    @Test
+    @DisplayName("BE-30: Đồng ý đóng góp cho check cũ khi session đã là của check mới -> không lưu, không xoá session mới")
+    void testDonateAgreeIgnoresSessionOfAnotherCheck() {
+        fakeSessionStore.put(new SessionRecord(
+                "222", "01NEWERCHECK0000000000001", "tg:111", "Nội dung của lượt MỚI", null, 1,
+                Instant.now().getEpochSecond() + 1800));
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(
+                createRequest(callbackUpdate(501, "donate:agree:01OLDERCHECK0000000000001", 111, 222)), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("DONATION_SESSION_EXPIRED");
+        assertThat(fakeDonationStore.savedSamples).isEmpty();
+        assertThat(fakeSessionStore.get("222")).isPresent();   // session của lượt mới còn nguyên
+    }
+
+    @Test
+    @DisplayName("BE-30: Session đã quá TTL (DynamoDB xoá trễ) thì không được dùng để đóng góp")
+    void testDonateAgreeRejectsExpiredSession() {
+        fakeSessionStore.put(new SessionRecord(
+                "222", "01CHECKEXPIRED0000000001", "tg:111", "Nội dung cũ", null, 1,
+                Instant.now().getEpochSecond() - 10));
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(
+                createRequest(callbackUpdate(502, "donate:agree:01CHECKEXPIRED0000000001", 111, 222)), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("DONATION_SESSION_EXPIRED");
+        assertThat(fakeDonationStore.savedSamples).isEmpty();
+    }
+
+    @Test
+    @DisplayName("BE-30: Session của người dùng khác trong cùng chat không được đem đi đóng góp")
+    void testDonateAgreeRejectsSessionOfAnotherUser() {
+        fakeSessionStore.put(new SessionRecord(
+                "222", "01CHECKOTHERUSER00000001", "tg:999", "Nội dung người khác", null, 1,
+                Instant.now().getEpochSecond() + 1800));
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(
+                createRequest(callbackUpdate(503, "donate:agree:01CHECKOTHERUSER00000001", 111, 222)), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("DONATION_SESSION_EXPIRED");
+        assertThat(fakeDonationStore.savedSamples).isEmpty();
+    }
+
+    @Test
+    @DisplayName("BE-30: Lưu S3 lỗi thì giữ session, không ghi consent/audit để người dùng bấm lại được")
+    void testDonateAgreeStorageFailureKeepsSessionAndConsent() {
+        String checkId = "01CHECKS3FAIL000000000001";
+        fakeUserRepo.saveUser(new UserRecord("tg:111", "222"));
+        fakeSessionStore.put(new SessionRecord(
+                "222", checkId, "tg:111", "Nội dung", null, 1, Instant.now().getEpochSecond() + 1800));
+        DonationStore failing = (userId, id, text) -> {
+            throw new IllegalStateException("S3 down");
+        };
+        WebhookHandler h = new WebhookHandler(fakeTelegram, null, "https://sqs.mock.queue", SECRET, fakeUserRepo,
+                fakeAuditRepo, fakeCheckRepo, fakeSessionStore, failing, POLICY_SHA256);
+
+        APIGatewayProxyResponseEvent res = h.handleRequest(
+                createRequest(callbackUpdate(504, "donate:agree:" + checkId, 111, 222)), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("DONATION_SAVE_FAILED");
+        assertThat(fakeSessionStore.get("222")).isPresent();
+        assertThat(fakeAuditRepo.events).doesNotContain("CONSENT_GIVEN");
+        assertThat(fakeUserRepo.getUser("tg:111").get().getPurposes()).doesNotContainKey("donate");
+    }
+
+    @Test
+    @DisplayName("BE-30: Không cấu hình kho lưu thì không được báo 'đã lưu' hay ghi consent")
+    void testDonateAgreeWithoutDonationStoreDoesNotClaimSaved() {
+        String checkId = "01CHECKNOSTORE0000000001";
+        fakeSessionStore.put(new SessionRecord(
+                "222", checkId, "tg:111", "Nội dung", null, 1, Instant.now().getEpochSecond() + 1800));
+        WebhookHandler h = new WebhookHandler(fakeTelegram, null, "https://sqs.mock.queue", SECRET, fakeUserRepo,
+                fakeAuditRepo, fakeCheckRepo, fakeSessionStore, null, POLICY_SHA256);
+
+        APIGatewayProxyResponseEvent res = h.handleRequest(
+                createRequest(callbackUpdate(505, "donate:agree:" + checkId, 111, 222)), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("DONATION_UNAVAILABLE");
+        assertThat(fakeTelegram.lastText).isNull();   // không có tin "cháu đã lưu lại..."
+        assertThat(fakeAuditRepo.events).doesNotContain("CONSENT_GIVEN");
+    }
+
+    @Test
+    @DisplayName("BE-30: Đóng góp chỉ bật mục đích donate, không đóng dấu lại bằng chứng đồng ý chính sách")
+    void testDonateDoesNotRestampConsentEvidence() {
+        String checkId = "01CHECKCONSENT00000000001";
+        UserRecord user = new UserRecord("tg:111", "222");
+        user.setPolicySha256("OLD_POLICY_SHA");
+        user.setConsentVersion("v0-old");
+        user.setConsentedAt("2025-01-01T00:00:00Z");
+        fakeUserRepo.saveUser(user);
+        fakeSessionStore.put(new SessionRecord(
+                "222", checkId, "tg:111", "Nội dung", null, 1, Instant.now().getEpochSecond() + 1800));
+
+        handler.handleRequest(createRequest(callbackUpdate(506, "donate:agree:" + checkId, 111, 222)), mockContext);
+
+        UserRecord after = fakeUserRepo.getUser("tg:111").get();
+        assertThat(after.getPurposes()).containsEntry("donate", true);
+        assertThat(after.getPolicySha256()).isEqualTo("OLD_POLICY_SHA");
+        assertThat(after.getConsentVersion()).isEqualTo("v0-old");
+        assertThat(after.getConsentedAt()).isEqualTo("2025-01-01T00:00:00Z");
+    }
+
+    @Test
+    @DisplayName("BE-30: Báo sai cho check không tồn tại -> không tạo bản ghi ma, không hỏi đóng góp")
+    void testFeedbackWrongForUnknownCheck() {
+        APIGatewayProxyResponseEvent res = handler.handleRequest(
+                createRequest(callbackUpdate(507, "fb:wrong:01GHOSTCHECK000000000001", 111, 222)), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("FEEDBACK_CHECK_NOT_FOUND");
+        assertThat(fakeCheckRepo.exists("tg:111", "01GHOSTCHECK000000000001")).isFalse();
+        assertThat(fakeTelegram.lastText).isNull();   // không gửi prompt xin đóng góp
+        assertThat(fakeAuditRepo.events).doesNotContain("FEEDBACK_REPORTED");
+    }
+
+    @Test
+    @DisplayName("BE-30: /testbaosai ngoài môi trường local bị bỏ qua, không tạo CHECK#/SESSION# giả")
+    void testSimulatedCommandIgnoredOutsideLocalMode() {
+        UserRecord consented = new UserRecord("tg:111", "222");
+        consented.setPolicySha256(POLICY_SHA256);
+        consented.setConsentVersion(WebhookHandler.POLICY_VERSION);
+        consented.setConsentedAt("2026-01-01T00:00:00Z");
+        consented.setPurposes(new HashMap<>(Map.of("analyze", true)));
+        fakeUserRepo.saveUser(consented);
+        String msg = """
+                {"update_id": 601, "message": {"message_id": 1,
+                  "from": {"id": 111, "is_bot": false, "first_name": "Nguyen"},
+                  "chat": {"id": 222, "type": "private"}, "date": 1729000000, "text": "/testbaosai",
+                  "entities": [{"type": "bot_command", "offset": 0, "length": 11}]}}
+                """;
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(msg), mockContext);
+
+        assertThat(res.getBody()).isNotEqualTo("LOCAL_SIMULATED_SENT");
+        assertThat(fakeSessionStore.get("222")).isEmpty();
+        assertThat(fakeCheckRepo.store).isEmpty();
+    }
+
     // --- Helpers & Fakes ---
 
     private APIGatewayProxyRequestEvent createRequest(String body) {
@@ -513,6 +655,17 @@ class WebhookHandlerBE30Test {
             if (purposes != null) {
                 merged.putAll(purposes);
             }
+            u.setPurposes(merged);
+        }
+
+        @Override
+        public void setPurpose(String userId, String purpose, boolean value) {
+            UserRecord u = store.get(userId);
+            if (u == null) {
+                return;   // giống UserRepo thật: không tạo hồ sơ chỉ để ghi một mục đích
+            }
+            Map<String, Boolean> merged = new HashMap<>(u.getPurposes());
+            merged.put(purpose, value);
             u.setPurposes(merged);
         }
 

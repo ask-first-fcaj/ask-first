@@ -9,6 +9,8 @@ import com.askfirst.common.store.GuardianRecord;
 import com.askfirst.common.store.GuardianRepo;
 import com.askfirst.common.store.InviteRecord;
 import com.askfirst.common.store.InviteRepo;
+import com.askfirst.common.store.UserRecord;
+import com.askfirst.common.store.UserRepo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -224,6 +226,35 @@ class WebhookHandlerBE28Test {
         // Audit
         assertFalse(auditRepo.events.isEmpty());
         assertEquals("GUARDIAN_LINKED", auditRepo.events.get(0).event);
+    }
+
+    // ── Chấp nhận liên kết phải bật purposes.guardian (worker chỉ báo người thân khi cờ này bật) ──
+    @Test
+    @DisplayName("BE-28: Chấp nhận liên kết → bật mục đích guardian; từ chối thì không bật")
+    void testGuardianAcceptEnablesGuardianPurpose() {
+        PurposeUserRepo userRepo = new PurposeUserRepo();
+        userRepo.users.put(ELDER_UID, new UserRecord(ELDER_UID, String.valueOf(ELDER_CHAT_ID)));
+        WebhookHandler h = new WebhookHandler(telegramClient, null, null, SECRET, userRepo, auditRepo, null,
+                guardianRepo, inviteRepo, POLICY_SHA256, null, false, null);
+
+        GuardianRecord pending = new GuardianRecord(ELDER_UID, RELATIVE_UID);
+        pending.setStatus("pending");
+        guardianRepo.save(pending);
+
+        // Từ chối trước: không được bật
+        APIGatewayProxyResponseEvent rejected = h.handleRequest(
+                buildCallbackRequest(ELDER_CHAT_ID, "guardian:reject:" + RELATIVE_UID), fakeContext());
+        assertEquals("GUARDIAN_REJECTED", rejected.getBody());
+        assertNull(userRepo.users.get(ELDER_UID).getPurposes().get("guardian"));
+
+        GuardianRecord again = new GuardianRecord(ELDER_UID, RELATIVE_UID);
+        again.setStatus("pending");
+        guardianRepo.save(again);
+        APIGatewayProxyResponseEvent accepted = h.handleRequest(
+                buildCallbackRequest(ELDER_CHAT_ID, "guardian:accept:" + RELATIVE_UID + ":2"), fakeContext());
+
+        assertEquals("GUARDIAN_LINKED", accepted.getBody());
+        assertEquals(Boolean.TRUE, userRepo.users.get(ELDER_UID).getPurposes().get("guardian"));
     }
 
     // ── Test 8: Người cao tuổi từ chối ───────────────────────────────────────
@@ -568,6 +599,25 @@ class WebhookHandlerBE28Test {
         @Override
         public void updateShareLevel(String elderUid, String gUid, int level) {
             getGuardian(elderUid, gUid).ifPresent(r -> r.setShareLevel(level));
+        }
+    }
+
+    static class PurposeUserRepo extends UserRepo {
+        final Map<String, UserRecord> users = new ConcurrentHashMap<>();
+
+        @Override
+        public Optional<UserRecord> getUser(String userId) {
+            return Optional.ofNullable(users.get(userId));
+        }
+
+        @Override
+        public void setPurpose(String userId, String purpose, boolean value) {
+            UserRecord u = users.get(userId);
+            if (u != null) {
+                Map<String, Boolean> merged = new HashMap<>(u.getPurposes());
+                merged.put(purpose, value);
+                u.setPurposes(merged);
+            }
         }
     }
 

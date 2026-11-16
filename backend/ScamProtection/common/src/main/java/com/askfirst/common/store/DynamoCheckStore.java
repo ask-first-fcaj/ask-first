@@ -108,14 +108,32 @@ public final class DynamoCheckStore implements CheckRepo {
         }
     }
 
+    /** Chỉ cập nhật check đang tồn tại: UpdateItem mặc định là upsert nên nếu thiếu điều kiện sẽ tạo item rác. */
     @Override
     public void updateFeedback(String userId, String checkId, String feedback) {
-        client.updateItem(UpdateItemRequest.builder()
-                .tableName(table)
-                .key(key(pk(userId), "CHECK#" + checkId))
-                .updateExpression("SET feedback = :fb")
-                .expressionAttributeValues(Map.of(":fb", s(feedback)))
-                .build());
+        writeFeedback(userId, checkId, feedback, "attribute_exists(PK)");
+    }
+
+    /** Nguyên tử: chỉ ghi khi check tồn tại và chưa có feedback. */
+    @Override
+    public boolean tryMarkFeedback(String userId, String checkId, String feedback) {
+        return writeFeedback(userId, checkId, feedback,
+                "attribute_exists(PK) AND attribute_not_exists(feedback)");
+    }
+
+    private boolean writeFeedback(String userId, String checkId, String feedback, String condition) {
+        try {
+            client.updateItem(UpdateItemRequest.builder()
+                    .tableName(table)
+                    .key(key(pk(userId), "CHECK#" + checkId))
+                    .updateExpression("SET feedback = :fb")
+                    .conditionExpression(condition)
+                    .expressionAttributeValues(Map.of(":fb", s(feedback)))
+                    .build());
+            return true;
+        } catch (ConditionalCheckFailedException notApplicable) {
+            return false;
+        }
     }
 
     private static AttributeValue strings(List<String> values) {
