@@ -15,7 +15,7 @@
 #                             hard: thành luật cứng khi tin có URL
 #   unless_codes              (tuỳ chọn) bỏ luật khi một trong các mã này đã bật
 # Sàn cứng và tổ hợp (R_AUTHORITY + tiền/bí mật/tài khoản an toàn → 85) nằm ở pipeline/fuse.py.
-version: rules-2026.11.11
+version: rules-2026.11.17
 rules:
   - code: R_OTP_REQUEST
     weight: 45
@@ -129,6 +129,18 @@ rules:
       - '\b(?:so tai khoan|stk)\b'
     unless:
       - '\b(?:sd|so du (?:hien tai|kha dung|cuoi)|bien dong so du|sd kha dung)\b'
+
+  # #140 (hd-rt-27): báo "chuyển dư/nhầm" rồi xin chuyển lại vào số khác. Biên lai thường là giả, tiền chưa về.
+  # Chuyển nhầm thật thì hoàn qua ngân hàng (N4.1), nên tin chỉ đường qua ngân hàng không tính.
+  - code: R_OVERPAY_REFUND
+    weight: 50
+    hard: true
+    patterns:
+      - '\b(?:chuyen|ck|nap)(?: [^ .]+){0,1} (?:du|thua|nham)\b(?! lich| hoc| khach)'
+    requires:
+      - '\b(?:chuyen|ck|tra|hoan)(?: [^ .]+){0,2} lai\b'
+    unless:
+      - '\b(?:lien he|ra|den|tai|qua|bao) (?:ngan hang|chi nhanh|quay giao dich|tong dai ngan hang)\b'
 
   - code: R_URGENCY
     weight: 15
