@@ -33,8 +33,7 @@ public final class BotMessages {
                 + "Có tin nhắn, cuộc gọi hay đường link nào lạ, " + xh
                 + " gửi cho cháu xem trước khi làm theo nhé.\n\n"
                 + "• Cháu <b>không bao giờ</b> hỏi mã OTP, mật khẩu hay tiền.\n"
-                + "• Tin " + xh + " gửi chỉ dùng để kiểm tra lừa đảo. Cháu che số điện thoại, số tài khoản trước khi gửi đi phân tích.\n"
-                + "• " + XH + " xóa dữ liệu lúc nào cũng được, gõ /xoadulieu.\n\n"
+                + "• Tin " + xh + " gửi chỉ dùng để kiểm tra lừa đảo. Cháu che số điện thoại, số tài khoản trước khi gửi đi phân tích.\n\n"
                 + "Chi tiết: <a href=\"" + url + "\">Chính sách quyền riêng tư</a>\n\n"
                 + XH + " bấm <b>Đồng ý</b> để bắt đầu ạ.";
     }
@@ -45,7 +44,7 @@ public final class BotMessages {
     public static String consentAgreeMessage(String XH, String xh) {
         return "✅ Cảm ơn " + xh + "! Từ giờ có tin nào lạ, " + xh
                 + " cứ gửi cho cháu: chuyển tiếp, chụp màn hình hoặc dán chữ đều được.\n\n"
-                + "• Lỡ bị lừa rồi: bấm <b>Tôi bị lừa rồi</b> hoặc gõ /bilua\n"
+                + "• Lỡ bị lừa rồi: gõ <b>Tôi bị lừa rồi</b> hoặc gõ /bilua\n"
                 + "• Cách dùng: gõ /huongdan\n"
                 + "• Đổi cách cháu gọi (Bác/Cô/Chú): gõ /caidat\n\n"
                 + "💡 " + XH + " ghim cuộc trò chuyện này lên đầu cho dễ tìm nhé.";
@@ -86,7 +85,7 @@ public final class BotMessages {
                 + "<b>Ngay bây giờ (0-5 phút)</b>\n"
                 + "1. <b>Khóa thẻ và tài khoản ngân hàng</b>\n"
                 + "Khóa ngay trong ứng dụng ngân hàng, hoặc gọi tổng đài ngân hàng và nói rõ là nghi bị lừa. Chưa chắc bị lừa cũng cứ khóa trước.\n\n"
-                + "2. <b>Đã bấm link lạ hoặc cài ứng dụng lạ thì tắt nguồn điện thoại</b>\n"
+                + "2. <b>Đã bấm link lạ hoặc cài ứng dụng lạ thì tắt nguồn điện thoại (sau khi đã gọi/khóa ngân hàng xong)</b>\n"
                 + "Để kẻ gian không lấy được mã OTP hay dữ liệu khuôn mặt, vân tay.\n\n"
                 + "<b>5-15 phút</b>\n"
                 + "3. <b>Đổi mật khẩu bằng một điện thoại khác, gỡ ứng dụng lạ</b>\n"

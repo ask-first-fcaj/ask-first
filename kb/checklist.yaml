@@ -21,7 +21,7 @@
       verified_at: 2026-11-12
     - id: tat_nguon
       phase: "0-5 phút"
-      action: Đã bấm link lạ hoặc cài ứng dụng lạ thì tắt nguồn điện thoại
+      action: Đã bấm link lạ hoặc cài ứng dụng lạ thì tắt nguồn điện thoại (sau khi đã gọi/khóa ngân hàng xong)
       detail: Để kẻ gian không lấy được mã OTP hay dữ liệu khuôn mặt, vân tay.
       hotline_ref: null
       sources:

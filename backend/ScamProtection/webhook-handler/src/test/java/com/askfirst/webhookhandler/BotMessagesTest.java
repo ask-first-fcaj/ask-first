@@ -15,7 +15,7 @@ class BotMessagesTest {
         assertThat(msg).contains("Có tin nhắn, cuộc gọi hay đường link nào lạ, bác gửi cho cháu xem");
         assertThat(msg).contains("• Cháu <b>không bao giờ</b> hỏi mã OTP, mật khẩu hay tiền.");
         assertThat(msg).contains("• Tin bác gửi chỉ dùng để kiểm tra lừa đảo.");
-        assertThat(msg).contains("• Bác xóa dữ liệu lúc nào cũng được, gõ /xoadulieu.");
+        assertThat(msg).doesNotContain("/xoadulieu");
         assertThat(msg).contains("Chi tiết: <a href=\"https://example.com/policy\">Chính sách quyền riêng tư</a>");
         assertThat(msg).contains("Bác bấm <b>Đồng ý</b> để bắt đầu ạ.");
     }
@@ -36,7 +36,7 @@ class BotMessagesTest {
         String msg = BotMessages.consentAgreeMessage("Cô", "cô");
         assertThat(msg).contains("✅ Cảm ơn cô!");
         assertThat(msg).contains("chuyển tiếp, chụp màn hình hoặc dán chữ đều được");
-        assertThat(msg).contains("• Lỡ bị lừa rồi: bấm <b>Tôi bị lừa rồi</b> hoặc gõ /bilua");
+        assertThat(msg).contains("• Lỡ bị lừa rồi: gõ <b>Tôi bị lừa rồi</b> hoặc gõ /bilua");
         assertThat(msg).contains("• Cách dùng: gõ /huongdan");
         assertThat(msg).contains("• Đổi cách cháu gọi (Bác/Cô/Chú): gõ /caidat");
         assertThat(msg).contains("💡 Cô ghim cuộc trò chuyện này lên đầu cho dễ tìm nhé.");
@@ -74,7 +74,7 @@ class BotMessagesTest {
         assertThat(msg).contains("🚨 <b>Nghi bị lừa: bác làm ngay theo thứ tự</b>");
         assertThat(msg).contains("<b>Ngay bây giờ (0-5 phút)</b>");
         assertThat(msg).contains("1. <b>Khóa thẻ và tài khoản ngân hàng</b>");
-        assertThat(msg).contains("2. <b>Đã bấm link lạ hoặc cài ứng dụng lạ thì tắt nguồn điện thoại</b>");
+        assertThat(msg).contains("2. <b>Đã bấm link lạ hoặc cài ứng dụng lạ thì tắt nguồn điện thoại (sau khi đã gọi/khóa ngân hàng xong)</b>");
         assertThat(msg).contains("<b>5-15 phút</b>");
         assertThat(msg).contains("3. <b>Đổi mật khẩu bằng một điện thoại khác, gỡ ứng dụng lạ</b>");
         assertThat(msg).contains("<b>15-30 phút</b>");
