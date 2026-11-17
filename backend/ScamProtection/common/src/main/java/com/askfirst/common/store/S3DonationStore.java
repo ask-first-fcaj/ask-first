@@ -2,8 +2,6 @@ package com.askfirst.common.store;
 
 import com.askfirst.common.Ulid;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Objects;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -14,7 +12,6 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Object;
 
 /**
- * Lưu trữ và xoá các mẫu tin đóng góp tại thư mục {@code donated/<hash(uid)>/} trên Amazon S3.
  */
 public final class S3DonationStore implements DonationStore {
 
@@ -27,20 +24,7 @@ public final class S3DonationStore implements DonationStore {
     }
 
     public static String hashUid(String uid) {
-        if (uid == null) {
-            uid = "";
-        }
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] digest = md.digest(uid.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte b : digest) {
-                hex.append(String.format("%02x", b));
-            }
-            return hex.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+        return AuditRepo.hashUid(uid);
     }
 
     @Override

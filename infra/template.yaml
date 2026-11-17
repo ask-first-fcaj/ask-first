@@ -79,14 +79,21 @@ Resources:
               Condition:
                 StringEquals:
                   kms:ViaService: !Sub ssm.${AWS::Region}.amazonaws.com
+            # Quyền S3 cho prefix donated/*: phục vụ đóng góp mẫu (§5.6) và xoá dữ liệu BE-31
             - Effect: Allow
               Action:
-                - s3:PutObject
-                - s3:DeleteObject
                 - s3:ListBucket
-              Resource:
-                - !GetAtt DataBucket.Arn
-                - !Sub ${DataBucket.Arn}/*
+              Resource: !GetAtt DataBucket.Arn
+              Condition:
+                StringLike:
+                  s3:prefix:
+                    - "donated/*"
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:DeleteObject
+                - s3:PutObject
+              Resource: !Sub "${DataBucket.Arn}/donated/*"
       FunctionUrlConfig:
         # Function URL công khai: lớp xác thực duy nhất là header X-Telegram-Bot-Api-Secret-Token
         AuthType: NONE
