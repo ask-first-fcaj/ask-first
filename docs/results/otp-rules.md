@@ -6,8 +6,13 @@
 
 - `R_OTP_REQUEST` và `R_OTP_GENUINE` **không giẫm lên nhau** trên bộ này. Luật bắt đủ 100/100 tin lừa và 25/25 tin có câu phủ định giả. `R_OTP_GENUINE` không bật trên tin lừa nào. Chỉ 1/100 tin thật bị báo nhầm (`otp-b-006`).
 - **Số này lạc quan, không phải phép đo độc lập.** Luật AI-23 (#128) được viết và chỉnh trên chính bộ này. `ai/tests/unit/test_signals.py::test_otp_pairs_request_and_genuine_do_not_step_on_each_other` đã khoá đúng các kết quả trên. Muốn biết luật đúng tới đâu với tin mới thì cần một tập kiểm độc lập, chưa có.
-- `R_OTP_GENUINE` (−20) **sót 4/34 tin thật có câu cảnh báo**. Các câu bị sót là câu ngắn không có tân ngữ ("Tuyệt đối không chia sẻ.") và tiếng Anh ("Do not share it with anyone"). Tác động nhỏ, vì −20 chỉ hạ điểm. Đề xuất cho AI1: thêm 2 mẫu vào luật này ở PR riêng, kèm eval gate.
-- **Đề xuất giữ `otp-b-006` là báo nhầm đã chấp nhận**, đúng như ghi chú trong test. Tin này là SMS thật của MobiFone xin "cung cấp mã cho Mcredit nếu QK đồng ý". Nếu nới luật cứng cho trường hợp này, kẻ gian chèn được câu "nếu QK đồng ý…" để né.
+- `R_OTP_GENUINE` (−20) **sót 4/34 tin thật có câu cảnh báo**. Các câu bị sót là câu ngắn không có tân ngữ ("Tuyệt đối không chia sẻ.") và tiếng Anh ("Do not share it with anyone"). Tác động nhỏ, vì −20 chỉ hạ điểm.
+- `otp-b-006` là báo nhầm đã chấp nhận, đúng như ghi chú trong test. Tin này là SMS thật của MobiFone xin "cung cấp mã cho Mcredit nếu QK đồng ý". Nếu nới luật cứng cho trường hợp này, kẻ gian chèn được câu "nếu QK đồng ý…" để né.
+- **Đã quyết (AI1, review PR #159):**
+  - giữ `otp-b-006` là báo nhầm chấp nhận;
+  - thêm mẫu câu ngắn và "Do not share" cho `R_OTP_GENUINE` ở PR riêng, vì đổi `rules.yaml` là đổi điểm, cần qua eval gate;
+  - giữ bộ ở `ai/tests/data/`, chưa chuyển vào `eval/datasets/`, để không làm lệch split của eval gate (chuyển vào thì split `benign_suspicious` tăng từ 20 lên 120 tin);
+  - AI1 đã xem các mẫu, nhãn ổn.
 
 ## Cách chạy lại
 
@@ -66,6 +71,4 @@ Báo nhầm (`R_OTP_REQUEST`, luật cứng, ra DANGEROUS):
 - Tập kiểm độc lập: luật được chỉnh trên chính bộ này.
 - Tác động khi có judge LLM (cần Bedrock).
 - Tin OTP thật có link trong nội dung: chỉ có 2 mẫu (`otp-b-002`, `otp-b-006`).
-- AI1 chưa review 20 mẫu ngẫu nhiên (điều kiện "Xong khi" của #90).
-- Bộ chưa nằm ở `eval/datasets/` như issue ghi. Chuyển vào đó thì `run_eval.py` và Eval gate tự gộp thêm 200 mẫu, split `benign_suspicious` tăng từ 20 lên 120 tin, và ngưỡng báo nhầm 10% đổi nghĩa. Việc này để AI1 quyết.
 - Với mask của PR #158 (AI-31), 200 tin này không đổi kết quả mask và không đổi tín hiệu luật (đo ngày 2026-11-16).
