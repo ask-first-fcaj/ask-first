@@ -126,7 +126,7 @@ _EMAIL = re.compile(
 # ---------------------------------------------------------------- OTP
 _OTP_KW = (
     r"(?:otp|one[- ]?time|verification code|security code|login code|activation code|auth(?:entication)? code|passcode|"
-    r"\b(?:ma|so) xac (?:thuc|nhan|minh)|\bma bao mat|\bso bao mat|\bso bi mat|\bma bi mat|\bday so\b|\b[4-8] (?:chu )?so\b|\bmay so\b|\bso trong tin\b|"
+    r"\b(?:ma|so) xac (?:thuc|nhan|minh)|\bma bao mat|\bso bao mat|\bso bi mat|\bma bi mat|\bday so\b|\b[4-8] (?:chu )?so\b|\bso trong tin\b|"
     r"\bma dang nhap|\bma kich hoat|\bma (?:vua )?(?:gui|nhan)(?: ve)?|\bma id|\bma pin|"
     r"\bpin\b|\bmat khau|\bpassword|\bcode\b)"
 )

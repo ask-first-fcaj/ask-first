@@ -216,6 +216,7 @@ def test_long_inputs_are_masked_in_linear_time() -> None:
         "Hotline 1900545436 hoặc gọi 113",
         "Mật khẩu mới phải có ít nhất 8 ký tự",
         "Mã OTP có hiệu lực trong 3 phút",
+        "Máy số 2 ở phòng khám, bác đọc số thứ tự 1234 cho y tá nha",  # "máy số" bỏ dấu thành "may so": không phải từ khoá OTP
         "Chuyển 5 triệu, rồi năm mươi triệu nữa",  # số tiền viết bằng chữ: không che (xem docstring mask.py)
         "Ba năm sau tôi về quê sáu tháng",  # từ chỉ số trong câu thường
         "Vào http://dichvucong-12345678.xyz/0912345678 ngay",  # URL giữ nguyên, kể cả số trong đường dẫn

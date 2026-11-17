@@ -5,7 +5,7 @@
 - Trên **151 mẫu heldout** (132 PII + 20 bẫy), `mask()` bản `main` bắt đúng **101/132** (CI 95% 69–83%). Sau khi chỉnh theo lỗi ở split dev, bản mới bắt **130/132** (CI 95% 95–100%). Che nhầm ở mẫu bẫy: **1/20 ở cả hai bản** (CI 1–24%, mẫu nhỏ nên kết luận về che nhầm yếu).
 - Lỗi ở bản `main` nằm chủ yếu ở 3 loại: **OTP kh gọi tên mã** ("dãy số vừa gửi…"), **STK có dấu gạch/chấm hoặc nhóm cuối ngắn**, **email viết `[at]` có dấu cách**.
 - **Đề xuất:** (1) nhận các thay đổi `mask.py` kèm đoạn test mới; (2) giữ nguyên quyết định "12 chữ số liền = CCCD" (mã đơn/bưu kiện 12 số bị che nhầm, chấp nhận vì tránh lộ CCCD thật, và `test_no_eval_sample_leaks…` đang yêu cầu điều đó); (3) AI1 duyệt 30 mẫu ngẫu nhiên trước khi coi bộ này là chuẩn (điều kiện "xong khi" của #91, **chưa làm**).
-- **Việc chờ quyết định:** từ khoá mới "dãy số" / "N số" làm số 4–8 chữ số theo sau bị che dù không phải OTP ("Dãy số Fibonacci 1 1 2 3 5 8" → `[OTP_1]`, đã chạy tay); xem mục "Che nhầm đã biết và quyết định".
+- **Đã quyết (AI1, review PR #158):** giữ phương án A ("12 chữ số liền = CCCD", kể cả sau mã đơn hàng); tạm giữ từ khoá "dãy số" / "N số", siết thêm điều kiện động từ khi có ca đời thường bị báo nhầm ("Dãy số Fibonacci 1 1 2 3 5 8" → `[OTP_1]`, đã chạy tay); bỏ từ khoá "mấy số" vì sau khi bỏ dấu trùng với "máy số" (xem mục "Thay đổi `mask.py`").
 
 ## Cách chạy lại
 
@@ -68,7 +68,7 @@ Số dev của bản sửa **đã tối ưu theo chính split này**, kh dùng l
 
 ## Thay đổi `mask.py`
 
-- OTP: từ khoá "dãy số", "số xác nhận/xác thực", "số bảo mật/bí mật", "mã bí mật", "4–8 số", "mấy số", "số trong tin".
+- OTP: từ khoá "dãy số", "số xác nhận/xác thực", "số bảo mật/bí mật", "mã bí mật", "4–8 số", "số trong tin". Không dùng "mấy số": `mask()` so trên chuỗi đã bỏ dấu nên "mấy số" và "máy số" là một ("Máy số 2 ở phòng khám, bác đọc số thứ tự 1234…" sẽ bị che `1234` thành `[OTP_1]` và bật `R_OTP_REQUEST`). "Mấy số trong tin" vẫn bị che nhờ "số trong tin". Bỏ từ khoá này không đổi số dev/heldout/che nhầm.
 - STK: nhận số nhóm bằng `-` hoặc `.` (`4246-2640-6564`, `5604.1989.0273.2`), nhóm cuối ngắn (`9681 3118 81`), số đứng trước tên ngân hàng; từ khoá "sổ tiết kiệm", "số thẻ", "Napas"; chặn ngày dạng `2026.11.16`; giới hạn 19 chữ số.
 - Email: cho phép dấu cách quanh `[at]` và `[dot]`.
 - Phone: `09 12 345 678`, `(0533) 504407`, số bàn `024 3567 8901`.
