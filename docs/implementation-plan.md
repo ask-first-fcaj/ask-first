@@ -895,6 +895,7 @@ Chỉ viết khi quyết định làm Mini App. Đủ các endpoint ở ARCH §1
 | **M4: MVP FREEZE** | W5 (20/11) | Đủ các FR mức MVP ở ARCH §1.2 (gồm `/nguoithan`, `/lichsu` trong chat; **không** gồm voice, multi-turn), eval chạy trong CI | Recall ≥ 90%, báo nhầm ≤ 10% trên 300 mẫu; không còn bug mức P0 hay P1 |
 | **M5: Test nội bộ** | W6 (đến 25/11) | Team và người nhà dùng thử (thay cho pilot 10–20 hộ cũ); UAT theo §8 | Danh sách lỗi và phản hồi đã xử lý; **chưa có** số liệu người dùng thật ngoài team |
 | **M6: Thuyết trình** | W6 (27/11) | Slide, demo, báo cáo eval và chi phí thật | Rehearsal 2 lần |
+| **M7: Nộp Workshop FCAJ** | W6 (CN 29/11) | Workshop là bài nhóm, mỗi người nộp riêng lên portal kèm worklog cá nhân. Kh làm lab guide step-by-step | Site Workshop có diagram draw.io (icon AWS chính thức, chỉ vẽ phần MVP đang chạy), cost từ SH-09, clean-up từ SH-10, link demo/video |
 
 Sau M4 **chỉ sửa bug, chỉnh prompt hoặc ngưỡng** (qua eval gate) và làm việc hạ tầng/runbook (BE-08b, BE-10, BE-11). Tính năng mới (voice, VLM, multi-turn, Phase 2, Mini App) để dành cho sau 6 tuần.
 
@@ -911,7 +912,7 @@ Sau M4 **chỉ sửa bug, chỉnh prompt hoặc ngưỡng** (qua eval gate) và 
 | **W3** (02–08/11) | BE-07, BE-27, BE-23, BE-06 (bắt đầu), **INT-01** | BE-04, BE-25, BE-26 · trực tuần | AI-04, AI-05, AI-06 | AI-22 (xong), AI-23, AI-25, AI-24a (bắt đầu), SH-08 |
 | **W4** (09–15/11) | BE-06, BE-34, BE-29 🔀, BE-08a (bắt đầu), **INT-02** · trực tuần | BE-28, BE-35 | AI-07, AI-26, AI-24b (bắt đầu) | AI-24a, AI-08, AI-29 (bắt đầu), AI-09 (bắt đầu, cùng BE2), phụ AI-26 |
 | **W5** (16–22/11) | BE-13, BE-08a, BE-09a 🔀, **INT-03** 🔀 | BE-30 🔀, BE-31 🔀, BE-36, BE-09b 🔀 · trực tuần | AI-24b, AI-10, AI-13 | AI-29, AI-09, AI-11, AI-14 (bắt đầu) |
-| **W6** (23–29/11) | BE-10, BE-12 (trực test nội bộ), slide kiến trúc và chi phí | BE-08b 🔀, BE-11, UAT (điều phối), BE-12, video demo | Báo cáo eval cuối, slide AI và eval | AI-14 (xong), slide dữ liệu và taxonomy |
+| **W6** (23–29/11) | BE-10, BE-12 (trực test nội bộ), **SH-09** (Pricing Calculator), slide kiến trúc và chi phí | BE-08b 🔀, BE-11, UAT (điều phối), BE-12, **SH-10** (clean-up), video demo | Báo cáo eval cuối, slide AI và eval | AI-14 (xong), slide dữ liệu và taxonomy |
 
 **Cảnh báo tải (v3):** W4–W5 nén hai tuần cũ thành một: BE1 W4 và BE2 W5 mỗi người ≈ 7 ngày công trong tuần 5 ngày. Nếu trễ, cắt theo thứ tự ở §9 (sau những việc đã hoãn): AI-11 → BE-10 → phần "người thân" của BE-36 → rút gọn AI-14.
 
@@ -941,6 +942,8 @@ Việc chung chạy xuyên suốt: SH-03 (mỗi người 25 mẫu eval ở W1–
 | SH-06 | Test truy cập Telegram trên Viettel, VNPT, FPT, MobiFone (4G và cáp quang) | BE2 | W1 | S | Bảng kết quả trong README, có ngày test |
 | SH-07 | Chính sách quyền riêng tư và disclaimer (tiếng Việt, ngắn, dễ đọc) theo ARCH §9.1; nhờ mentor đọc lại | BE2 + AI1 | W2 | S | File `docs/privacy-policy.md` có version và đã gắn vào FE-00 |
 | SH-08 | Copy tin nhắn của bot: lời chào, đồng ý, 4 mức kết quả, checklist "30 phút đầu", cảnh báo người thân, nhắc lại 15 phút | BE2 + AI2 (AI1 duyệt câu chữ) | W3 | S | 2 người lớn tuổi (người nhà) đọc thử và hiểu đúng |
+| SH-09 | **Dự toán chi phí bằng AWS Pricing Calculator** (FCAJ bắt buộc; Workshop thiếu phần COST thì mục Trình bày = 0 điểm): estimate cho stack MVP đang chạy (Lambda `webhook`/`worker`/`ai`, SQS, DynamoDB, S3, ECR, CloudWatch, SNS, SSM, Bedrock Qwen3 32B ở `ap-southeast-2`), kịch bản 3.000 lượt/tháng theo giả định ARCH §12 nhưng bỏ voice và VLM (đã hoãn); token Bedrock lấy từ số đo thật (ADR-002, `eval/report.md`), kh dùng số ước lượng. Kèm 3–5 cách tối ưu chi phí (Free Tier, cache, fast path, kill switch, log retention, S3 lifecycle) | BE1 (chính), AI1 (số token, giá Bedrock) | W5–W6 | S | `docs/results/cost-estimate.md` có link share của estimate, ngày tạo, bảng USD/tháng theo dịch vụ và các giả định; ARCH §12 sửa theo estimate; số trên slide và Workshop lấy từ đây |
+| SH-10 | **Hướng dẫn dọn dẹp tài nguyên (Clean-up)** cho Workshop, ghi vào `infra/README.md`: `deleteWebhook` của bot → tắt provisioned concurrency nếu có bật → empty S3 bucket (cả các version cũ nếu bật versioning) rồi xoá → xoá image ECR → `sam delete` stack → xoá log group còn sót, SSM params, Budgets mà stack kh quản lý. S3 và ECR phải dọn trước `sam delete` vì CloudFormation kh xoá được bucket còn object (`DataBucket` kh set `DeletionPolicy`) | BE2 (chính), BE1 | W6 | S | Deploy một stack tạm, chạy đúng theo hướng dẫn, `aws` CLI kh còn tài nguyên nào của stack đó |
 
 ### 6.2 BACKEND
 
