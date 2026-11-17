@@ -109,14 +109,23 @@ public class TelegramAdapter {
             String fileName = d.hasNonNull("file_name") ? d.path("file_name").asText() : null;
             media = new MediaRef(fileId, fileUniqueId, mime, size, null, fileName);
 
-            // BE-35: Nhận diện tệp cài đặt Android (.apk) độc hại
-            if ((fileName != null && fileName.toLowerCase().endsWith(".apk"))
-                    || "application/vnd.android.package-archive".equalsIgnoreCase(mime)) {
+            // BE-35: Nhận diện tệp cài đặt Android (.apk, .xapk, .apks, .aab) độc hại
+            boolean isAndroidPackage = (fileName != null && (
+                    fileName.toLowerCase().endsWith(".apk")
+                    || fileName.toLowerCase().endsWith(".xapk")
+                    || fileName.toLowerCase().endsWith(".apks")
+                    || fileName.toLowerCase().endsWith(".aab")))
+                    || "application/vnd.android.package-archive".equalsIgnoreCase(mime);
+            if (isAndroidPackage) {
                 kind = "apk";
+            } else if ((mime != null && mime.toLowerCase().startsWith("image/"))
+                    || (fileName != null && isImageExtension(fileName))) {
+                kind = "photo";
             } else {
                 kind = "document";
             }
-        } else if (msg.has("video") || msg.has("animation") || msg.has("contact") || msg.has("location")) {
+        } else if (msg.has("video") || msg.has("video_note") || msg.has("animation") || msg.has("contact")
+                || msg.has("location") || msg.has("venue") || msg.has("poll")) {
             kind = "unsupported_media";
         } else if (text == null) {
             // No text and no supported media -> ignore update
@@ -211,6 +220,12 @@ public class TelegramAdapter {
             end--;
         }
         return value.substring(0, end);
+    }
+
+    private static boolean isImageExtension(String name) {
+        String lower = name.toLowerCase();
+        return lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+                || lower.endsWith(".webp") || lower.endsWith(".gif") || lower.endsWith(".bmp");
     }
 
     /**
