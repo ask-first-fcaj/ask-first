@@ -76,17 +76,25 @@ def test_llm_cannot_lower_what_rules_caught() -> None:
 
 
 def test_llm_score_wins_when_higher() -> None:
-    v = _fuse([URGENCY], _j(risk_score=70))
-    assert (v.score, v.level, v.path) == (70, "SUSPICIOUS", "llm")
+    v = _fuse([URGENCY], _j(risk_score=65))
+    assert (v.score, v.level, v.path) == (65, "SUSPICIOUS", "llm")
 
 
 @pytest.mark.parametrize(
     ("score", "level"),
-    [(0, "LOW_RISK"), (24, "LOW_RISK"), (25, "UNSURE"), (49, "UNSURE"), (50, "SUSPICIOUS"),
-     (74, "SUSPICIOUS"), (75, "DANGEROUS"), (100, "DANGEROUS")],
+    [(0, "LOW_RISK"), (24, "LOW_RISK"), (25, "UNSURE"), (59, "UNSURE"), (60, "SUSPICIOUS"),
+     (69, "SUSPICIOUS"), (70, "DANGEROUS"), (100, "DANGEROUS")],   # 70/60/25: ADR-005
 )
 def test_level_thresholds(score: int, level: str) -> None:
     assert _fuse([], _j(risk_score=score)).level == level
+
+
+def test_rules_only_keeps_start_thresholds() -> None:
+    # ADR-005 chỉ hiệu chỉnh đường có LLM: cùng điểm 55, chỉ luật vẫn SUSPICIOUS, có LLM thì UNSURE.
+    assert _fuse([_s("R_X", 55)], None).level == "SUSPICIOUS"
+    assert _fuse([], _j(risk_score=55)).level == "UNSURE"
+    assert _fuse([_s("R_X", 72)], None).level == "SUSPICIOUS"
+    assert _fuse([_s("R_X", 72)], None, thresholds=F.Thresholds(70, 45, 20)).level == "DANGEROUS"
 
 
 def test_custom_thresholds_from_calibration() -> None:
@@ -125,8 +133,8 @@ def test_low_confidence_in_middle_band_becomes_unsure() -> None:
 
 
 def test_low_confidence_does_not_lower_level_set_by_rules() -> None:
-    v = _fuse([SECRECY, URGENCY, _s("R_PRIZE", 20)], _j(risk_score=40, confidence="low"))
-    assert v.score == 70 and v.level == "SUSPICIOUS"
+    v = _fuse([SECRECY, URGENCY, _s("R_PRIZE", 15)], _j(risk_score=40, confidence="low"))
+    assert v.score == 65 and v.level == "SUSPICIOUS"
 
 
 def test_low_confidence_keeps_dangerous_and_low_risk() -> None:
@@ -189,7 +197,7 @@ def test_no_alert_when_dangerous_without_risky_action() -> None:
 
 
 def test_no_alert_below_dangerous_even_with_risky_action() -> None:
-    v = _fuse([TRANSFER], _j(risk_score=55, requested_actions=["transfer_money"]))
+    v = _fuse([TRANSFER], _j(risk_score=65, requested_actions=["transfer_money"]))
     assert v.level == "SUSPICIOUS" and v.should_alert is False
 
 

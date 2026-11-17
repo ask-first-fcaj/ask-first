@@ -758,7 +758,7 @@ def fuse(signals: list[Signal], j: Judgement | None, clf: float | None = None) -
     return Verdict(score=score, level=level, notify=(level == "DANGEROUS" and risky), ...)
 ```
 
-Các ngưỡng 75/50/25 chỉ là **giá trị khởi điểm**. Team cần **hiệu chỉnh trên bộ test**, chọn ngưỡng đạt recall ≥ 90% mà vẫn giữ báo nhầm ≤ 10% trên tập lành tính trông đáng ngờ.
+Các ngưỡng 75/50/25 chỉ là **giá trị khởi điểm**. Team cần **hiệu chỉnh trên bộ test**, chọn ngưỡng đạt recall ≥ 90% mà vẫn giữ báo nhầm ≤ 10% trên tập lành tính trông đáng ngờ. AI-10 đã chốt **70/60/25** cho đường có LLM, đường chỉ luật giữ 75/50/25 (ADR-005).
 
 ### 6.8 Stage Respond: template, không để LLM tự do
 
