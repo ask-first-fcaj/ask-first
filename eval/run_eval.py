@@ -199,6 +199,16 @@ def compute_metrics(samples: list[dict], results: list[dict]) -> dict:
         if lack:
             missing.append({"id": r["sample"]["id"], "missing": lack})
 
+    # AI-13: tách theo nguồn mẫu (LABELING.md mục 10), vì số trên dữ liệu tự soạn và dữ liệu thật phải báo riêng.
+    by_provenance = {}
+    for p in sorted({r["sample"].get("provenance") or "unknown" for r in rows}):
+        rs = [r for r in rows if (r["sample"].get("provenance") or "unknown") == p]
+        sc = [r for r in rs if r["label"]["is_scam"]]
+        bs = [r for r in rs if not r["label"]["is_scam"] and r["sample"]["split"] == "benign_suspicious"]
+        by_provenance[p] = {"n": len(rs), "n_scam": len(sc), "recall": _rate(sum(r["caught"] for r in sc), len(sc)),
+                            "n_benign_suspicious": len(bs), "false_alarm": _rate(sum(r["caught"] for r in bs), len(bs)),
+                            "level_pass": _rate(sum(_level_ok(r["label"], r["level"]) for r in rs), len(rs))}
+
     ok = [r["v"] for r in rows if r["v"]]
     stage_ms: dict[str, list[int]] = {}
     for v in ok:
@@ -222,6 +232,7 @@ def compute_metrics(samples: list[dict], results: list[dict]) -> dict:
         "level_pass": _rate(sum(_level_ok(r["label"], r["level"]) for r in rows), len(rows)),
         "scenario_accuracy": _rate(sum(1 for r in rows if r["v"] and r["v"]["scenario"] == r["label"]["scenario"]), len(rows)),
         "f1_by_group": f1,
+        "by_provenance": by_provenance,
         "missing_must_signals": missing,
         "path_counts": dict(sorted(paths.items())),
         "fast_path_rate": _rate(paths.get("fast", 0), len(ok)),
@@ -289,6 +300,13 @@ def render_markdown(metrics: dict, impl: str, baseline: dict | None = None, fail
         "| Nhóm | Số mẫu | F1 |",
         "|---|---|---|",
         *[f"| {g} | {d['support']} | {_pct(d['f1'])} |" for g, d in metrics["f1_by_group"].items()],
+        "",
+        "## Theo nguồn mẫu (provenance)",
+        "",
+        "| Nguồn | Mẫu | Recall | Báo nhầm (benign_suspicious) | Đúng mức nhãn |",
+        "|---|---|---|---|---|",
+        *[f"| {p} | {d['n']} | {_pct(d['recall'])} ({d['n_scam']}) | {_pct(d['false_alarm'])} ({d['n_benign_suspicious']}) "
+          f"| {_pct(d['level_pass'])} |" for p, d in metrics["by_provenance"].items()],
         "",
         f"Đường xử lý: {metrics['path_counts'] or 'n/a'}. Độ trễ p95 theo bước: {metrics['stage_latency_p95_ms'] or 'n/a'}.",
     ]
