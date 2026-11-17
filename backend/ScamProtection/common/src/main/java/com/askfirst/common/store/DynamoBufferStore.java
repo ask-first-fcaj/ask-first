@@ -11,23 +11,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
-import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
-import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
-import software.amazon.awssdk.services.dynamodb.model.DeleteItemRequest;
-import software.amazon.awssdk.services.dynamodb.model.DeleteRequest;
-import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
-import software.amazon.awssdk.services.dynamodb.model.GetItemResponse;
-import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
-import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
-import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
-import software.amazon.awssdk.services.dynamodb.model.ReturnValue;
-import software.amazon.awssdk.services.dynamodb.model.UpdateItemRequest;
-import software.amazon.awssdk.services.dynamodb.model.UpdateItemResponse;
-import software.amazon.awssdk.services.dynamodb.model.WriteRequest;
-import software.amazon.awssdk.services.dynamodb.model.BatchWriteItemRequest;
+import software.amazon.awssdk.services.dynamodb.model.*;
 
 /** {@link BufferStore} trên bảng single-table. Xem Javadoc của interface về cấu trúc item. */
 public final class DynamoBufferStore implements BufferStore {
+
+    private static final int MAX_BATCH_ATTEMPTS = 4;
 
     private static final String META = "META";
     private static final String MSG_PREFIX = "MSG#";
@@ -135,35 +124,45 @@ public final class DynamoBufferStore implements BufferStore {
 
     @Override
     public boolean finish(String chatId, long seq) {
-        // Thứ tự quan trọng: xóa MSG (chỉ đến seq) TRƯỚC, đổi META SAU. Tin mới đến giữa chừng mang
-        // seq > seq nên không bị xóa nhầm, và META chỉ bị reset khi chắc chắn không còn tin mới.
-        deleteMessagesUpTo(chatId, seq);
-        try {
-            client.deleteItem(DeleteItemRequest.builder()
-                    .tableName(table)
-                    .key(key(pk(chatId), META))
-                    .conditionExpression("attribute_not_exists(PK) OR max_seq = :seq")
-                    .expressionAttributeValues(Map.of(":seq", n(seq)))
-                    .build());
-            return true;
-        } catch (ConditionalCheckFailedException newer) {
+        // Chỉ được xoá META khi MỌI tin ≤ seq đã bị xoá thật sự. Nếu còn sót, giữ META để
+        // max_seq tiếp tục tăng: cụm sau không đếm lại từ 1 và không đọc lẫn MSG# cũ.
+        boolean allDeleted = deleteMessagesUpTo(chatId, seq);
+        if (allDeleted) {
             try {
-                client.updateItem(UpdateItemRequest.builder()
+                client.deleteItem(DeleteItemRequest.builder()
                         .tableName(table)
                         .key(key(pk(chatId), META))
-                        .updateExpression("SET done_seq = :seq REMOVE placeholder_id")
-                        .conditionExpression("attribute_exists(PK) AND done_seq < :seq")
+                        .conditionExpression("max_seq = :seq")
                         .expressionAttributeValues(Map.of(":seq", n(seq)))
                         .build());
-            } catch (ConditionalCheckFailedException alreadyDone) {
-                // đã xong từ lần trước: không sao
+                return true;
+            } catch (ConditionalCheckFailedException newerOrGone) {
+                // có tin mới hơn (hoặc META đã mất): đi tiếp nhánh giữ META bên dưới
             }
-            return false;
+        }
+        try {
+            UpdateItemResponse response = client.updateItem(UpdateItemRequest.builder()
+                    .tableName(table)
+                    .key(key(pk(chatId), META))
+                    .updateExpression("SET done_seq = :seq REMOVE placeholder_id")
+                    .conditionExpression("attribute_exists(PK) AND done_seq < :seq")
+                    .expressionAttributeValues(Map.of(":seq", n(seq)))
+                    .returnValues(ReturnValue.ALL_NEW)
+                    .build());
+            // false chỉ khi thật sự có tin mới; dọn dẹp chưa xong thì META vẫn giữ nhưng không có gì cần xử lý thêm
+            return DynamoItems.num(response.attributes(), "max_seq", seq) <= seq;
+        } catch (ConditionalCheckFailedException alreadyDone) {
+            // Retry / đã xóa hẳn: true nếu buffer không còn
+            return state(chatId).isEmpty();
         }
     }
 
-    /** Xóa theo lô, best-effort: item sót sẽ được TTL dọn nên lỗi ở đây không được làm hỏng job. */
-    private void deleteMessagesUpTo(String chatId, long seq) {
+    /**
+     * Xóa theo lô. Trả về true CHỈ KHI toàn bộ MSG# ≤ seq đã bị xoá (không lỗi, không còn UnprocessedItems).
+     * Lỗi / throttle không ném ra ngoài, nhưng caller phải biết để không xoá META.
+     * Item sót sẽ bị xoá ở lần finish kế tiếp (range 1..seq); TTL chỉ là lưới an toàn cuối, không đảm bảo thời hạn.
+     */
+    private boolean deleteMessagesUpTo(String chatId, long seq) {
         try {
             List<WriteRequest> deletes = new ArrayList<>();
             Map<String, AttributeValue> startKey = null;
@@ -188,15 +187,35 @@ public final class DynamoBufferStore implements BufferStore {
                 }
                 startKey = page.hasLastEvaluatedKey() && !page.lastEvaluatedKey().isEmpty() ? page.lastEvaluatedKey() : null;
             } while (startKey != null);
-
             for (int i = 0; i < deletes.size(); i += 25) {
-                List<WriteRequest> chunk = deletes.subList(i, Math.min(i + 25, deletes.size()));
-                client.batchWriteItem(BatchWriteItemRequest.builder()
-                        .requestItems(Map.of(table, chunk))
-                        .build());
+                if (!batchDelete(deletes.subList(i, Math.min(i + 25, deletes.size())))) {
+                    return false;
+                }
             }
-        } catch (RuntimeException ignored) {
-            // TTL dọn phần còn lại
+            return true;
+        } catch (RuntimeException e) {
+            return false;
         }
+    }
+
+    /** batchWriteItem khi bị throttle không ném lỗi mà trả UnprocessedItems: phải retry có backoff. */
+    private boolean batchDelete(List<WriteRequest> chunk) {
+        Map<String, List<WriteRequest>> pending = Map.of(table, chunk);
+        for (int attempt = 0; attempt < MAX_BATCH_ATTEMPTS; attempt++) {
+            BatchWriteItemResponse response = client.batchWriteItem(BatchWriteItemRequest.builder()
+                    .requestItems(pending)
+                    .build());
+            if (!response.hasUnprocessedItems() || response.unprocessedItems().isEmpty()) {
+                return true;
+            }
+            pending = response.unprocessedItems();
+            try {
+                Thread.sleep(50L << attempt); // 50, 100, 200, 400 ms
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
     }
 }

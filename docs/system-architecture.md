@@ -633,6 +633,7 @@ Tổng p95 cho ảnh khi Lambda đã warm: khoảng 3 giây (gom tin) cộng 5�
 | `R_SECRECY` | không được (nói, trao đổi, chia sẻ) với (ai, bất kỳ ai, người thân); giữ bí mật | 35 | |
 | `R_AUTHORITY` | công an, viện kiểm sát, toà án, điều tra viên, cán bộ + cấp bậc | 20 | |
 | `R_MONEY_TRANSFER` | chuyển khoản, chuyển tiền, nạp tiền + số tiền hoặc STK | 25 | |
+| `R_OVERPAY_REFUND` | (chuyển, nạp) + (dư, thừa, nhầm) + xin (chuyển, trả, hoàn) lại; bỏ khi chỉ đường qua ngân hàng (#140) | 50 | **cứng** |
 | `R_URGENCY` | ngay lập tức; trong vòng N (giờ, phút); bị khoá; phong toả; cưỡng chế | 15 | |
 | `R_TRAFFIC_FINE` | phạt nguội, vi phạm giao thông + link | 20 | |
 | `R_PRIZE` / `R_TASK_JOB` / `R_RECOVERY` | trúng thưởng, tri ân / làm nhiệm vụ, việc nhẹ lương cao / lấy lại tiền bị lừa | 20 mỗi luật | |
@@ -758,7 +759,7 @@ def fuse(signals: list[Signal], j: Judgement | None, clf: float | None = None) -
     return Verdict(score=score, level=level, notify=(level == "DANGEROUS" and risky), ...)
 ```
 
-Các ngưỡng 75/50/25 chỉ là **giá trị khởi điểm**. Team cần **hiệu chỉnh trên bộ test**, chọn ngưỡng đạt recall ≥ 90% mà vẫn giữ báo nhầm ≤ 10% trên tập lành tính trông đáng ngờ.
+Các ngưỡng 75/50/25 chỉ là **giá trị khởi điểm**. Team cần **hiệu chỉnh trên bộ test**, chọn ngưỡng đạt recall ≥ 90% mà vẫn giữ báo nhầm ≤ 10% trên tập lành tính trông đáng ngờ. AI-10 đã chốt **70/60/25** cho đường có LLM, đường chỉ luật giữ 75/50/25 (ADR-005).
 
 ### 6.8 Stage Respond: template, không để LLM tự do
 
