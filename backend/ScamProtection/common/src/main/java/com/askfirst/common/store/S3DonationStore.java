@@ -1,6 +1,9 @@
 package com.askfirst.common.store;
 
+import com.askfirst.common.Ulid;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Objects;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -24,13 +27,26 @@ public final class S3DonationStore implements DonationStore {
     }
 
     public static String hashUid(String uid) {
-        return AuditRepo.hashUid(uid);
+        if (uid == null) {
+            uid = "";
+        }
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(uid.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     @Override
     public String saveDonatedSample(String userId, String checkId, String maskedText) {
         String uidHash = hashUid(userId);
-        String sampleId = (checkId != null && !checkId.isBlank()) ? checkId : java.util.UUID.randomUUID().toString();
+        String sampleId = (checkId != null && !checkId.isBlank()) ? checkId : Ulid.next();
         String s3Key = "donated/" + uidHash + "/" + sampleId + ".txt";
 
         byte[] contentBytes = (maskedText != null ? maskedText : "").getBytes(StandardCharsets.UTF_8);
