@@ -24,3 +24,5 @@ node_modules/
 thien/
 # eval: báo cáo run_eval.py
 eval/out/
+# model/index tải về local cho run_eval.py (MODELS.md), production lấy từ S3
+ai/artifacts/
