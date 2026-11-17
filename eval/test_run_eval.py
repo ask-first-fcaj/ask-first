@@ -79,6 +79,15 @@ def test_f1_by_group():
     assert f1["N4"] == {"support": 0, "f1": None}
 
 
+def test_metrics_split_by_provenance():
+    samples = [s | {"provenance": "rewritten"} if s["id"] in {"s1", "s4", "b2", "n1"} else s for s in TEN]
+    by = run_eval.compute_metrics(samples, run_eval.run(m_stub(), samples, "stub"))["by_provenance"]
+    # s1 DANGEROUS bắt được, s4 UNSURE lọt; b2 SUSPICIOUS là báo nhầm; đúng mức: s1, n1.
+    assert by["rewritten"] == {"n": 4, "n_scam": 2, "recall": 0.5, "n_benign_suspicious": 1, "false_alarm": 1.0,
+                               "level_pass": 0.5}
+    assert by["unknown"]["n"] == 6
+
+
 def m_stub():
     from askfirst.pipeline.stub import StubPipeline
     return StubPipeline()
