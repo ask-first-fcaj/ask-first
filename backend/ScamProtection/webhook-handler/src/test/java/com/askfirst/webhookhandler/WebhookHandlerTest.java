@@ -415,6 +415,317 @@ class WebhookHandlerTest {
         assertThat(fakeTelegram.lastText == null || !fakeTelegram.lastText.contains("Cảm ơn")).isTrue();
     }
 
+    @Test
+    @DisplayName("BE-23: tin đầu cụm gửi ⏳, ghi buffer seq=1, enqueue AnalyzeJob delay 3s")
+    void testBufferFirstMessageSendsPlaceholderAndDelayedJob() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        InMemoryBufferStore buffer = new InMemoryBufferStore();
+        CapturingSqsClient sqs = new CapturingSqsClient();
+        WebhookHandler h = handlerWithBuffer(buffer, sqs, null);
+
+        APIGatewayProxyResponseEvent res = h.handleRequest(createRequest(textUpdate(501, "kiểm tra 1")), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(res.getBody()).isEqualTo("OK");
+        assertThat(buffer.lastSeq).isEqualTo(1L);
+        assertThat(buffer.placeholderId).isEqualTo(999);
+        assertThat(fakeTelegram.lastText).startsWith("⏳");
+        assertThat(sqs.sentCount.get()).isEqualTo(1);
+        assertThat(sqs.lastDelaySeconds).isEqualTo(3);
+        assertThat(sqs.lastBody).contains("\"seq\":1");
+        assertThat(sqs.lastBody).contains("analyze");
+    }
+
+    @Test
+    @DisplayName("BE-23: tin thứ 2 không gửi thêm ⏳, job seq=2 vẫn delay 3s")
+    void testBufferSecondMessageNoExtraPlaceholder() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        InMemoryBufferStore buffer = new InMemoryBufferStore();
+        buffer.seqGenerator.set(2);
+        CapturingSqsClient sqs = new CapturingSqsClient();
+        WebhookHandler h = handlerWithBuffer(buffer, sqs, null);
+        fakeTelegram.lastText = null;
+
+        APIGatewayProxyResponseEvent res = h.handleRequest(createRequest(textUpdate(502, "kiểm tra 2")), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(buffer.lastSeq).isEqualTo(2L);
+        assertThat(buffer.placeholderId).isNull();
+        assertThat(fakeTelegram.lastText == null || !fakeTelegram.lastText.startsWith("⏳")).isTrue();
+        assertThat(sqs.lastDelaySeconds).isEqualTo(3);
+        assertThat(sqs.lastBody).contains("\"seq\":2");
+    }
+
+    @Test
+    @DisplayName("BE-23: ba tin liên tiếp → đúng một ⏳ và ba job seq 1,2,3")
+    void testBufferThreeMessagesOnePlaceholder() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        InMemoryBufferStore buffer = new InMemoryBufferStore();
+        CapturingSqsClient sqs = new CapturingSqsClient();
+        WebhookHandler h = handlerWithBuffer(buffer, sqs, null);
+
+        h.handleRequest(createRequest(textUpdate(510, "a")), mockContext);
+        h.handleRequest(createRequest(textUpdate(511, "b")), mockContext);
+        h.handleRequest(createRequest(textUpdate(512, "c")), mockContext);
+
+        assertThat(buffer.placeholderSetCount.get()).isEqualTo(1);
+        assertThat(sqs.sentCount.get()).isEqualTo(3);
+        assertThat(sqs.bodies).hasSize(3);
+        assertThat(sqs.bodies.get(0)).contains("\"seq\":1");
+        assertThat(sqs.bodies.get(1)).contains("\"seq\":2");
+        assertThat(sqs.bodies.get(2)).contains("\"seq\":3");
+        assertThat(sqs.delays).containsExactly(3, 3, 3);
+    }
+
+    @Test
+    @DisplayName("BE-23: ghi BUFFER# lỗi → 500, không enqueue")
+    void testBufferAppendFailureReturns500() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        InMemoryBufferStore buffer = new InMemoryBufferStore();
+        buffer.failAppend = true;
+        CapturingSqsClient sqs = new CapturingSqsClient();
+        WebhookHandler h = handlerWithBuffer(buffer, sqs, null);
+
+        APIGatewayProxyResponseEvent res = h.handleRequest(createRequest(textUpdate(520, "x")), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(500);
+        assertThat(res.getBody()).isEqualTo("BUFFER_FAILED");
+        assertThat(sqs.sentCount.get()).isZero();
+    }
+
+    @Test
+    @DisplayName("BE-23: không có BufferStore vẫn dùng đường cũ (InboundMessage, không bắt buộc envelope analyze)")
+    void testWithoutBufferStoreKeepsLegacyEnqueue() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        // handler mặc định trong setUp: bufferStore = null
+        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(textUpdate(530, "legacy")), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(res.getBody()).isEqualTo("OK");
+        assertThat(fakeSqs.sentCount.get()).isEqualTo(1);
+    }
+
+    // ------------------------------------------------------------------ BE-29: callback ack: người thân
+
+    @Test
+    @DisplayName("BE-29: đúng guardian bấm ack: → markAcked và trả lời callback")
+    void testGuardianAckMarksAlert() {
+        InMemoryAlertStore alerts = new InMemoryAlertStore();
+        alerts.seed(pendingAlert("A-1", "tg:201"));
+        WebhookHandler h = handlerWithBuffer(null, fakeSqs, alerts);
+
+        APIGatewayProxyResponseEvent res = h.handleRequest(
+                createRequest(ackCallback(601, 201, "A-1")), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(res.getBody()).isEqualTo("CALLBACK_HANDLED");
+        assertThat(alerts.acked.get()).isTrue();
+        assertThat(fakeTelegram.lastCallbackAnswer).contains("đã ghi nhận");
+    }
+
+    @Test
+    @DisplayName("BE-29: sai người bấm ack: → không markAcked")
+    void testWrongUserAckIsRejected() {
+        InMemoryAlertStore alerts = new InMemoryAlertStore();
+        alerts.seed(pendingAlert("A-2", "tg:201"));
+        WebhookHandler h = handlerWithBuffer(null, fakeSqs, alerts);
+
+        APIGatewayProxyResponseEvent res = h.handleRequest(
+                createRequest(ackCallback(602, 999, "A-2")), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(alerts.acked.get()).isFalse();
+        assertThat(fakeTelegram.lastCallbackAnswer).contains("không còn hiệu lực");
+    }
+
+    @Test
+    @DisplayName("BE-29: alert_id không tồn tại → không markAcked")
+    void testUnknownAlertAckIsRejected() {
+        InMemoryAlertStore alerts = new InMemoryAlertStore();
+        WebhookHandler h = handlerWithBuffer(null, fakeSqs, alerts);
+
+        APIGatewayProxyResponseEvent res = h.handleRequest(
+                createRequest(ackCallback(603, 201, "KHONG-CO")), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(alerts.acked.get()).isFalse();
+        assertThat(fakeTelegram.lastCallbackAnswer).contains("không còn hiệu lực");
+    }
+
+    @Test
+    @DisplayName("BE-29: không có AlertStore → UNKNOWN_CALLBACK")
+    void testAckWithoutAlertStoreIsUnknown() {
+        // handler setUp không có alertStore
+        APIGatewayProxyResponseEvent res = handler.handleRequest(
+                createRequest(ackCallback(604, 201, "A-9")), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(res.getBody()).isEqualTo("UNKNOWN_CALLBACK");
+    }
+
+    @Test
+    @DisplayName("BE-29: guardianUid dạng USER#tg:201 vẫn khớp from.id=201")
+    void testAckMatchesUserPrefix() {
+        InMemoryAlertStore alerts = new InMemoryAlertStore();
+        alerts.seed(pendingAlert("A-3", "USER#tg:201"));
+        WebhookHandler h = handlerWithBuffer(null, fakeSqs, alerts);
+
+        APIGatewayProxyResponseEvent res = h.handleRequest(
+                createRequest(ackCallback(605, 201, "A-3")), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("CALLBACK_HANDLED");
+        assertThat(alerts.acked.get()).isTrue();
+    }
+
+    private WebhookHandler handlerWithBuffer(
+            InMemoryBufferStore buffer, SqsClient sqs, InMemoryAlertStore alerts) {
+        return new WebhookHandler(
+                fakeTelegram,
+                sqs,
+                "https://sqs.mock.queue",
+                SECRET,
+                fakeUserRepo,
+                fakeAuditRepo,
+                fakeRateLimitRepo,
+                POLICY_SHA256,
+                null,
+                buffer,
+                alerts);
+    }
+
+    private static String ackCallback(long updateId, long fromId, String alertId) {
+        return "{\"update_id\": " + updateId + ", \"callback_query\": {\"id\": \"cb_" + updateId + "\", "
+                + "\"from\": {\"id\": " + fromId + ", \"is_bot\": false}, \"message\": {\"message_id\": 50, "
+                + "\"chat\": {\"id\": " + fromId + ", \"type\": \"private\"}, \"date\": 1729000000}, "
+                + "\"data\": \"ack:" + alertId + "\"}}";
+    }
+
+    private static com.askfirst.common.store.AlertRecord pendingAlert(String alertId, String guardianUid) {
+        return new com.askfirst.common.store.AlertRecord(
+                alertId,
+                "tg:111",
+                "222",
+                "C1",
+                guardianUid,
+                "201",
+                "Lan",
+                2,
+                com.askfirst.common.store.AlertRecord.PENDING,
+                null,
+                null,
+                null,
+                java.time.Instant.now().getEpochSecond() + 3600);
+    }
+    private static class CapturingSqsClient implements SqsClient {
+        final AtomicInteger sentCount = new AtomicInteger(0);
+        final List<String> bodies = new ArrayList<>();
+        final List<Integer> delays = new ArrayList<>();
+        String lastBody;
+        Integer lastDelaySeconds;
+
+        @Override
+        public String serviceName() {
+            return "sqs";
+        }
+
+        @Override
+        public void close() {
+        }
+
+        @Override
+        public SendMessageResponse sendMessage(SendMessageRequest req) {
+            lastBody = req.messageBody();
+            lastDelaySeconds = req.delaySeconds();
+            bodies.add(lastBody);
+            delays.add(lastDelaySeconds == null ? 0 : lastDelaySeconds);
+            sentCount.incrementAndGet();
+            return SendMessageResponse.builder().messageId("mock-sqs-id").build();
+        }
+    }
+
+    private static class InMemoryBufferStore implements com.askfirst.common.store.BufferStore {
+        final AtomicInteger seqGenerator = new AtomicInteger(1);
+        final AtomicInteger placeholderSetCount = new AtomicInteger(0);
+        long lastSeq;
+        Integer placeholderId;
+        boolean failAppend;
+
+        @Override
+        public long append(String chatId, com.askfirst.common.channel.model.InboundMessage message, long ttlEpochSeconds) {
+            if (failAppend) {
+                throw new IllegalStateException("BUFFER_DOWN");
+            }
+            lastSeq = seqGenerator.getAndIncrement();
+            return lastSeq;
+        }
+
+        @Override
+        public void setPlaceholder(String chatId, int messageId) {
+            placeholderId = messageId;
+            placeholderSetCount.incrementAndGet();
+        }
+
+        @Override
+        public Optional<com.askfirst.common.store.BufferStore.State> state(String chatId) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<com.askfirst.common.channel.model.InboundMessage> itemsAfter(
+                String chatId, long afterSeq, long upToSeq) {
+            return List.of();
+        }
+
+        @Override
+        public boolean finish(String chatId, long seq) {
+            return true;
+        }
+    }
+
+    private static class InMemoryAlertStore implements com.askfirst.common.store.AlertStore {
+        private com.askfirst.common.store.AlertRecord stored;
+        final AtomicBoolean acked = new AtomicBoolean(false);
+
+        void seed(com.askfirst.common.store.AlertRecord record) {
+            stored = record;
+        }
+
+        @Override
+        public com.askfirst.common.store.AlertRecord reserve(com.askfirst.common.store.AlertRecord pending) {
+            return pending;
+        }
+
+        @Override
+        public Optional<com.askfirst.common.store.AlertRecord> get(String alertId) {
+            if (stored != null && stored.alertId().equals(alertId)) {
+                return Optional.of(stored);
+            }
+            return Optional.empty();
+        }
+
+        @Override
+        public void markSent(String alertId, int messageId) {
+        }
+
+        @Override
+        public void markFailed(String alertId) {
+        }
+
+        @Override
+        public boolean markAcked(String alertId, java.time.Instant at) {
+            if (stored == null || !stored.alertId().equals(alertId)) {
+                return false;
+            }
+            acked.set(true);
+            return true;
+        }
+
+        @Override
+        public boolean markReminded(String alertId, java.time.Instant at) {
+            return false;
+        }
+    }
+
     private WebhookHandler handlerWithDedup(DynamoStoreService dedup) {
         return new WebhookHandler(fakeTelegram, fakeSqs, "https://sqs.mock.queue", SECRET,
                 fakeUserRepo, fakeAuditRepo, fakeRateLimitRepo, POLICY_SHA256, dedup);
