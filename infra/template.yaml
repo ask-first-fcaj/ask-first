@@ -79,6 +79,14 @@ Resources:
               Condition:
                 StringEquals:
                   kms:ViaService: !Sub ssm.${AWS::Region}.amazonaws.com
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:DeleteObject
+                - s3:ListBucket
+              Resource:
+                - !GetAtt DataBucket.Arn
+                - !Sub ${DataBucket.Arn}/*
       FunctionUrlConfig:
         # Function URL công khai: lớp xác thực duy nhất là header X-Telegram-Bot-Api-Secret-Token
         AuthType: NONE
@@ -93,6 +101,7 @@ Resources:
           TELEGRAM_WEBHOOK_SECRET_PARAM: !Sub /askfirst/${Stage}/telegram/webhook_secret
           TELEGRAM_BOT_USERNAME: !Ref TelegramBotUsername
           POLICY_SHA256: !Sub '{{resolve:ssm:/askfirst/${Stage}/config/policy_sha256}}'
+          DATA_BUCKET_NAME: !Ref DataBucket
 
   # ============================================================================
   # 1b. LAMBDA WORKER (SQS jobs: analyze, followup)

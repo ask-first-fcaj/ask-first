@@ -9,6 +9,8 @@ import com.askfirst.common.store.GuardianRecord;
 import com.askfirst.common.store.GuardianRepo;
 import com.askfirst.common.store.InviteRecord;
 import com.askfirst.common.store.InviteRepo;
+import com.askfirst.common.store.UserRecord;
+import com.askfirst.common.store.UserRepo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -226,6 +228,35 @@ class WebhookHandlerBE28Test {
         assertEquals("GUARDIAN_LINKED", auditRepo.events.get(0).event);
     }
 
+    // ── Chấp nhận liên kết phải bật purposes.guardian (worker chỉ báo người thân khi cờ này bật) ──
+    @Test
+    @DisplayName("BE-28: Chấp nhận liên kết → bật mục đích guardian; từ chối thì không bật")
+    void testGuardianAcceptEnablesGuardianPurpose() {
+        PurposeUserRepo userRepo = new PurposeUserRepo();
+        userRepo.users.put(ELDER_UID, new UserRecord(ELDER_UID, String.valueOf(ELDER_CHAT_ID)));
+        WebhookHandler h = new WebhookHandler(telegramClient, null, null, SECRET, userRepo, auditRepo, null,
+                guardianRepo, inviteRepo, POLICY_SHA256, null, false, null);
+
+        GuardianRecord pending = new GuardianRecord(ELDER_UID, RELATIVE_UID);
+        pending.setStatus("pending");
+        guardianRepo.save(pending);
+
+        // Từ chối trước: không được bật
+        APIGatewayProxyResponseEvent rejected = h.handleRequest(
+                buildCallbackRequest(ELDER_CHAT_ID, "guardian:reject:" + RELATIVE_UID), fakeContext());
+        assertEquals("GUARDIAN_REJECTED", rejected.getBody());
+        assertNull(userRepo.users.get(ELDER_UID).getPurposes().get("guardian"));
+
+        GuardianRecord again = new GuardianRecord(ELDER_UID, RELATIVE_UID);
+        again.setStatus("pending");
+        guardianRepo.save(again);
+        APIGatewayProxyResponseEvent accepted = h.handleRequest(
+                buildCallbackRequest(ELDER_CHAT_ID, "guardian:accept:" + RELATIVE_UID + ":2"), fakeContext());
+
+        assertEquals("GUARDIAN_LINKED", accepted.getBody());
+        assertEquals(Boolean.TRUE, userRepo.users.get(ELDER_UID).getPurposes().get("guardian"));
+    }
+
     // ── Test 8: Người cao tuổi từ chối ───────────────────────────────────────
     @Test
     @DisplayName("BE-28: Người cao tuổi từ chối → xoá bản ghi pending, thông báo từ chối")
@@ -285,6 +316,40 @@ class WebhookHandlerBE28Test {
                 buildCallbackRequest(ELDER_CHAT_ID, "guardian:accept:" + RELATIVE_UID + ":1"), fakeContext());
         assertEquals("GUARDIAN_NOT_PENDING", res2.getBody());
         assertTrue(guardianRepo.store.isEmpty());
+    }
+
+    @Test
+    @DisplayName("BE-28: Race condition: 2 yêu cầu accept đồng thời chỉ 1 thành công")
+    void testConcurrentAcceptRaceCondition() {
+        GuardianRecord pending = new GuardianRecord(ELDER_UID, RELATIVE_UID);
+        pending.setShareLevel(1);
+        pending.setStatus("pending");
+        guardianRepo.save(pending);
+
+        APIGatewayProxyResponseEvent res1 = handler.handleRequest(
+                buildCallbackRequest(ELDER_CHAT_ID, "guardian:accept:" + RELATIVE_UID + ":1"), fakeContext());
+        APIGatewayProxyResponseEvent res2 = handler.handleRequest(
+                buildCallbackRequest(ELDER_CHAT_ID, "guardian:accept:" + RELATIVE_UID + ":1"), fakeContext());
+
+        assertEquals("GUARDIAN_LINKED", res1.getBody());
+        assertEquals("GUARDIAN_NOT_PENDING", res2.getBody());
+    }
+
+    @Test
+    @DisplayName("BE-28: Race condition: 2 yêu cầu reject đồng thời chỉ 1 thành công")
+    void testConcurrentRejectRaceCondition() {
+        GuardianRecord pending = new GuardianRecord(ELDER_UID, RELATIVE_UID);
+        pending.setShareLevel(1);
+        pending.setStatus("pending");
+        guardianRepo.save(pending);
+
+        APIGatewayProxyResponseEvent res1 = handler.handleRequest(
+                buildCallbackRequest(ELDER_CHAT_ID, "guardian:reject:" + RELATIVE_UID), fakeContext());
+        APIGatewayProxyResponseEvent res2 = handler.handleRequest(
+                buildCallbackRequest(ELDER_CHAT_ID, "guardian:reject:" + RELATIVE_UID), fakeContext());
+
+        assertEquals("GUARDIAN_REJECTED", res1.getBody());
+        assertEquals("GUARDIAN_NOT_PENDING", res2.getBody());
     }
 
     @Test
@@ -537,6 +602,25 @@ class WebhookHandlerBE28Test {
         }
     }
 
+    static class PurposeUserRepo extends UserRepo {
+        final Map<String, UserRecord> users = new ConcurrentHashMap<>();
+
+        @Override
+        public Optional<UserRecord> getUser(String userId) {
+            return Optional.ofNullable(users.get(userId));
+        }
+
+        @Override
+        public void setPurpose(String userId, String purpose, boolean value) {
+            UserRecord u = users.get(userId);
+            if (u != null) {
+                Map<String, Boolean> merged = new HashMap<>(u.getPurposes());
+                merged.put(purpose, value);
+                u.setPurposes(merged);
+            }
+        }
+    }
+
     static class FakeInviteRepo extends InviteRepo {
         final Map<String, InviteRecord> store = new ConcurrentHashMap<>();
 
@@ -608,6 +692,11 @@ class WebhookHandlerBE28Test {
         @Override
         public void sendMessage(long chatId, String text) {
             sentMessages.add(new SentMsg(chatId, text));
+        }
+
+        @Override
+        public void editReplyMarkup(long chatId, int messageId, Map<String, Object> replyMarkup) {
+            // No-op for tests
         }
     }
 }
