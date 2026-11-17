@@ -633,6 +633,7 @@ Tổng p95 cho ảnh khi Lambda đã warm: khoảng 3 giây (gom tin) cộng 5�
 | `R_SECRECY` | không được (nói, trao đổi, chia sẻ) với (ai, bất kỳ ai, người thân); giữ bí mật | 35 | |
 | `R_AUTHORITY` | công an, viện kiểm sát, toà án, điều tra viên, cán bộ + cấp bậc | 20 | |
 | `R_MONEY_TRANSFER` | chuyển khoản, chuyển tiền, nạp tiền + số tiền hoặc STK | 25 | |
+| `R_OVERPAY_REFUND` | (chuyển, nạp) + (dư, thừa, nhầm) + xin (chuyển, trả, hoàn) lại; bỏ khi chỉ đường qua ngân hàng (#140) | 50 | **cứng** |
 | `R_URGENCY` | ngay lập tức; trong vòng N (giờ, phút); bị khoá; phong toả; cưỡng chế | 15 | |
 | `R_TRAFFIC_FINE` | phạt nguội, vi phạm giao thông + link | 20 | |
 | `R_PRIZE` / `R_TASK_JOB` / `R_RECOVERY` | trúng thưởng, tri ân / làm nhiệm vụ, việc nhẹ lương cao / lấy lại tiền bị lừa | 20 mỗi luật | |

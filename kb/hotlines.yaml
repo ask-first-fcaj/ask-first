@@ -11,32 +11,32 @@
 #  - `kind: app` dùng cho kênh không phải số điện thoại (plan §3.10 mới chỉ có ví dụ `phone`). Số lưu dạng chỉ chữ số, không khoảng trắng.
 
 # --- Đã xác minh ---
-- {id: police_113, name: "Công an (khẩn cấp)", kind: phone, value: "113", source_url: "https://bocongan.gov.vn/bai-viet/moi-lam-viec-01-cong-dan-nhieu-lan-goi-dien-quay-roi-so-113-1782459200", verified_at: 2026-10-30}
-- {id: vcb_hotline, name: "Vietcombank (hotline 24/7, khóa thẻ)", kind: phone, value: "1900545413", source_url: "https://www.vietcombank.com.vn/en/Personal/Truy-cap-nhanh/Tin-noi-bat/Articles/05-cach-de-khoa-the-tam-thoi-trong-truong-hop-khan-cap", verified_at: 2026-10-30}
-- {id: bidv_hotline, name: "BIDV (hotline)", kind: phone, value: "19009247", source_url: "https://bidv.com.vn/en/ca-nhan/lien-he", verified_at: 2026-10-30}
-- {id: agribank_hotline, name: "Agribank (hotline hỗ trợ)", kind: phone, value: "1900558818", source_url: "https://www.agribank.com.vn/vn/lien-he", verified_at: 2026-10-30}
-- {id: vietinbank_hotline, name: "VietinBank (hotline)", kind: phone, value: "1900558868", source_url: "https://contact.vietinbank.vn/", verified_at: 2026-10-30}
-- {id: techcombank_hotline, name: "Techcombank (hotline cá nhân, miễn phí)", kind: phone, value: "1800588822", source_url: "https://techcombank.com/en/help-support", verified_at: 2026-10-30}
-- {id: mb_hotline, name: "MB (hotline, chân trang web mbbank.com.vn)", kind: phone, value: "1900545426", source_url: "https://www.mbbank.com.vn/", verified_at: 2026-10-30}
-- {id: vpbank_hotline, name: "VPBank (hotline)", kind: phone, value: "1900545415", source_url: "https://www.vpbank.com.vn/ve-chung-toi", verified_at: 2026-10-30}
+- {id: police_113, name: "Công an (khẩn cấp)", kind: phone, value: "113", source_url: "https://bocongan.gov.vn/bai-viet/moi-lam-viec-01-cong-dan-nhieu-lan-goi-dien-quay-roi-so-113-1782459200", verified_at: 2026-11-17}
+- {id: vcb_hotline, name: "Vietcombank (hotline 24/7, khóa thẻ)", kind: phone, value: "1900545413", source_url: "https://www.vietcombank.com.vn/en/Personal/Truy-cap-nhanh/Tin-noi-bat/Articles/05-cach-de-khoa-the-tam-thoi-trong-truong-hop-khan-cap", verified_at: 2026-11-17}
+- {id: bidv_hotline, name: "BIDV (hotline)", kind: phone, value: "19009247", source_url: "https://bidv.com.vn/en/ca-nhan/lien-he", verified_at: 2026-11-17}
+- {id: agribank_hotline, name: "Agribank (hotline hỗ trợ)", kind: phone, value: "1900558818", source_url: "https://www.agribank.com.vn/vn/lien-he", verified_at: 2026-11-17}
+- {id: vietinbank_hotline, name: "VietinBank (hotline)", kind: phone, value: "1900558868", source_url: "https://contact.vietinbank.vn/", verified_at: 2026-11-17}
+- {id: techcombank_hotline, name: "Techcombank (hotline cá nhân, miễn phí)", kind: phone, value: "1800588822", source_url: "https://techcombank.com/en/help-support", verified_at: 2026-11-17}
+- {id: mb_hotline, name: "MB (hotline, chân trang web mbbank.com.vn)", kind: phone, value: "1900545426", source_url: "https://www.mbbank.com.vn/", verified_at: 2026-11-17}
+- {id: vpbank_hotline, name: "VPBank (hotline)", kind: phone, value: "1900545415", source_url: "https://www.vpbank.com.vn/ve-chung-toi", verified_at: 2026-11-17}
 
 # --- Mới thêm ngày 2026-10-30 (ngân hàng, ví, nhà mạng, kênh VNeID) ---
 # Ngân hàng
-- {id: acb_hotline, name: "ACB (hỗ trợ 24/7)", kind: phone, value: "1900545486", source_url: "https://acb.com.vn/", verified_at: 2026-10-30}
-- {id: sacombank_hotline, name: "Sacombank (hotline)", kind: phone, value: "1800585888", source_url: "https://www.sacombank.com.vn/trang-chu/ve-chung-toi.html", verified_at: 2026-10-30}
-- {id: tpbank_hotline, name: "TPBank (hỗ trợ 24/7, trong nước)", kind: phone, value: "1900585885", source_url: "https://tpb.vn/lien-he", verified_at: 2026-10-30}
-- {id: vib_hotline, name: "VIB (tổng đài chung, có phí 1.000đ/phút)", kind: phone, value: "19002200", source_url: "https://www.vib.com.vn/vn/lien-he", verified_at: 2026-10-30}
-- {id: hdbank_hotline, name: "HDBank (hotline)", kind: phone, value: "19006060", source_url: "https://hdbank.com.vn/", verified_at: 2026-10-30}
-- {id: ocb_hotline, name: "OCB (hỗ trợ khách hàng)", kind: phone, value: "19001846", source_url: "https://ocb.com.vn/vi/vi-dich-vu-cskh-24-7", verified_at: 2026-10-30}
-- {id: msb_hotline, name: "MSB (tổng đài cá nhân)", kind: phone, value: "19006083", source_url: "https://www.msb.com.vn/vi/lien-he", verified_at: 2026-10-30}
+- {id: acb_hotline, name: "ACB (hỗ trợ 24/7)", kind: phone, value: "1900545486", source_url: "https://acb.com.vn/", verified_at: 2026-11-17}
+- {id: sacombank_hotline, name: "Sacombank (hotline)", kind: phone, value: "1800585888", source_url: "https://www.sacombank.com.vn/trang-chu/ve-chung-toi.html", verified_at: 2026-11-17}
+- {id: tpbank_hotline, name: "TPBank (hỗ trợ 24/7, trong nước)", kind: phone, value: "1900585885", source_url: "https://tpb.vn/lien-he", verified_at: 2026-11-17}
+- {id: vib_hotline, name: "VIB (tổng đài chung, có phí 1.000đ/phút)", kind: phone, value: "19002200", source_url: "https://www.vib.com.vn/vn/lien-he", verified_at: 2026-11-17}
+- {id: hdbank_hotline, name: "HDBank (hotline)", kind: phone, value: "19006060", source_url: "https://hdbank.com.vn/", verified_at: 2026-11-17}
+- {id: ocb_hotline, name: "OCB (hỗ trợ khách hàng)", kind: phone, value: "19001846", source_url: "https://ocb.com.vn/vi/vi-dich-vu-cskh-24-7", verified_at: 2026-11-17}
+- {id: msb_hotline, name: "MSB (tổng đài cá nhân)", kind: phone, value: "19006083", source_url: "https://www.msb.com.vn/vi/lien-he", verified_at: 2026-11-17}
 # Ví điện tử
-- {id: momo_hotline, name: "MoMo (hotline, có phí)", kind: phone, value: "1900545441", source_url: "https://www.momo.vn/", verified_at: 2026-10-30}
-- {id: zalopay_hotline, name: "ZaloPay (chăm sóc khách hàng, có phí)", kind: phone, value: "1900545436", source_url: "https://zalopay.vn/", verified_at: 2026-10-30}
+- {id: momo_hotline, name: "MoMo (hotline, có phí)", kind: phone, value: "1900545441", source_url: "https://www.momo.vn/", verified_at: 2026-11-17}
+- {id: zalopay_hotline, name: "ZaloPay (chăm sóc khách hàng, có phí)", kind: phone, value: "1900545436", source_url: "https://zalopay.vn/", verified_at: 2026-11-17}
 # Nhà mạng
-- {id: mobifone_hotline, name: "MobiFone (tổng đài hỗ trợ, miễn phí)", kind: phone, value: "18001090", source_url: "https://www.mobifone.vn/", verified_at: 2026-10-30}
-- {id: vinaphone_hotline, name: "VinaPhone (tổng đài chăm sóc khách hàng, 24/7)", kind: phone, value: "18001091", source_url: "https://vnpt.vn/tu-van/tong-dai-tra-cuu-so-dien-thoai-vinaphone-la-gi.html", verified_at: 2026-10-30}
+- {id: mobifone_hotline, name: "MobiFone (tổng đài hỗ trợ, có phí với thuê bao mạng khác)", kind: phone, value: "0908144144", source_url: "https://www.mobifone.vn/", verified_at: 2026-11-17}
+- {id: vinaphone_hotline, name: "VinaPhone (tổng đài chăm sóc khách hàng, 24/7)", kind: phone, value: "18001091", source_url: "https://vnpt.vn/tu-van/tong-dai-tra-cuu-so-dien-thoai-vinaphone-la-gi.html", verified_at: 2026-11-17}
 # Kênh trình báo
-- {id: vneid_report, name: "Tố giác tội phạm trên ứng dụng VNeID (chuyển tới Công an cấp xã)", kind: app, value: "Ứng dụng VNeID, chức năng tố giác tin báo về tội phạm", source_url: "https://bocongan.gov.vn/bai-viet/hieu-qua-cua-viec-to-giac-toi-pham-thong-qua-ung-dung-vneid-d22-t36752", verified_at: 2026-10-30}
+- {id: vneid_report, name: "Tố giác tội phạm trên ứng dụng VNeID (chuyển tới Công an cấp xã)", kind: app, value: "Ứng dụng VNeID, chức năng tố giác tin báo về tội phạm", source_url: "https://bocongan.gov.vn/bai-viet/hieu-qua-cua-viec-to-giac-toi-pham-thong-qua-ung-dung-vneid-d22-t36752", verified_at: 2026-11-17}
 
 # --- CÒN THIẾU (chưa có nguồn chính thức, đừng điền từ bài báo hay mạng xã hội) ---
 # - Cổng cảnh báo / tiếp nhận phản ánh lừa đảo của Cục An toàn thông tin (NCSC): máy kiểm không vào được khonggianmang.vn.

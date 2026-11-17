@@ -98,6 +98,14 @@ CASES: dict[str, tuple[list[str], list[str]]] = {
          "Bác nộp phí 500k để nhận quà"],
         ["Vietcombank: TK 0011xxx8899 +12,500,000 VND. SD: 45,210,000 VND. ND: NGUYEN VAN A CHUYEN TIEN",
          "Mẹ ơi con chuyển khoản rồi nhé"]),
+    "R_OVERPAY_REFUND": (
+        ["Chị ơi em đã chuyển cọc thuê nhà cho chị rồi, chị xem ảnh biên lai em gửi nhé. "
+         "Em lỡ chuyển dư 3 triệu, chị chuyển lại phần dư giúp em vào số này nha.",   # hd-rt-27
+         "Anh ơi em chuyển nhầm 5 triệu vào tài khoản anh, anh chuyển trả lại em qua số này giúp nhé",
+         "Shop ơi mình lỡ chuyển thừa 200k, shop hoàn lại giúp mình nha"],
+        ["Chuyến du lịch Đà Lạt vui quá, con chuyển lại ảnh cho mẹ nhé",
+         "Em chuyển dư cho chị rồi đó, chị cứ giữ mua quà cho bé",
+         "Nếu chuyển nhầm, quý khách liên hệ ngân hàng để được hoàn lại theo quy định"]),
     "R_URGENCY": (
         ["Tài khoản sẽ bị khóa nếu không xác minh ngay lập tức",
          "Nộp trong vòng 24 giờ để tránh bị cưỡng chế"],
