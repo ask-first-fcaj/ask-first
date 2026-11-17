@@ -118,6 +118,13 @@ final class Fakes {
             return false;
         }
 
+        @Override
+        public void delete(String chatId) {
+            meta.remove(chatId);
+            placeholder.remove(chatId);
+            msgs.remove(chatId);
+        }
+
         synchronized boolean exists(String chatId) {
             return meta.containsKey(chatId);
         }
