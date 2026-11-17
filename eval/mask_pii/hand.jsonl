@@ -1,0 +1,150 @@
+{"id":"hand-a-001","text":"Đơn hàng 123456789012 đã giao lúc 14:30 ngày 12/11, tổng 350.000đ","pii":[],"notes":"ai_drafted; dãy 12 số mã đơn, không phải CCCD"}
+{"id":"hand-a-002","text":"Nhà em ở số 123 ngõ 45 đường Láng, hẹn anh 8h sáng mai nha","pii":[],"notes":"ai_drafted; số nhà, giờ"}
+{"id":"hand-a-003","text":"Mã vận đơn GHN5849302716 đang trên đường tới chị, dự kiến giao thứ Sáu","pii":[],"notes":"ai_drafted; mã vận đơn"}
+{"id":"hand-a-004","text":"Biển số xe em là 30A-123.45, anh gửi xe tầng B2 giúp em","pii":[],"notes":"ai_drafted; biển số"}
+{"id":"hand-a-005","text":"Cho em đặt 500 cái bánh, giá 1.250.000đ cả lô, giao trước 5h chiều","pii":[],"notes":"ai_drafted; số lượng, giá"}
+{"id":"hand-a-006","text":"Phòng 1205 tòa A2, anh bấm chuông giúp em nhé","pii":[],"notes":"ai_drafted; số phòng"}
+{"id":"hand-a-007","text":"Hóa đơn số 00012345 ngày 05/11/2026 đã xuất, bác kiểm tra giúp con","pii":[],"notes":"ai_drafted; số hóa đơn"}
+{"id":"hand-a-008","text":"Mã bưu chính khu mình là 100000, em ghi vào phiếu gửi rồi","pii":[],"notes":"ai_drafted; mã bưu chính 6 số, không phải OTP"}
+{"id":"hand-a-009","text":"Chuyến bay VN1234 cất cánh 06:45 sáng mai, con nhớ ra sân bay sớm","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-010","text":"Con sinh năm 1998, học lớp 12 năm 2016, ra trường năm 2020","pii":[],"notes":"ai_drafted; các năm"}
+{"id":"hand-a-011","text":"Tiền điện tháng này 1.234.567đ, chưa tính phí chậm nộp","pii":[],"notes":"ai_drafted; số tiền 7 chữ số"}
+{"id":"hand-a-012","text":"Lô hàng gồm 12345678 sản phẩm, đã kiểm kho đủ","pii":[],"notes":"ai_drafted; số lượng 8 chữ số"}
+{"id":"hand-a-013","text":"Mã đặt chỗ ABC123 của bác, giờ khám 9:15, tầng 3 phòng 307","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-014","text":"Tờ khai số 1000123456 nộp ngày 10/11, đang chờ duyệt","pii":[],"notes":"ai_drafted; 10 số hồ sơ"}
+{"id":"hand-a-015","text":"Em mua xe 28.500.000đ trả góp 12 tháng, mỗi tháng 2.375.000đ","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-016","text":"Địa chỉ nhà ông bà là 456 Nguyễn Trãi, phường 8, quận 5","pii":[],"notes":"ai_drafted; số nhà"}
+{"id":"hand-a-017","text":"Mã sản phẩm SKU 20261111 còn 36 cái trong kho","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-018","text":"Họp lúc 15:30 thứ Tư, link zoom phòng số 987 654 321 nha cả nhà","pii":[],"notes":"ai_drafted; mã phòng zoom 9 số, giống số điện thoại thiếu 0"}
+{"id":"hand-a-019","text":"Con đi học thêm lớp 9A5, cô giáo chủ nhiệm hẹn gặp phụ huynh 18h30","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-020","text":"Cái nồi này giá 1.890.000đ, giảm còn 1.490.000đ đến hết ngày 20/11","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-021","text":"Mã lô thuốc 2026110145 hạn dùng đến 11/2028, bác để chỗ khô ráo","pii":[],"notes":"ai_drafted; 10 số mã lô"}
+{"id":"hand-a-022","text":"Em chuyển rồi, mã giao dịch FT26315123456789, anh kiểm tra giúp em","pii":[],"notes":"ai_drafted; mã giao dịch chữ+số"}
+{"id":"hand-a-023","text":"Tổng điểm thi là 27,5, xếp hạng 12345 toàn quốc, đậu rồi bà ơi","pii":[],"notes":"ai_drafted; thứ hạng 5 số"}
+{"id":"hand-a-024","text":"Cả nhà gặp nhau 11h trưa mai ở nhà hàng, bàn số 8, đặt trước 20 người","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-025","text":"Xe tải biển 51D-678.90 chở 3500kg hàng, đến kho lúc 4h chiều","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-026","text":"Mã số sinh viên của con là 20201234, khoa Công nghệ thông tin","pii":[],"notes":"ai_drafted; MSSV 8 số"}
+{"id":"hand-a-027","text":"Gói cước 4G 120.000đ/tháng, data 5GB mỗi ngày, hết hạn 31/12/2026","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-028","text":"Số lần đọc điện kỳ này là 004567, kỳ trước 004321 nha anh","pii":[],"notes":"ai_drafted; chỉ số công tơ 6 số, giống OTP"}
+{"id":"hand-a-029","text":"Mẹ ơi bưu điện báo bưu kiện số 987654321098 đã tới, mẹ ra nhận nhé","pii":[],"notes":"ai_drafted; 12 số bưu kiện, không phải CCCD"}
+{"id":"hand-a-030","text":"Ngày mai 7h30 xe đón ở cổng, vé số 36, ghế 12B","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-031","text":"Phí gửi hàng 35.000đ, thu hộ COD 1.200.000đ, người nhận ký tên là xong","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-032","text":"Cháu nhớ đóng tiền học 2.500.000đ trước ngày 25 nha, hạn chót 17h","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-033","text":"Mã voucher GIAM50K áp dụng đơn từ 300.000đ, dùng đến 30/11","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-034","text":"Cân nặng bé 12,5kg, cao 95cm, sinh lúc 3h45 sáng ngày 08/03/2023","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-035","text":"Bác ơi số thứ tự khám của bác là 0087, còn khoảng 20 người nữa là tới lượt","pii":[],"notes":"ai_drafted; số thứ tự 4 chữ số"}
+{"id":"hand-a-036","text":"Hôm nay giá vàng 83.500.000đ/lượng, tăng 450.000đ so với hôm qua","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-037","text":"Mã tra cứu hóa đơn điện tử 1A2B3C4D5E6F, bên bán gửi qua mail rồi","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-038","text":"Đơn 2611001234567 của shop hoa quả đã được xác nhận lúc 09:12","pii":[],"notes":"ai_drafted; 13 số mã đơn"}
+{"id":"hand-a-039","text":"Kích thước tủ 1800 x 600 x 2200mm, nặng 85kg, giao tầng 5 không thang máy","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-040","text":"Em lấy lô đất 125m2 giá 3.850.000.000đ, sổ đỏ thửa số 412 tờ bản đồ 18","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-041","text":"Chuyến tàu SE3 khởi hành 19:20 từ ga Hà Nội, toa 6 giường 14","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-042","text":"Tháng này con tiêu 4.567.890đ tiền ăn, 1.200.000đ tiền xăng","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-043","text":"Mã nhận hàng tại tủ locker là 5483, mở ô số 17 trong 48 giờ nha anh","pii":[],"notes":"ai_drafted; mã locker 4 số"}
+{"id":"hand-a-044","text":"Bé nhà em được 98 điểm, xếp thứ 3 trên 45 bạn, cô khen lắm","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-045","text":"Mã số thuế công ty là 0123456789, hóa đơn xuất theo tên công ty giúp em","pii":[],"notes":"ai_drafted; MST 10 số, ca mơ hồ"}
+{"id":"hand-a-046","text":"Cô ơi lớp mình học 7h15 đến 11h30, buổi chiều 13h đến 16h45","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-047","text":"Tin nhắn nhóm lớp: đóng quỹ mỗi bạn 150.000đ, tổng 6.750.000đ, danh sách 45 bạn","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-048","text":"Cuốn sách ISBN 9786041234567 giá 129.000đ, còn 3 cuốn ở kệ","pii":[],"notes":"ai_drafted; ISBN 13 số"}
+{"id":"hand-a-049","text":"Số khung xe RLHPC1234LY567890, em gửi bác xem giúp giấy tờ","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-050","text":"Họp tổ dân phố 19h30 ngày 15/11 tại nhà văn hóa, tổ 7 khu 3","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-051","text":"Công tơ nước nhà em hiện 001234 khối, lần trước 001198, tháng này dùng 36 khối","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-052","text":"Anh ơi mã căn hộ B-2305, tầng 23, đưa giúp em giỏ hoa lên nhé","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-053","text":"Ba lô nặng 6,8kg, hành lý ký gửi 23kg, vé hạng phổ thông giá 1.690.000đ","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-054","text":"Kết quả xét nghiệm số 20261109007 có rồi, bác ra nhận lúc 14h","pii":[],"notes":"ai_drafted; 11 số mã xét nghiệm"}
+{"id":"hand-a-055","text":"Sáng nay xe buýt tuyến 86 đến trễ 25 phút, em đến cơ quan lúc 8:40","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-056","text":"Em nhận 5 gói hàng nặng tổng 18,4kg, phí ship 125.000đ, mã đơn VN123456789012","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-057","text":"Cho cháu hỏi tiệm còn bàn lúc 20h không, 6 người, tên cháu đặt là Lan","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-058","text":"Bản vẽ số 24 trang 135, tỷ lệ 1/200, kích thước 12.500 x 8.000mm","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-059","text":"Nhà mình cách trường 2,5km, đi xe đạp khoảng 18 phút, đến lớp trước 7h","pii":[],"notes":"ai_drafted"}
+{"id":"hand-a-060","text":"Đơn thuốc số 0099887766 mua tại nhà thuốc ngày 11/11, uống ngày 2 lần sau ăn","pii":[],"notes":"ai_drafted; 10 số đơn thuốc"}
+{"id":"hand-b-001","text":"Anh đọc giúp em dãy 6 số vừa gửi về máy anh: 482913","pii":[{"type":"otp","value":"482913"}],"notes":"ai_drafted; không có chữ OTP"}
+{"id":"hand-b-002","text":"Cho shipper mấy số xác nhận trong tin nhắn nhé, 539204","pii":[{"type":"otp","value":"539204"}],"notes":"ai_drafted"}
+{"id":"hand-b-003","text":"Bác ơi đọc cho cháu 6 số trong tin vừa nhận là 718365 để cháu hủy lệnh","pii":[{"type":"otp","value":"718365"}],"notes":"ai_drafted"}
+{"id":"hand-b-004","text":"Mã vừa gửi về điện thoại là 904271, anh báo em ngay để em hoàn tiền","pii":[{"type":"otp","value":"904271"}],"notes":"ai_drafted"}
+{"id":"hand-b-005","text":"Nhân viên ngân hàng cần mã kích hoạt 360852 trong tin nhắn, bác cung cấp ngay","pii":[{"type":"otp","value":"360852"}],"notes":"ai_drafted"}
+{"id":"hand-b-006","text":"Em cần số bảo mật 6 chữ số vừa nhận để mở khóa tài khoản: 125987","pii":[{"type":"otp","value":"125987"}],"notes":"ai_drafted"}
+{"id":"hand-b-007","text":"Hệ thống vừa gửi cho anh một mã gồm 6 số, anh đọc lại giúp: 647103","pii":[{"type":"otp","value":"647103"}],"notes":"ai_drafted"}
+{"id":"hand-b-008","text":"Mấy con số xác thực vừa về máy chị là 281946, chị nói em xử lý luôn","pii":[{"type":"otp","value":"281946"}],"notes":"ai_drafted"}
+{"id":"hand-b-009","text":"Anh ơi gửi em mã xác nhận giao dịch với, 815620, em cần gấp","pii":[{"type":"otp","value":"815620"}],"notes":"ai_drafted"}
+{"id":"hand-b-010","text":"Thầy cần mã xác thực tài khoản của con để vào hệ thống nhà trường: 392057","pii":[{"type":"otp","value":"392057"}],"notes":"ai_drafted"}
+{"id":"hand-b-011","text":"Bên em vừa gửi tin có chữ số, bác đọc dãy số đó cho em nghe: 756481","pii":[{"type":"otp","value":"756481"}],"notes":"ai_drafted"}
+{"id":"hand-b-012","text":"Mã đăng nhập tạm thời của bác là 043918, đọc lại cho em để xác minh danh tính","pii":[{"type":"otp","value":"043918"}],"notes":"ai_drafted"}
+{"id":"hand-b-013","text":"Em gửi nhầm, anh cho em xin lại dãy số 6 chữ số em vừa gửi: 570326","pii":[{"type":"otp","value":"570326"}],"notes":"ai_drafted"}
+{"id":"hand-b-014","text":"Cô ơi cô đọc cho cháu 6 số trong tin nhắn cuối cùng, cháu sửa lỗi giúp cô: 914725","pii":[{"type":"otp","value":"914725"}],"notes":"ai_drafted"}
+{"id":"hand-b-015","text":"Số xác nhận của phiên này là 268409 anh chuyển nó vào ô bên dưới giúp em","pii":[{"type":"otp","value":"268409"}],"notes":"ai_drafted"}
+{"id":"hand-b-016","text":"Bác chụp màn hình rồi gõ lại mấy số trong tin nhắn mới nhất: 603872","pii":[{"type":"otp","value":"603872"}],"notes":"ai_drafted"}
+{"id":"hand-b-017","text":"Mã dùng một lần 837514 hiệu lực 2 phút, bác đừng báo ai trừ nhân viên tổng đài","pii":[{"type":"otp","value":"837514"}],"notes":"ai_drafted; câu mẹo kẻ gian"}
+{"id":"hand-b-018","text":"Em đang giữ máy, anh đọc luôn dãy số 6 chữ vừa hiện ra trên màn hình 192634","pii":[{"type":"otp","value":"192634"}],"notes":"ai_drafted"}
+{"id":"hand-b-019","text":"Mã bảo mật giao dịch 451098 anh cung cấp cho em trong 60 giây","pii":[{"type":"otp","value":"451098"}],"notes":"ai_drafted"}
+{"id":"hand-b-020","text":"Dãy số trong tin nhắn thứ 2 là 726843, anh đọc để em xác nhận đơn hoàn","pii":[{"type":"otp","value":"726843"}],"notes":"ai_drafted"}
+{"id":"hand-b-021","text":"Mã 3 chữ số cuối trong tin cùng 6 số đầu, đọc đủ giúp em: 481209","pii":[{"type":"otp","value":"481209"}],"notes":"ai_drafted"}
+{"id":"hand-b-022","text":"Xác nhận giùm em bằng 6 số nhận được sau tin báo biến động, đọc: 330917","pii":[{"type":"otp","value":"330917"}],"notes":"ai_drafted"}
+{"id":"hand-b-023","text":"Bên ví điện tử cần mã xác minh 6 số của bác để hoàn tiền: 859204","pii":[{"type":"otp","value":"859204"}],"notes":"ai_drafted"}
+{"id":"hand-b-024","text":"Anh nhắn cho em dãy 6 số vừa nhận nhé:\n672815\nem xử lý ngay","pii":[{"type":"otp","value":"672815"}],"notes":"ai_drafted; mã ở dòng riêng"}
+{"id":"hand-b-025","text":"Số mật khẩu dùng một lần của tài khoản vừa gửi là 189435, em cần anh xác nhận","pii":[{"type":"otp","value":"189435"}],"notes":"ai_drafted"}
+{"id":"hand-b-026","text":"Mã 8 số vừa gửi qua tin nhắn thoại: 41872956, bác đọc lại giúp con","pii":[{"type":"otp","value":"41872956"}],"notes":"ai_drafted; mã 8 số"}
+{"id":"hand-b-027","text":"Cho cháu xin mã 4 số trong tin vừa nhận: 6204, để cháu mở khóa thẻ","pii":[{"type":"otp","value":"6204"}],"notes":"ai_drafted; mã 4 số"}
+{"id":"hand-b-028","text":"Anh ơi con số bí mật trong tin nhắn là 905163, đọc cho em bây giờ nhé","pii":[{"type":"otp","value":"905163"}],"notes":"ai_drafted"}
+{"id":"hand-b-029","text":"Chị vừa nhận tin có số 6 chữ số, chị gửi lại cho em kẻo tài khoản bị khóa 247390","pii":[{"type":"otp","value":"247390"}],"notes":"ai_drafted"}
+{"id":"hand-b-030","text":"Em đọc đây: mã bảo vệ tài khoản vừa gửi tới số của bác là 516782, bác xác nhận lại giúp","pii":[{"type":"otp","value":"516782"}],"notes":"ai_drafted"}
+{"id":"hand-c-001","text":"Chuyển khoản vào STK 1903-4567-8901-2 Techcombank, chủ TK NGUYEN VAN A","pii":[{"type":"stk","value":"1903-4567-8901-2"}],"notes":"ai_drafted; có dấu gạch"}
+{"id":"hand-c-002","text":"Anh gọi em số 09 12 345 678 nha, hoặc zalo cũng được","pii":[{"type":"phone","value":"09 12 345 678"}],"notes":"ai_drafted; cách kiểu 2-2-3-3"}
+{"id":"hand-c-003","text":"Gọi cháu theo số +84 912 345 678 nhé, cháu đang ở nước ngoài","pii":[{"type":"phone","value":"+84 912 345 678"}],"notes":"ai_drafted; +84"}
+{"id":"hand-c-004","text":"Số tài khoản 0123 4567 8901 Vietcombank, chuyển trước 5h chiều nay","pii":[{"type":"stk","value":"0123 4567 8901"}],"notes":"ai_drafted; cách 4-4-4"}
+{"id":"hand-c-005","text":"CCCD của bác là 012345678901, bác chụp hai mặt gửi cháu","pii":[{"type":"cccd","value":"012345678901"}],"notes":"ai_drafted"}
+{"id":"hand-c-006","text":"Liên hệ anh Hùng qua email hung.nguyen.test@gmail.com để nhận hồ sơ","pii":[{"type":"email","value":"hung.nguyen.test@gmail.com"}],"notes":"ai_drafted"}
+{"id":"hand-c-007","text":"Nhắn zalo cho em ở 0912.345.678, em trả lời trong 5 phút","pii":[{"type":"phone","value":"0912.345.678"}],"notes":"ai_drafted; dấu chấm"}
+{"id":"hand-c-008","text":"Chuyển vào tài khoản MB Bank 9876-5432-10 tên TRAN THI B ngay trong hôm nay","pii":[{"type":"stk","value":"9876-5432-10"}],"notes":"ai_drafted"}
+{"id":"hand-c-009","text":"Số căn cước công dân 079 123 456 789 của em, anh làm giúp thủ tục","pii":[{"type":"cccd","value":"079 123 456 789"}],"notes":"ai_drafted; cách 3-3-3-3"}
+{"id":"hand-c-010","text":"Cho em xin số mới của anh với, em lưu 0903456789 đúng không","pii":[{"type":"phone","value":"0903456789"}],"notes":"ai_drafted; liền"}
+{"id":"hand-c-011","text":"Gửi bản scan về hòm thư cuc_test123@outlook.com giúp bác","pii":[{"type":"email","value":"cuc_test123@outlook.com"}],"notes":"ai_drafted"}
+{"id":"hand-c-012","text":"Số điện thoại của cô giáo là (0912) 345678, gọi giờ hành chính","pii":[{"type":"phone","value":"(0912) 345678"}],"notes":"ai_drafted; ngoặc"}
+{"id":"hand-c-013","text":"STK ACB: 12345678\n(Chủ TK: LE VAN C) chuyển giúp em nhé","pii":[{"type":"stk","value":"12345678"}],"notes":"ai_drafted; 8 số, xuống dòng sau"}
+{"id":"hand-c-014","text":"Em đặt phòng, số liên hệ 0912\n345678, anh gọi trước 6h","pii":[{"type":"phone","value":"0912\n345678"}],"notes":"ai_drafted; xuống dòng giữa số"}
+{"id":"hand-c-015","text":"Mẹ ơi con gửi CMND cũ số 123456789, mẹ giữ giùm con","pii":[{"type":"cccd","value":"123456789"}],"notes":"ai_drafted; CMND 9 số"}
+{"id":"hand-c-016","text":"Liên hệ: bao_chi.test [at] gmail [dot] com để gửi bài","pii":[{"type":"email","value":"bao_chi.test [at] gmail [dot] com"}],"notes":"ai_drafted; viết tránh bộ lọc"}
+{"id":"hand-c-017","text":"Hotline chăm sóc khách hàng 1900 1234, còn số cá nhân của em 0987 654 321","pii":[{"type":"phone","value":"0987 654 321"}],"notes":"ai_drafted; hotline 1900 là kênh chung, không tính PII"}
+{"id":"hand-c-018","text":"Vui lòng chuyển 5 triệu vào tài khoản 1234567890123 BIDV, nội dung: tien nha","pii":[{"type":"stk","value":"1234567890123"}],"notes":"ai_drafted; 13 số"}
+{"id":"hand-c-019","text":"Ông bà cần số thẻ căn cước ghi ở đây: 0 1 2 3 4 5 6 7 8 9 0 1 để em xác minh","pii":[{"type":"cccd","value":"0 1 2 3 4 5 6 7 8 9 0 1"}],"notes":"ai_drafted; mỗi chữ số cách ra"}
+{"id":"hand-c-020","text":"Anh ơi zalo em là 0 9 1 2 3 4 5 6 7 8, kết bạn với em nha","pii":[{"type":"phone","value":"0 9 1 2 3 4 5 6 7 8"}],"notes":"ai_drafted; từng số cách ra"}
+{"id":"hand-c-021","text":"Tài khoản nhận tiền: 1903 4567 8901 2 | Techcombank | NGUYEN VAN D","pii":[{"type":"stk","value":"1903 4567 8901 2"}],"notes":"ai_drafted; dùng gạch đứng"}
+{"id":"hand-c-022","text":"Số em: 0912345678 (zalo, viber), email: em.test88@yahoo.com","pii":[{"type":"phone","value":"0912345678"},{"type":"email","value":"em.test88@yahoo.com"}],"notes":"ai_drafted; hai PII cùng câu"}
+{"id":"hand-c-023","text":"Sổ tiết kiệm mang tên ông là 5678901234, CCCD 034567890123, nhớ mang theo","pii":[{"type":"stk","value":"5678901234"},{"type":"cccd","value":"034567890123"}],"notes":"ai_drafted; STK và CCCD cùng câu"}
+{"id":"hand-c-024","text":"Thông tin nhận tiền - Ngân hàng: Agribank - STK: 6300205123456 - Tên: PHAM THI E","pii":[{"type":"stk","value":"6300205123456"}],"notes":"ai_drafted"}
+{"id":"hand-c-025","text":"Gọi đường dây nóng của chúng tôi: 0 2 4 - 3 5 6 7 8 9 0 1 hoặc số bàn 024 3567 8901","pii":[{"type":"phone","value":"024 3567 8901"}],"notes":"ai_drafted; số bàn Hà Nội"}
+{"id":"hand-c-026","text":"Số của em tạm thời đổi thành +84.912.345.678, anh lưu lại giúp em","pii":[{"type":"phone","value":"+84.912.345.678"}],"notes":"ai_drafted; +84 kèm chấm"}
+{"id":"hand-c-027","text":"Chuyển khoản STK: 0011 0012 3456 7 (VCB) hoặc 0011.0012.3456.7 đều được","pii":[{"type":"stk","value":"0011 0012 3456 7"},{"type":"stk","value":"0011.0012.3456.7"}],"notes":"ai_drafted; cùng số hai cách viết"}
+{"id":"hand-c-028","text":"CCCD ghi trên thẻ: 038 099 012 345, ngày sinh 12/05/1999, nơi cấp Cục Cảnh sát QLHC","pii":[{"type":"cccd","value":"038 099 012 345"}],"notes":"ai_drafted; có ngày sinh bên cạnh, ngày sinh không tính"}
+{"id":"hand-c-029","text":"Mail cho em: nguoi.test+bank@gmail.com nhé, kèm ảnh chụp hóa đơn","pii":[{"type":"email","value":"nguoi.test+bank@gmail.com"}],"notes":"ai_drafted; có dấu +"}
+{"id":"hand-c-030","text":"Cho cháu xin số bác với, cháu lưu máy: không chín không ba - bốn năm sáu - bảy tám chín","pii":[{"type":"spoken_number","value":"không chín không ba - bốn năm sáu - bảy tám chín"}],"notes":"ai_drafted; SĐT đọc bằng chữ, nhóm c/d ranh giới"}
+{"id":"hand-c-031","text":"Em chuyển tiền cho anh vào số 9704 1234 5678 9012 3456, thẻ Napas","pii":[{"type":"stk","value":"9704 1234 5678 9012 3456"}],"notes":"ai_drafted; số thẻ 16-19 số"}
+{"id":"hand-c-032","text":"Anh Tuấn bảo số của ảnh là 0 9 0 1 – 2 3 4 – 5 6 7, bác lưu lại gọi nhé","pii":[{"type":"phone","value":"0 9 0 1 – 2 3 4 – 5 6 7"}],"notes":"ai_drafted; gạch dài"}
+{"id":"hand-c-033","text":"Tên tài khoản: NGUYEN THI F; số tài khoản: 106871234567; chi nhánh: Cầu Giấy","pii":[{"type":"stk","value":"106871234567"}],"notes":"ai_drafted; 12 số, ranh giới với CCCD"}
+{"id":"hand-c-034","text":"CCCD: 052 3 04 012345, cấp ngày 12/05/2021 tại Bình Định, em cần số này để làm thủ tục","pii":[{"type":"cccd","value":"052 3 04 012345"}],"notes":"ai_drafted; chia theo cấu trúc mã"}
+{"id":"hand-c-035","text":"Gọi em giờ nghỉ trưa nhé, số em 0913 456 789 hoặc 0914567890","pii":[{"type":"phone","value":"0913 456 789"},{"type":"phone","value":"0914567890"}],"notes":"ai_drafted; hai số"}
+{"id":"hand-c-036","text":"Tiền thuê nhà chuyển vào STK 7890123456 Sacombank giúp cô, nội dung ghi tên con","pii":[{"type":"stk","value":"7890123456"}],"notes":"ai_drafted; 10 số"}
+{"id":"hand-c-037","text":"Liên hệ hotline: 0912-345-678, hoặc zalo OA tin nhắn trực tiếp","pii":[{"type":"phone","value":"0912-345-678"}],"notes":"ai_drafted"}
+{"id":"hand-c-038","text":"Cho em xin ảnh chụp CMND số 261234567, mặt trước và mặt sau, em gửi lại ngay","pii":[{"type":"cccd","value":"261234567"}],"notes":"ai_drafted; CMND 9 số"}
+{"id":"hand-c-039","text":"hỗ trợ: cskh.test2026@vn-bank.example, hoặc nhắn tin 0988 123 456","pii":[{"type":"email","value":"cskh.test2026@vn-bank.example"},{"type":"phone","value":"0988 123 456"}],"notes":"ai_drafted"}
+{"id":"hand-c-040","text":"Bác ghi lại giúp cháu: STK bốn lăm sáu bảy tám chín không một hai ba tại BIDV, cháu đọc chậm","pii":[{"type":"spoken_number","value":"bốn lăm sáu bảy tám chín không một hai ba"}],"notes":"ai_drafted; STK đọc bằng chữ"}
+{"id":"hand-d-001","text":"Số của anh là không chín một hai ba bốn năm sáu bảy tám nhé","pii":[{"type":"spoken_number","value":"không chín một hai ba bốn năm sáu bảy tám"}],"notes":"ai_drafted; SĐT đọc chữ"}
+{"id":"hand-d-002","text":"Anh đọc lại mã vừa nhận: bốn tám hai chín một ba","pii":[{"type":"spoken_number","value":"bốn tám hai chín một ba"}],"notes":"ai_drafted; OTP đọc chữ"}
+{"id":"hand-d-003","text":"Số tài khoản là một chín không ba bốn năm sáu bảy tám chín không một hai","pii":[{"type":"spoken_number","value":"một chín không ba bốn năm sáu bảy tám chín không một hai"}],"notes":"ai_drafted; STK đọc chữ"}
+{"id":"hand-d-004","text":"Số căn cước là không một hai ba bốn năm sáu bảy tám chín không một","pii":[{"type":"spoken_number","value":"không một hai ba bốn năm sáu bảy tám chín không một"}],"notes":"ai_drafted; CCCD đọc chữ 12 số"}
+{"id":"hand-d-005","text":"Em đọc số điện thoại đây: không, chín, không, ba, bốn, năm, sáu, bảy, tám, chín","pii":[{"type":"spoken_number","value":"không, chín, không, ba, bốn, năm, sáu, bảy, tám, chín"}],"notes":"ai_drafted; có dấu phẩy"}
+{"id":"hand-d-006","text":"Mã xác nhận gồm sáu số: chín không bốn hai bảy một, anh đọc lại giúp em","pii":[{"type":"spoken_number","value":"chín không bốn hai bảy một"}],"notes":"ai_drafted"}
+{"id":"hand-d-007","text":"Số em: không chín không mười, không chín không ba, bốn năm sáu","pii":[{"type":"spoken_number","value":"không chín không mười, không chín không ba, bốn năm sáu"}],"notes":"ai_drafted; đọc lộn xộn, khó"}
+{"id":"hand-d-008","text":"Zalo em là zero chín một hai ba bốn năm sáu bảy tám","pii":[{"type":"spoken_number","value":"zero chín một hai ba bốn năm sáu bảy tám"}],"notes":"ai_drafted; dùng zero"}
+{"id":"hand-d-009","text":"Số tài khoản của bác là một hai ba bốn năm sáu bảy tám chín không","pii":[{"type":"spoken_number","value":"một hai ba bốn năm sáu bảy tám chín không"}],"notes":"ai_drafted"}
+{"id":"hand-d-010","text":"Cô nhắn mã là chín ba bảy hai năm sáu, con làm giúp cô nhé","pii":[{"type":"spoken_number","value":"chín ba bảy hai năm sáu"}],"notes":"ai_drafted"}
+{"id":"hand-d-011","text":"Đọc số thẻ căn cước: không ba tám không chín chín không một hai ba bốn năm","pii":[{"type":"spoken_number","value":"không ba tám không chín chín không một hai ba bốn năm"}],"notes":"ai_drafted"}
+{"id":"hand-d-012","text":"Số điện thoại bàn của nhà là không hai bốn ba năm sáu bảy tám chín không một","pii":[{"type":"spoken_number","value":"không hai bốn ba năm sáu bảy tám chín không một"}],"notes":"ai_drafted"}
+{"id":"hand-d-013","text":"Mã bảo mật bốn số: hai sáu không bốn, đọc cho em gấp","pii":[{"type":"spoken_number","value":"hai sáu không bốn"}],"notes":"ai_drafted; 4 số"}
+{"id":"hand-d-014","text":"Số tài khoản gồm mười hai số, em đọc từng số: không không một một, không không một hai, ba bốn năm sáu","pii":[{"type":"spoken_number","value":"không không một một, không không một hai, ba bốn năm sáu"}],"notes":"ai_drafted"}
+{"id":"hand-d-015","text":"Anh chuyển năm mươi triệu vào tài khoản của em nhé","pii":[],"notes":"ai_drafted; tiền bằng chữ, cố ý KHÔNG che"}
+{"id":"hand-d-016","text":"Phí là hai trăm nghìn đồng, cộng thêm ba mươi lăm nghìn tiền ship","pii":[],"notes":"ai_drafted; tiền bằng chữ, KHÔNG che"}
+{"id":"hand-d-017","text":"Em mua căn nhà này hết ba tỷ hai trăm triệu, đặt cọc năm trăm triệu","pii":[],"notes":"ai_drafted; tiền bằng chữ, KHÔNG che"}
+{"id":"hand-d-018","text":"Họp lúc tám giờ ba mươi phút, đến muộn mười lăm phút thì phạt hai chục nghìn","pii":[],"notes":"ai_drafted; giờ + tiền bằng chữ, KHÔNG che"}
+{"id":"hand-d-019","text":"Bà có bảy đứa cháu, đứa lớn hai mươi tuổi, đứa nhỏ mới ba tuổi","pii":[],"notes":"ai_drafted; số bằng chữ ngoài PII, KHÔNG che"}
+{"id":"hand-d-020","text":"Cháu nợ bác một triệu hai trăm năm mươi nghìn, tháng sau cháu trả bốn trăm trước","pii":[],"notes":"ai_drafted; tiền bằng chữ, KHÔNG che"}

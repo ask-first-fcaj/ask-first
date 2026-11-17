@@ -6,7 +6,7 @@ Chính sách (ARCH §6.1 mục 3–4, §6.4, §6.7):
 * Điểm luật = tổng trọng số (kẹp 0–100), rồi nâng lên **sàn cứng**: 85 cho tổ hợp ``R_AUTHORITY`` + (``R_MONEY_TRANSFER``
   | ``R_SECRECY`` | ``R_SAFE_ACCOUNT``), 80 khi có luật cứng hoặc tín hiệu URL mạnh (``U_TYPOSQUAT``…).
 * Chỉ giảm điểm (về ≤ 30) khi: không có luật cứng, mọi URL đều chính thức, LLM nói N0 với độ chắc ``high``.
-* Không có mức "an toàn": thấp nhất là ``LOW_RISK``. LLM ``low`` confidence ở vùng 25–74 thì về ``UNSURE``, nhưng không
+* Không có mức "an toàn": thấp nhất là ``LOW_RISK``. LLM ``low`` confidence ở vùng 25–69 thì về ``UNSURE``, nhưng không
   thấp hơn mức của riêng điểm luật.
 * Có dấu hiệu injection (``R_AI_INSTRUCTION`` hoặc Guardrails prompt attack) thì mức tối thiểu ``UNSURE``.
 * **Fast path**: sàn ≥ 85 thì không cần gọi LLM (``is_fast_path``), giải thích ghép từ template ở Respond.
@@ -17,7 +17,8 @@ Fuse chỉ quyết định phần kết luận. ``masked_text``, ``model_ids``, 
 ``citations`` do pipeline điền sau bằng ``verdict.model_copy(update=...)``. Tin xã giao/không đọc được
 (``outcome`` smalltalk/unreadable) đi nhánh riêng ở pipeline, không qua đây.
 
-Ngưỡng 75/50/25 chỉ là giá trị khởi điểm; AI-10 hiệu chỉnh trên bộ 300 mẫu (truyền ``thresholds``).
+Ngưỡng 70/60/25 hiệu chỉnh ở AI-10 trên 134 mẫu có nhãn (ADR-005, ``eval/calibrate_thresholds.py``), chỉ áp khi có
+``Judgement``; không có LLM thì giữ 75/50/25 (``RULES_ONLY_THRESHOLDS``).
 """
 
 from __future__ import annotations
@@ -44,6 +45,7 @@ RULE_ACTIONS: dict[str, RiskyAction] = {
     "R_OTP_REQUEST": "share_otp",
     "R_SAFE_ACCOUNT": "transfer_money",
     "R_MONEY_TRANSFER": "transfer_money",
+    "R_OVERPAY_REFUND": "transfer_money",
     "R_SCREEN_SHARE": "share_screen",
     "R_INSTALL_APP": "install_app",
     "U_APK_LINK": "install_app",
@@ -59,8 +61,8 @@ _ACTION_ORDER: tuple[RiskyAction, ...] = (
 
 @dataclass(frozen=True)
 class Thresholds:
-    dangerous: int = 75
-    suspicious: int = 50
+    dangerous: int = 70
+    suspicious: int = 60
     unsure: int = 25
 
     def level(self, score: int) -> Level:
@@ -74,6 +76,8 @@ class Thresholds:
 
 
 DEFAULT_THRESHOLDS = Thresholds()
+# Không có LLM (fast path, chỉ luật): ADR-005 chỉ hiệu chỉnh đường có LLM, giữ ngưỡng khởi điểm để kill switch không bắt kém đi.
+RULES_ONLY_THRESHOLDS = Thresholds(dangerous=75, suspicious=50, unsure=25)
 
 
 def _codes(signals: Iterable[Signal]) -> set[str]:
@@ -132,6 +136,8 @@ def fuse(signals: list[Signal], j: Judgement | None, *, all_urls_official: bool,
     ``escalated``: kết quả đến từ model dự phòng (AI-07), ghi ``path="escalated"``.
     """
     fast = j is None and is_fast_path(signals)
+    if j is None and thresholds == DEFAULT_THRESHOLDS:   # ngưỡng truyền tay (hiệu chỉnh) vẫn được dùng
+        thresholds = RULES_ONLY_THRESHOLDS
     score = max(rule_score(signals), j.risk_score if j else 0)
 
     any_hard = hard_floor(signals) > 0
