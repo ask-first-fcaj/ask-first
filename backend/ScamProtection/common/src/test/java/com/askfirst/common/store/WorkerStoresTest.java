@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.askfirst.common.ai.AiContract.Flags;
 import com.askfirst.common.channel.model.InboundMessage;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -14,6 +17,8 @@ import java.util.TreeSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,6 +31,8 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
+import software.amazon.awssdk.services.dynamodb.model.BatchWriteItemRequest;
+import software.amazon.awssdk.services.dynamodb.model.BatchWriteItemResponse;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 
 /**
@@ -246,5 +253,63 @@ class WorkerStoresTest {
         assertThat(locks.acquire(uid, "N2.1", "CHECK-B", now, now + 1800)).isTrue();    // kịch bản khác
 
         assertThat(locks.acquire(uid, "N1.4", "CHECK-B", now + 1801, now + 3600)).isTrue();   // A đã hết hạn
+    }
+
+    /** Client thật, nhưng {@code failures} lần batchWriteItem đầu trả hết item vào UnprocessedItems (giả lập throttle). */
+    private DynamoDbClient throttledBatchClient(int failures) {
+        AtomicInteger remaining = new AtomicInteger(failures);
+        return (DynamoDbClient) Proxy.newProxyInstance(
+                DynamoDbClient.class.getClassLoader(),
+                new Class<?>[] {DynamoDbClient.class},
+                (proxy, method, args) -> {
+                    if (method.getName().equals("batchWriteItem")
+                            && args != null && args[0] instanceof BatchWriteItemRequest req
+                            && remaining.getAndDecrement() > 0) {
+                        return BatchWriteItemResponse.builder().unprocessedItems(req.requestItems()).build();
+                    }
+                    try {
+                        return method.invoke(client, args);
+                    } catch (InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
+    }
+
+    @Test
+    @DisplayName("BufferStore: batch xóa bị throttle mãi -> giữ META, seq không reset, tin cũ không lẫn vào cụm mới")
+    void bufferFinishKeepsMetaWhenDeleteIncomplete() {
+        buffer.append(chat, message(chat, 1), ttl());
+        buffer.append(chat, message(chat, 2), ttl());
+        buffer.append(chat, message(chat, 3), ttl());
+
+        DynamoBufferStore throttled = new DynamoBufferStore(throttledBatchClient(Integer.MAX_VALUE), TABLE);
+        assertThat(throttled.finish(chat, 3)).isTrue();          // không có tin mới nên không cần xử lý lại
+
+        assertThat(buffer.state(chat)).hasValueSatisfying(s -> {  // META còn, done_seq đã tiến
+            assertThat(s.maxSeq()).isEqualTo(3);
+            assertThat(s.doneSeq()).isEqualTo(3);
+        });
+
+        assertThat(buffer.append(chat, message(chat, 9), ttl())).isEqualTo(4);   // KHÔNG đếm lại từ 1
+        assertThat(buffer.itemsAfter(chat, 3, 4)).extracting(InboundMessage::messageId).containsExactly("m9");
+
+        // lần finish kế tiếp (client bình thường) dọn nốt phần sót, không chờ TTL
+        assertThat(buffer.finish(chat, 4)).isTrue();
+        assertThat(buffer.state(chat)).isEmpty();
+        assertThat(buffer.itemsAfter(chat, 0, 4)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("BufferStore: batch xóa bị throttle 1 lần rồi thành công -> retry xong thì xóa META bình thường")
+    void bufferFinishRetriesUnprocessedItems() {
+        buffer.append(chat, message(chat, 1), ttl());
+        buffer.append(chat, message(chat, 2), ttl());
+
+        DynamoBufferStore throttledOnce = new DynamoBufferStore(throttledBatchClient(1), TABLE);
+        assertThat(throttledOnce.finish(chat, 2)).isTrue();
+
+        assertThat(buffer.state(chat)).isEmpty();
+        assertThat(buffer.itemsAfter(chat, 0, 2)).isEmpty();
+        assertThat(buffer.append(chat, message(chat, 9), ttl())).isEqualTo(1);   // đã xóa sạch nên bắt đầu lại từ 1 là đúng
     }
 }
