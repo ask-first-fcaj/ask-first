@@ -183,6 +183,12 @@ def test_should_alert_when_dangerous_and_risky_action() -> None:
     assert _fuse([OTP_REQ], None).should_alert is True
 
 
+def test_overpay_refund_lifts_llm_suspicious_to_dangerous_with_alert() -> None:
+    # #140 hd-rt-27: LLM chấm 65 (SUSPICIOUS), luật cứng nâng lên sàn 80 và báo người thân.
+    v = _fuse([_s("R_OVERPAY_REFUND", 50, hard=True)], _j(risk_score=65, requested_actions=["none"]))
+    assert v.level == "DANGEROUS" and v.risky_actions == ["transfer_money"] and v.should_alert is True
+
+
 def test_no_alert_when_dangerous_without_risky_action() -> None:
     v = _fuse([_s("U_TYPOSQUAT", 10)], _j(risk_score=90, requested_actions=["none"]))
     assert v.level == "DANGEROUS" and v.risky_actions == [] and v.should_alert is False

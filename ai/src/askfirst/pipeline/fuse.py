@@ -44,6 +44,7 @@ RULE_ACTIONS: dict[str, RiskyAction] = {
     "R_OTP_REQUEST": "share_otp",
     "R_SAFE_ACCOUNT": "transfer_money",
     "R_MONEY_TRANSFER": "transfer_money",
+    "R_OVERPAY_REFUND": "transfer_money",
     "R_SCREEN_SHARE": "share_screen",
     "R_INSTALL_APP": "install_app",
     "U_APK_LINK": "install_app",
