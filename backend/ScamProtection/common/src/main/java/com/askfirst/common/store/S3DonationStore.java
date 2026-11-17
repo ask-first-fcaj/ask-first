@@ -51,17 +51,25 @@ public final class S3DonationStore implements DonationStore {
         String uidHash = hashUid(userId);
         String prefix = "donated/" + uidHash + "/";
         try {
-            ListObjectsV2Response listRes = s3.listObjectsV2(ListObjectsV2Request.builder()
-                    .bucket(bucketName)
-                    .prefix(prefix)
-                    .build());
-            for (S3Object obj : listRes.contents()) {
-                s3.deleteObject(DeleteObjectRequest.builder()
+            String continuationToken = null;
+            do {
+                ListObjectsV2Request.Builder reqBuilder = ListObjectsV2Request.builder()
                         .bucket(bucketName)
-                        .key(obj.key())
-                        .build());
-            }
-        } catch (Exception ignored) {
+                        .prefix(prefix);
+                if (continuationToken != null) {
+                    reqBuilder.continuationToken(continuationToken);
+                }
+                ListObjectsV2Response listRes = s3.listObjectsV2(reqBuilder.build());
+                for (S3Object obj : listRes.contents()) {
+                    s3.deleteObject(DeleteObjectRequest.builder()
+                            .bucket(bucketName)
+                            .key(obj.key())
+                            .build());
+                }
+                continuationToken = listRes.isTruncated() ? listRes.nextContinuationToken() : null;
+            } while (continuationToken != null);
+        } catch (Exception e) {
+            throw new RuntimeException("Lỗi xoá mẫu đóng góp trên S3: " + e.getMessage(), e);
         }
     }
 
