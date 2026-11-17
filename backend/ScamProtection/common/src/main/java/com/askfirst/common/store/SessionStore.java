@@ -7,9 +7,12 @@ import java.util.Optional;
  */
 public interface SessionStore {
 
+    /** Lấy phiên theo chatId. */
     Optional<SessionRecord> get(String chatId);
 
+    /** Lưu hoặc cập nhật phiên. */
     void put(SessionRecord record);
 
+    /** Xóa phiên theo chatId. */
     void delete(String chatId);
 }

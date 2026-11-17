@@ -11,6 +11,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -126,11 +127,21 @@ public class TelegramClient {
      * Sends a text message with optional reply markup (e.g. inline keyboard).
      */
     public int sendText(long chatId, String text, Map<String, Object> replyMarkup) {
+        return sendText(chatId, text, replyMarkup, false);
+    }
+
+    /**
+     * Sends a text message; {@code silent=true} sets disable_notification (dùng cho tin nhắc lại cho người thân).
+     */
+    public int sendText(long chatId, String text, Map<String, Object> replyMarkup, boolean silent) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("chat_id", chatId);
         body.put("text", text);
         body.put("parse_mode", "HTML");
         body.put("disable_web_page_preview", true);
+        if (silent) {
+            body.put("disable_notification", true);
+        }
         if (replyMarkup != null && !replyMarkup.isEmpty()) {
             body.put("reply_markup", replyMarkup);
         }
@@ -161,14 +172,38 @@ public class TelegramClient {
      * Edits an existing message text (e.g. replacing placeholder '⏳' with verdict).
      */
     public void editText(long chatId, int messageId, String text) {
-        Map<String, Object> body = Map.of(
-                "chat_id", chatId,
-                "message_id", messageId,
-                "text", text,
-                "parse_mode", "HTML",
-                "disable_web_page_preview", true
-        );
+        editText(chatId, messageId, text, null);
+    }
+
+    /**
+     * Edits an existing message text and (optionally) its inline keyboard.
+     */
+    public void editText(long chatId, int messageId, String text, Map<String, Object> replyMarkup) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("chat_id", chatId);
+        body.put("message_id", messageId);
+        body.put("text", text);
+        body.put("parse_mode", "HTML");
+        body.put("disable_web_page_preview", true);
+        if (replyMarkup != null && !replyMarkup.isEmpty()) {
+            body.put("reply_markup", replyMarkup);
+        }
         executePost("/editMessageText", body);
+    }
+
+    /**
+     * Edits only the inline keyboard markup of an existing message (e.g. to remove or update buttons).
+     */
+    public void editReplyMarkup(long chatId, int messageId, Map<String, Object> replyMarkup) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("chat_id", chatId);
+        body.put("message_id", messageId);
+        if (replyMarkup != null && !replyMarkup.isEmpty()) {
+            body.put("reply_markup", replyMarkup);
+        } else {
+            body.put("reply_markup", Map.of("inline_keyboard", List.of()));
+        }
+        executePost("/editMessageReplyMarkup", body);
     }
 
     /**
@@ -257,14 +292,16 @@ public class TelegramClient {
                     }
 
                     if (response.statusCode() != 200) {
-                        throw new IllegalStateException(
+                        throw new TelegramApiException(
+                                response.statusCode(),
                                 "Telegram trả về HTTP " + response.statusCode() + ": " + response.body()
                         );
                     }
 
                     JsonNode root = MAPPER.readTree(response.body());
                     if (!root.path("ok").asBoolean(false)) {
-                        throw new IllegalStateException(
+                        throw new TelegramApiException(
+                                response.statusCode(),
                                 "Telegram API returned ok=false: " + response.body()
                         );
                     }

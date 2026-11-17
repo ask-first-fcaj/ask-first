@@ -482,7 +482,7 @@ Tuần 1 là tuần quan trọng nhất để xây móng. Hai bạn ngồi cạn
   Alarm `JobsDlqAlarm` dùng metric math `MAX(ApproximateNumberOfMessagesVisible, NumberOfMessagesReceived)`.  
   SnapStart là tham số `WorkerSnapStart` (mặc định None, bật sau khi đo cold start, ADR-008).
 * **BE-24b (W2): Tạo các Repository cho Lane A:** Viết code thao tác database cho các bảng `CHECK#`, `BUFFER#`, `ALERT#`, `ALERTLOCK#`, `CONFIG#global/FLAGS` (`DEDUP#` đã có ở `DynamoStoreService`).
-* **BE-27 (W2–W3): Xử lý cốt lõi trong Worker:** Đọc tin nhắn từ SQS → Gọi AI lấy kết luận → Gọi AI lấy mẫu tin cảnh báo → Sửa tin nhắn tạm `⏳` thành kết quả.
+* **BE-27 (W2–W3): Xử lý cốt lõi trong Worker:** Đọc tin nhắn từ SQS → Gọi AI lấy kết luận → Gọi AI lấy mẫu tin cảnh báo → Sửa tin nhắn tạm `⏳` thành kết quả. Chi tiết và cách chống gửi trùng khi SQS giao lại: `docs/decisions/ADR-009-worker-orchestration.md`.
 * **BE-23 (W3): Thuật toán Gom tin liên tiếp (Debounce):** Cài đặt logic gom tin trễ 3 giây như đã hướng dẫn ở [Mục 7.1](#71-bài-toán-1-gom-tin-debounce-khi-người-già-gửi-nhiều-tin-liên-tiếp).
 * **INT-01 (W3): Ghép nối đợt 1:** Kết hợp với Team AI để kiểm tra luồng tin nhắn văn bản từ Telegram chạy mượt mà từ đầu đến cuối.
 

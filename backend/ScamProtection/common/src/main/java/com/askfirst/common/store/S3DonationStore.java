@@ -1,5 +1,6 @@
 package com.askfirst.common.store;
 
+import com.askfirst.common.Ulid;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -11,7 +12,6 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Object;
 
 /**
- * Lưu trữ và xoá các mẫu tin đóng góp tại thư mục {@code donated/<hash(uid)>/} trên Amazon S3.
  */
 public final class S3DonationStore implements DonationStore {
 
@@ -30,7 +30,7 @@ public final class S3DonationStore implements DonationStore {
     @Override
     public String saveDonatedSample(String userId, String checkId, String maskedText) {
         String uidHash = hashUid(userId);
-        String sampleId = (checkId != null && !checkId.isBlank()) ? checkId : java.util.UUID.randomUUID().toString();
+        String sampleId = (checkId != null && !checkId.isBlank()) ? checkId : Ulid.next();
         String s3Key = "donated/" + uidHash + "/" + sampleId + ".txt";
 
         byte[] contentBytes = (maskedText != null ? maskedText : "").getBytes(StandardCharsets.UTF_8);
