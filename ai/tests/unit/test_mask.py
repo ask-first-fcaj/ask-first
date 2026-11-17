@@ -42,6 +42,9 @@ def masked(text: str) -> str:
         ("Liên hệ zalo.me/0912345678 nhé", ["0912345678"], ["zalo.me/[SĐT_1]"]),  # số điện thoại nằm trong link liên hệ
         ("sdt0912345678 gọi nhé", ["0912345678"], ["[SĐT_1]"]),  # dính liền chữ
         ("Số 09-12-34-56-78 nhé", ["09-12-34-56-78"], ["[SĐT_1]"]),
+        ("Gọi em số 07 43 862 322 nha", ["07 43 862 322"], ["[SĐT_1]"]),
+        ("Zalo em là (0533) 504407 nhé", ["(0533) 504407"], ["[SĐT_1]"]),
+        ("Gọi số bàn 024 3567 8901 nhé", ["024 3567 8901"], ["[SĐT_1]"]),
         ("Nhắn t.me/+84912345678 nhé", ["84912345678"], ["t.me/[SĐT_1]"]),
         ("CCCD: 0 1 2 3 4 5 6 7 8 9 0 1", ["0 1 2 3"], ["[CCCD_1]"]),
         ("LH: 0937 70 4636 / ikEr", ["0937 70 4636"], ["[SĐT_1]"]),  # nhóm 4-2-4
@@ -54,6 +57,7 @@ def masked(text: str) -> str:
         ("Số định danh 012 345 678 901", ["012 345 678 901"], ["[CCCD_1]"]),
         ("CMND cũ 123456789", ["123456789"], ["[CCCD_1]"]),
         ("Căn cước công dân số 079201001234", ["079201001234"], ["[CCCD_1]"]),
+        ("Em cần số giấy tờ tùy thân 241741804 để xác minh", ["241741804"], ["[CCCD_1]"]),
         # --- số tài khoản
         ("Chuyển khoản vào STK 0123456789 nhé", ["0123456789"], ["[STK_1]"]),
         ("Số tài khoản: 19031234567890", ["19031234567890"], ["[STK_1]"]),
@@ -61,6 +65,10 @@ def masked(text: str) -> str:
         ("STK Vietcombank 0123456789", ["0123456789"], ["[STK_1 • Vietcombank]"]),
         ("Chuyển vào 0123456789 tại Techcombank nhé", ["0123456789"], ["[STK_1 • Techcombank]"]),
         ("STK 1903 1234 5678 nhé", ["1903 1234 5678"], ["[STK_1]"]),
+        ("Tài khoản nhận tiền: 4246-2640-6564 - VietinBank", ["4246-2640-6564"], ["[STK_1 • VietinBank]"]),
+        ("STK 5604.1989.0273.2 Sacombank", ["5604.1989.0273.2"], ["[STK_1 • Sacombank]"]),
+        ("Tiền nhà chuyển vào 9681 3118 81 Agribank nhé", ["9681 3118 81"], ["[STK_1 • Agribank]"]),
+        ("Sổ tiết kiệm mang tên ông là 5678901234", ["5678901234"], ["[STK_1]"]),
         ("STK 0912345678", ["0912345678"], ["[STK_1]"]),  # ngữ cảnh STK thắng dạng số điện thoại
         # --- OTP / mã xác thực / mật khẩu
         ("Mã OTP của bạn là 482913", ["482913"], ["[OTP_1]"]),
@@ -73,6 +81,9 @@ def masked(text: str) -> str:
         ("Mật khẩu của bạn là 123456", ["123456"], ["[OTP_1]"]),
         ("Nhập PIN 1234 để xác nhận", ["1234"], ["[OTP_1]"]),
         ("Bác đọc mã 482913 vừa nhận cho cháu nhé", ["482913"], ["[OTP_1]"]),
+        ("Anh đọc dãy số vừa gửi về máy: 864857", ["864857"], ["[OTP_1]"]),  # không gọi tên OTP
+        ("Em cần số xác nhận trong tin nhắn, anh đọc 061295 giúp em", ["061295"], ["[OTP_1]"]),
+        ("Bác gõ lại mấy số trong tin nhắn mới nhất: 603872", ["603872"], ["[OTP_1]"]),
         ("Sử dụng 810814 dưới dạng mã dành cho Microsoft", ["810814"], ["[OTP_1]"]),
         ("G-028822 là mã xác minh Google của bạn", ["028822"], ["G-[OTP_1]"]),
         ("798272 is your Grab Activation Code (GAC)", ["798272"], ["[OTP_1]"]),
@@ -86,10 +97,13 @@ def masked(text: str) -> str:
         ("Gửi về nguyen.van.a@gmail.com nhé", ["nguyen.van.a@gmail.com"], ["[EMAIL_1]"]),
         ("Gửi về NGUYEN.VAN.A@GMAIL.COM nhé", ["NGUYEN.VAN.A@GMAIL.COM"], ["[EMAIL_1]"]),
         ("Gửi về abc[at]gmail.com nhé", ["abc[at]gmail.com"], ["[EMAIL_1]"]),
+        ("Mail của em: namnguyen1980 [at] yahoo.com nhé", ["namnguyen1980 [at] yahoo.com"], ["[EMAIL_1]"]),  # có dấu cách quanh [at]
+        ("Liên hệ bao_chi.test [at] gmail [dot] com", ["bao_chi.test [at] gmail [dot] com"], ["[EMAIL_1]"]),
         # --- số đọc từng chữ số (ASR)
         ("số tôi là không chín tám bảy sáu năm bốn ba hai một", ["không chín tám"], ["[SỐ_CHỮ_1]"]),
         ("khong chin tam bay sau nam bon ba hai mot", ["khong chin"], ["[SỐ_CHỮ_1]"]),
         ("không, chín, tám, bảy, sáu, năm, bốn", ["không, chín"], ["[SỐ_CHỮ_1]"]),
+        ("Số tài khoản là zero zero chín năm zero năm chín bốn bảy một", ["zero zero chín"], ["[SỐ_CHỮ_1]"]),
     ],
 )
 def test_pii_is_masked(text: str, secrets: list[str], tokens: list[str]) -> None:
@@ -195,12 +209,14 @@ def test_long_inputs_are_masked_in_linear_time() -> None:
         "Còn 185.000d tiền cước",
         "Đơn hàng DH123456 đang giao",
         "Mã đơn hàng 123456 đã giao",  # "mã" không sát số
+        "Tài khoản của bạn được tạo ngày 2026.11.16 thành công",  # ngày sau từ khoá STK không phải số tài khoản
         "Mã vận đơn SPX123456789012 đang giao",  # 12 số dính chữ là mã, không phải CCCD
         "Tăng 15% trong năm 2026",
         "Số nhà 12, ngõ 345, phố Lê Lợi",
         "Hotline 1900545436 hoặc gọi 113",
         "Mật khẩu mới phải có ít nhất 8 ký tự",
         "Mã OTP có hiệu lực trong 3 phút",
+        "Máy số 2 ở phòng khám, bác đọc số thứ tự 1234 cho y tá nha",  # "máy số" bỏ dấu thành "may so": không phải từ khoá OTP
         "Chuyển 5 triệu, rồi năm mươi triệu nữa",  # số tiền viết bằng chữ: không che (xem docstring mask.py)
         "Ba năm sau tôi về quê sáu tháng",  # từ chỉ số trong câu thường
         "Vào http://dichvucong-12345678.xyz/0912345678 ngay",  # URL giữ nguyên, kể cả số trong đường dẫn
