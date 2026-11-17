@@ -115,6 +115,26 @@ Phiếu `docs/results/g1-grading.md`: 20 mẫu ngẫu nhiên (seed 3), mỗi m�
 - **Giới hạn của kiểm chéo:** 2 agent cùng một model nên khớp nhau 0,96 không chứng minh chúng chấm đúng. Đây không phải người chấm, chỉ là góc nhìn thứ hai. Câu thêm về "đúng bản chất tin" là lựa chọn của AI1, vì issue #38 chỉ yêu cầu chấm văn phong.
 - **Cho AI-11:** tách 2 tiêu chí ra thành 2 cột, (1) văn phong và xưng hô, (2) lời giải thích có khớp với bản chất tin không, và cần ít nhất 2 người chấm để đo độ đồng thuận.
 
+## Prompt `judge_v3` (#165, 2026-11-17)
+
+`judge_v2` có 2 lỗi trên report M4. Thứ nhất, prompt không liệt kê mã dấu hiệu nên model tự đặt mã (`R_CLICK_LINK`, `R_MIMIC_BANK`, `QUOTE_…`): 507/537 mã (94%) không có trong `kb/templates/signals.j2`, Respond bỏ qua nên phần "Vì sao Bot nghi ngờ" và tin báo người thân mất lý do từ LLM. Thứ hai, giấy mời công an thật (`hd-rt-32`) bị chấm 60 chỉ vì có chữ công an. `judge_v3` thêm mục *Mã dấu hiệu* (đúng các mã `R_` có câu giải thích, test giữ đồng bộ) và một quy tắc chấm: tin xưng cơ quan chỉ mời đến trụ sở, không đòi hành động rủi ro, không có link lạ thì dưới 50; có đòi hành động thì từ 75, kể cả khi hẹn đến trụ sở. Quy tắc dựa vào hành động, không dựa vào câu "liên hệ trực tiếp tại trụ sở", vì kẻ gian chèn được câu đó (`hd-rt-05`).
+
+Đo 3 lượt mỗi bản, Qwen3 32B + backup, ngưỡng 70/60/25 như ADR-005, bộ eval hiện có (134 mẫu có nhãn):
+
+| Chỉ số | `judge_v2` (M4) | `judge_v3` |
+|---|---|---|
+| Recall | 100% ×3 | 100% ×3 |
+| Báo nhầm `benign_suspicious` | 5 / 10 / 10% | 5 / 5 / 5% |
+| Báo nhầm `hard` | 25% ×3 | 0% ×3 |
+| Đúng mức nhãn | 97,0–97,8% | 99,3% ×3 |
+| Đúng kịch bản | 59,7–61,2% | 66,4–68,7% |
+| Mã LLM ngoài `signals.j2` | 94% | 14% (64/469) |
+| Chi phí / lượt | ~$0,099 | ~$0,105 |
+
+Mẫu đổi mức: `hd-rt-32` `SUSPICIOUS` 60 → `UNSURE` 50, `hd-rt-05` vẫn `DANGEROUS` (70 → 75), `bs-ai-09` hết báo nhầm (2/3 lượt → 0/3), `hd-ai-01` và `rs-ai-31` lên `DANGEROUS`. `hd-rt-27` lên `DANGEROUS` là nhờ luật `R_OVERPAY_REFUND` (#140), không phải nhờ prompt. Báo nhầm còn lại là `bs-ai-05` như trước.
+
+Hạn chế: bản nháp đầu của quy tắc ("vẫn chấm theo các mức trên") làm `hd-rt-05` tụt xuống 65, phải sửa thành "từ 75" mới giữ được, tức là prompt đã được chỉnh trên chính bộ eval. `hd-rt-32` ra 50, sát ngưỡng `SUSPICIOUS` 60. Mã lạ còn lại chủ yếu là `R_CLICK_LINK` (model muốn có mã cho việc bấm link, luật không có) và `none`.
+
 ## Rủi ro và việc còn lại
 
 - **Báo nhầm nằm đúng ngưỡng gate và đã trượt 1 mẫu ở lượt chiều** (sáng 2/20 = 10%, chiều 3/20 = 15%, xem mục *Đo độ dao động*). Bộ v1 300 mẫu (AI-10) sẽ cho số chắc hơn, và AI-13 tinh chỉnh ngưỡng cùng trọng số `U_OFFICIAL` trên bộ đó.
