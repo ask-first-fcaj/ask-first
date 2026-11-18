@@ -104,6 +104,21 @@ public class UserRepo {
     }
 
     /**
+     * Bật/tắt MỘT mục đích (guardian, donate...) mà KHÔNG đụng vào bằng chứng đồng ý chính
+     * (policySha256, consentVersion, consentedAt). Khác {@link #updateConsent}: hàm đó đóng dấu lại
+     * consent theo chính sách hiện tại nên không được dùng cho các luồng phụ như donate/guardian,
+     * vì sẽ vô tình "gia hạn" consent của người dùng chưa đồng ý chính sách mới.
+     * Chưa có hồ sơ thì bỏ qua (không tạo hồ sơ chỉ có một mục đích).
+     */
+    public void setPurpose(String userId, String purpose, boolean value) {
+        update(userId, false, user -> {
+            Map<String, Boolean> merged = new HashMap<>(user.getPurposes());
+            merged.put(purpose, value);
+            user.setPurposes(merged);
+        });
+    }
+
+    /**
      * Thu hồi đồng ý (user bấm "Không đồng ý"): tắt mọi mục đích, bao gồm analyze,
      * để bot ngừng xử lý nội dung.
      * Bằng chứng đồng ý/từ chối vẫn nằm trong audit trail. User chưa có hồ sơ thì

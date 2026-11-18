@@ -2,53 +2,46 @@ package com.askfirst.worker;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
+import com.amazonaws.services.lambda.runtime.events.SQSBatchResponse;
 import com.amazonaws.services.lambda.runtime.events.SQSEvent;
-import com.askfirst.common.TelegramClient;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Worker xử lý tin nhắn từ SQS và phản hồi qua Telegram.
- * Câu cảnh báo xưng hô lễ phép, tôn trọng theo tôn chỉ SH-08.
+ * Lambda worker nối với SQS jobs (batch size 1, bật ReportBatchItemFailures trong template.yaml).
+ * Message lỗi được báo qua batchItemFailures để SQS giao lại; không còn ném RuntimeException cả lô.
  */
-public class WorkerHandler implements RequestHandler<SQSEvent, Void> {
+public class WorkerHandler implements RequestHandler<SQSEvent, SQSBatchResponse> {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper()
-            .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
-
-    public static final String DEFAULT_WARNING_TEXT =
-            "⚠️ Tin này có nguy cơ lừa đảo cao. Bác tuyệt đối không làm theo, không chuyển tiền và không cung cấp mã OTP nhé!";
-
-    private final TelegramClient telegram;
+    private final WorkerRunner runner;
 
     public WorkerHandler() {
-        this(new TelegramClient(System.getenv("TELEGRAM_BOT_TOKEN")));
+        this(WorkerWiring.fromEnv());
     }
 
-    public WorkerHandler(TelegramClient telegram) {
-        this.telegram = telegram;
+    WorkerHandler(WorkerRunner runner) {
+        this.runner = runner;
     }
 
     @Override
-    public Void handleRequest(SQSEvent event, Context context) {
-        if (event == null || event.getRecords() == null) {
-            return null;
-        }
-
+    public SQSBatchResponse handleRequest(SQSEvent event, Context context) {
+        List<SQSBatchResponse.BatchItemFailure> failures = new ArrayList<>();
         for (SQSEvent.SQSMessage message : event.getRecords()) {
             try {
-                JsonNode body = MAPPER.readTree(message.getBody());
-                long chatId = body.has("chat_id") ? body.path("chat_id").asLong() : body.path("chatId").asLong();
-                if (telegram != null) {
-                    telegram.sendText(chatId, DEFAULT_WARNING_TEXT);
-                }
+                runner.handle(message.getBody(), receiveCount(message), context.getRemainingTimeInMillis());
             } catch (Exception e) {
-                if (context != null && context.getLogger() != null) {
-                    context.getLogger().log("Lỗi worker: " + e);
-                }
-                throw new RuntimeException(e); // để SQS retry (batch-size = 1)
+                // Lý do đã được WorkerRunner log (chỉ mã lỗi). Không log thêm e ở đây vì message có thể chứa nội dung.
+                failures.add(new SQSBatchResponse.BatchItemFailure(message.getMessageId()));
             }
         }
-        return null;
+        return new SQSBatchResponse(failures);
+    }
+
+    private static int receiveCount(SQSEvent.SQSMessage message) {
+        try {
+            return Integer.parseInt(message.getAttributes().get("ApproximateReceiveCount"));
+        } catch (RuntimeException e) {
+            return 1;
+        }
     }
 }
