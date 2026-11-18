@@ -723,6 +723,15 @@ class WebhookHandlerBE30Test {
                         Instant.now().toString(), 0L));
             }
         }
+
+        @Override
+        public List<CheckRecord> listRecentChecks(String userId, int limit, String startSortKey) {
+            return store.values().stream()
+                    .filter(r -> r.userId().equals(userId))
+                    .sorted(java.util.Comparator.comparing(CheckRecord::checkId).reversed())
+                    .limit(limit)
+                    .collect(java.util.stream.Collectors.toList());
+        }
     }
 
     private static class InMemorySessionStore implements SessionStore {
