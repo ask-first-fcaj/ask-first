@@ -234,7 +234,10 @@ class WebhookHandlerTest {
                 }
                 """;
 
-        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(voiceJson), mockContext);
+        // Từ BE-34, feature_voice tắt thì voice bị chặn ở bước "chưa hỗ trợ" trước khi hỏi đồng ý voice:
+        // bật cờ để kiểm đúng bước đồng ý riêng cho voice của BE-25.
+        WebhookHandler voiceOn = handlerWithVoice(true);
+        APIGatewayProxyResponseEvent res = voiceOn.handleRequest(createRequest(voiceJson), mockContext);
         assertThat(res.getStatusCode()).isEqualTo(200);
         assertThat(res.getBody()).isEqualTo("VOICE_CONSENT_REQUIRED");
         assertThat(fakeSqs.messageSent.get()).isFalse();
@@ -505,6 +508,344 @@ class WebhookHandlerTest {
         assertThat(fakeSqs.sentCount.get()).isEqualTo(1);
     }
 
+    // ------------------------------------------------------------------ BE-22: chat riêng, dedup, secret, độ trễ
+
+    @Test
+    @DisplayName("BE-22: secret đúng nhưng tên header viết thường (Function URL) vẫn được nhận")
+    void testSecretHeaderNameIsCaseInsensitive() {
+        APIGatewayProxyRequestEvent req = new APIGatewayProxyRequestEvent()
+                .withHeaders(Map.of("x-telegram-bot-api-secret-token", SECRET))
+                .withBody(textUpdate(700, "/huongdan"));
+
+        assertThat(handler.handleRequest(req, mockContext).getStatusCode()).isEqualTo(200);
+    }
+
+    @Test
+    @DisplayName("BE-22: secret chỉ trùng phần đầu / dài hơn / rỗng đều bị 401")
+    void testSecretPrefixAndLengthMismatchRejected() {
+        for (String bad : new String[] {SECRET.substring(0, SECRET.length() - 1), SECRET + "x", ""}) {
+            APIGatewayProxyRequestEvent req = new APIGatewayProxyRequestEvent()
+                    .withHeaders(Map.of("X-Telegram-Bot-Api-Secret-Token", bad))
+                    .withBody(textUpdate(701, "/huongdan"));
+            assertThat(handler.handleRequest(req, mockContext).getStatusCode()).as("secret '%s'", bad).isEqualTo(401);
+        }
+        assertThat(fakeTelegram.sentTexts).isEmpty();
+    }
+
+    @Test
+    @DisplayName("BE-22: secret sai thì không chạm dedup, không gửi gì")
+    void testWrongSecretDoesNotTouchDedup() {
+        InMemoryDedup dedup = new InMemoryDedup();
+        WebhookHandler h = handlerWithDedup(dedup);
+        APIGatewayProxyRequestEvent req = new APIGatewayProxyRequestEvent()
+                .withHeaders(Map.of("X-Telegram-Bot-Api-Secret-Token", "sai"))
+                .withBody(textUpdate(702, "kiểm tra"));
+
+        assertThat(h.handleRequest(req, mockContext).getStatusCode()).isEqualTo(401);
+        assertThat(dedup.seen).isEmpty();
+        assertThat(fakeSqs.sentCount.get()).isZero();
+    }
+
+    @Test
+    @DisplayName("BE-22: đường nhanh (/start) gửi trùng update_id thì chỉ trả lời một lần")
+    void testFastPathDuplicateRepliesOnce() {
+        WebhookHandler h = handlerWithDedup(new InMemoryDedup());
+
+        APIGatewayProxyResponseEvent first = h.handleRequest(createRequest(textUpdate(710, "/start")), mockContext);
+        APIGatewayProxyResponseEvent retry = h.handleRequest(createRequest(textUpdate(710, "/start")), mockContext);
+
+        assertThat(first.getBody()).isEqualTo("COMMAND_HANDLED");
+        assertThat(retry.getBody()).isEqualTo("DUPLICATE");
+        assertThat(fakeTelegram.sentTexts).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("BE-22: nút bấm (callback) gửi trùng update_id thì chỉ xử lý một lần")
+    void testCallbackDuplicateHandledOnce() {
+        InMemoryDedup dedup = new InMemoryDedup();
+        WebhookHandler h = handlerWithDedup(dedup);
+
+        h.handleRequest(createRequest(callbackUpdate(711, "consent:agree")), mockContext);
+        APIGatewayProxyResponseEvent retry = h.handleRequest(createRequest(callbackUpdate(711, "consent:agree")), mockContext);
+
+        assertThat(retry.getBody()).isEqualTo("DUPLICATE");
+        assertThat(fakeAuditRepo.events.stream().filter("CONSENT_GIVEN"::equals).count()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("BE-22: chỉ nhận chat private, tin trong nhóm bị bỏ qua và không ghi dedup")
+    void testGroupChatIsIgnored() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        InMemoryDedup dedup = new InMemoryDedup();
+        WebhookHandler h = handlerWithDedup(dedup);
+
+        for (String type : new String[] {"group", "supergroup", "channel"}) {
+            String update = "{\"update_id\": 720, \"message\": {\"message_id\": 1, \"from\": {\"id\": 111, \"is_bot\": false}, "
+                    + "\"chat\": {\"id\": -100222, \"type\": \"" + type + "\"}, \"date\": 1729000000, \"text\": \"kiểm tra\"}}";
+            APIGatewayProxyResponseEvent res = h.handleRequest(createRequest(update), mockContext);
+            assertThat(res.getStatusCode()).as(type).isEqualTo(200);
+            assertThat(res.getBody()).as(type).isEqualTo("IGNORED_NON_PRIVATE");
+        }
+        assertThat(dedup.seen).isEmpty();
+        assertThat(fakeSqs.sentCount.get()).isZero();
+        assertThat(fakeTelegram.sentTexts).isEmpty();
+    }
+
+    @Test
+    @DisplayName("BE-22: nút bấm từ tin trong nhóm cũng bị bỏ qua")
+    void testGroupCallbackIsIgnored() {
+        String update = "{\"update_id\": 721, \"callback_query\": {\"id\": \"cb\", \"from\": {\"id\": 111, \"is_bot\": false}, "
+                + "\"message\": {\"message_id\": 1, \"chat\": {\"id\": -100222, \"type\": \"supergroup\"}, \"date\": 1729000000}, "
+                + "\"data\": \"consent:agree\"}}";
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(update), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("IGNORED_NON_PRIVATE");
+        assertThat(fakeAuditRepo.events).isEmpty();
+        assertThat(fakeUserRepo.getUser("tg:111")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("BE-22: phần xử lý của handler (không tính mạng) p95 << 500 ms khi đã warm")
+    void testHandlerOverheadP95() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        // Không rate limit để cả 700 request đều đi hết đường chậm (buffer + ⏳ + SQS)
+        WebhookHandler h = new WebhookHandler(fakeTelegram, new CapturingSqsClient(), "https://sqs.mock.queue", SECRET,
+                fakeUserRepo, fakeAuditRepo, null, POLICY_SHA256, null, new InMemoryBufferStore(), null);
+        for (int i = 0; i < 200; i++) { // làm nóng JIT
+            h.handleRequest(createRequest(textUpdate(800 + i, "khởi động")), mockContext);
+        }
+
+        int n = 500;
+        long[] micros = new long[n];
+        for (int i = 0; i < n; i++) {
+            APIGatewayProxyRequestEvent req = createRequest(textUpdate(1000 + i, "kiểm tra " + i));
+            long t0 = System.nanoTime();
+            h.handleRequest(req, mockContext);
+            micros[i] = (System.nanoTime() - t0) / 1000;
+        }
+        java.util.Arrays.sort(micros);
+        long p95Millis = micros[(int) Math.ceil(n * 0.95) - 1] / 1000;
+
+        // Chỉ bảo vệ khỏi việc ai đó thêm xử lý nặng vào đường nóng. p95 thật (gồm DynamoDB, Telegram, SQS)
+        // phải đo trên CloudWatch sau khi deploy.
+        assertThat(p95Millis).isLessThan(100);
+    }
+
+    // ------------------------------------------------------------------ BE-34: chặn media trước khi tạo job
+
+    @Test
+    @DisplayName("BE-34: ảnh 25 MB bị từ chối kèm câu giải thích, không có job nào được enqueue")
+    void testOversizePhotoRejectedWithoutJob() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        InMemoryBufferStore buffer = new InMemoryBufferStore();
+        CapturingSqsClient sqs = new CapturingSqsClient();
+        WebhookHandler h = handlerWithBuffer(buffer, sqs, null);
+
+        APIGatewayProxyResponseEvent res = h.handleRequest(
+                createRequest(photoUpdate(900, 25L * 1024 * 1024, null)), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(res.getBody()).isEqualTo("MEDIA_TOO_LARGE");
+        assertThat(fakeTelegram.lastText).isEqualTo(
+                "Bác ơi, file ảnh này dung lượng hơi lớn (quá 20MB) nên cháu chưa đọc được. "
+                        + "Bác chụp lại màn hình gọn hơn giúp cháu nhé!");
+        assertThat(sqs.sentCount.get()).isZero();
+        assertThat(buffer.lastSeq).isZero();
+        assertThat(buffer.placeholderId).isNull();
+    }
+
+    @Test
+    @DisplayName("BE-34: ảnh bị từ chối không tốn lượt rate limit")
+    void testRejectedMediaDoesNotConsumeRateLimit() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        for (int i = 0; i < 40; i++) {
+            handler.handleRequest(createRequest(photoUpdate(910 + i, 30L * 1024 * 1024, null)), mockContext);
+        }
+
+        APIGatewayProxyResponseEvent ok = handler.handleRequest(createRequest(textUpdate(990, "kiểm tra")), mockContext);
+
+        assertThat(ok.getBody()).isEqualTo("OK");
+        assertThat(fakeSqs.sentCount.get()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("BE-34: đúng 20 MB vẫn được nhận, thiếu file_size thì không chặn")
+    void testPhotoAtLimitAndUnknownSizeAccepted() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+
+        APIGatewayProxyResponseEvent atLimit = handler.handleRequest(
+                createRequest(photoUpdate(920, 20L * 1024 * 1024, null)), mockContext);
+        APIGatewayProxyResponseEvent noSize = handler.handleRequest(
+                createRequest(photoUpdate(921, null, null)), mockContext);
+
+        assertThat(atLimit.getBody()).isEqualTo("OK");
+        assertThat(noSize.getBody()).isEqualTo("OK");
+        assertThat(fakeSqs.sentCount.get()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("BE-34: tệp ảnh (document image/*) > 20 MB dùng câu 'file ảnh', tệp khác dùng câu 'tệp'")
+    void testOversizeDocumentMessages() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+
+        handler.handleRequest(createRequest(documentUpdate(930, "image/png", "man-hinh.png", 25L * 1024 * 1024)), mockContext);
+        assertThat(fakeTelegram.lastText).contains("file ảnh này dung lượng hơi lớn (quá 20MB)");
+
+        handler.handleRequest(createRequest(documentUpdate(931, "application/pdf", "hop-dong.pdf", 25L * 1024 * 1024)), mockContext);
+        assertThat(fakeTelegram.lastText).contains("tệp này dung lượng hơi lớn (quá 20MB)");
+        assertThat(fakeSqs.sentCount.get()).isZero();
+    }
+
+    @Test
+    @DisplayName("BE-34: xưng hô theo cài đặt (Cô) trong câu từ chối")
+    void testRejectionUsesAddressForm() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        fakeUserRepo.updateAddressForm("tg:111", "Cô");
+
+        handler.handleRequest(createRequest(photoUpdate(940, 25L * 1024 * 1024, null)), mockContext);
+
+        assertThat(fakeTelegram.lastText).startsWith("Cô ơi, file ảnh này").contains("Cô chụp lại màn hình gọn hơn");
+    }
+
+    @Test
+    @DisplayName("BE-34: album nhiều ảnh quá nặng chỉ nhận một câu giải thích, ảnh bình thường trong album vẫn vào job")
+    void testOversizeAlbumExplainedOnce() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        WebhookHandler h = handlerWithDedup(new InMemoryDedup());
+
+        h.handleRequest(createRequest(photoUpdate(950, 25L * 1024 * 1024, "ALBUM1")), mockContext);
+        h.handleRequest(createRequest(photoUpdate(951, 30L * 1024 * 1024, "ALBUM1")), mockContext);
+        h.handleRequest(createRequest(photoUpdate(952, 40L * 1024 * 1024, "ALBUM1")), mockContext);
+        APIGatewayProxyResponseEvent normal = h.handleRequest(
+                createRequest(photoUpdate(953, 90_000L, "ALBUM1")), mockContext);
+
+        assertThat(fakeTelegram.sentTexts.stream().filter(t -> t.contains("quá 20MB")).count()).isEqualTo(1);
+        assertThat(normal.getBody()).isEqualTo("OK");
+        assertThat(fakeSqs.sentCount.get()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("BE-34: chưa đồng ý điều khoản thì ảnh nặng vẫn nhận lời mời đồng ý trước")
+    void testOversizeFromUnconsentedUserStillAsksConsent() {
+        APIGatewayProxyResponseEvent res = handler.handleRequest(
+                createRequest(photoUpdate(960, 25L * 1024 * 1024, null)), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("CONSENT_REQUIRED");
+        assertThat(fakeSqs.sentCount.get()).isZero();
+    }
+
+    @Test
+    @DisplayName("BE-34: voice 150 giây (cờ voice tắt, mặc định MVP) nhận câu 'chưa hỗ trợ', không job")
+    void testLongVoiceUnsupportedByDefault() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true, "voice", true));
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(voiceUpdate(970, 150)), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(res.getBody()).isEqualTo("VOICE_UNSUPPORTED");
+        assertThat(fakeTelegram.lastText).contains("chưa hỗ trợ tin nhắn thoại");
+        assertThat(fakeSqs.sentCount.get()).isZero();
+    }
+
+    @Test
+    @DisplayName("BE-34: voice ngắn 5 giây, kể cả đã đồng ý voice, vẫn 'chưa hỗ trợ' khi cờ tắt")
+    void testShortVoiceAlsoUnsupportedByDefault() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true, "voice", true));
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(voiceUpdate(971, 5)), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("VOICE_UNSUPPORTED");
+        assertThat(fakeSqs.sentCount.get()).isZero();
+    }
+
+    @Test
+    @DisplayName("BE-34: file ghi âm (audio) cũng 'chưa hỗ trợ', không job")
+    void testAudioFileUnsupportedByDefault() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        String audio = "{\"update_id\": 972, \"message\": {\"message_id\": 1, \"from\": {\"id\": 111, \"is_bot\": false}, "
+                + "\"chat\": {\"id\": 222, \"type\": \"private\"}, \"date\": 1729000000, "
+                + "\"audio\": {\"file_id\": \"a\", \"file_unique_id\": \"ua\", \"duration\": 30, \"mime_type\": \"audio/mpeg\"}}}";
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(audio), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("VOICE_UNSUPPORTED");
+        assertThat(fakeSqs.sentCount.get()).isZero();
+    }
+
+    @Test
+    @DisplayName("BE-34: khi bật voice, voice 150 giây bị từ chối vì dài quá 2 phút, không job")
+    void testVoiceTooLongWhenEnabled() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true, "voice", true));
+        WebhookHandler voiceOn = handlerWithVoice(true);
+
+        APIGatewayProxyResponseEvent res = voiceOn.handleRequest(createRequest(voiceUpdate(980, 150)), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("VOICE_TOO_LONG");
+        assertThat(fakeTelegram.lastText).isEqualTo(
+                "Bác ơi, đoạn ghi âm dài quá 2 phút rồi ạ. Bác gửi đoạn ngắn hơn giúp cháu nhé!");
+        assertThat(fakeSqs.sentCount.get()).isZero();
+    }
+
+    @Test
+    @DisplayName("BE-34: khi bật voice, đúng 120 giây vẫn được nhận")
+    void testVoiceAtLimitAcceptedWhenEnabled() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true, "voice", true));
+        WebhookHandler voiceOn = handlerWithVoice(true);
+
+        APIGatewayProxyResponseEvent res = voiceOn.handleRequest(createRequest(voiceUpdate(981, 120)), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("OK");
+        assertThat(fakeSqs.sentCount.get()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("BE-34: ảnh và văn bản không bao giờ làm handler đọc cờ voice")
+    void testNonAudioNeverReadsVoiceFlag() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        AtomicInteger flagReads = new AtomicInteger();
+        WebhookHandler h = new WebhookHandler(fakeTelegram, fakeSqs, "https://sqs.mock.queue", SECRET,
+                fakeUserRepo, fakeAuditRepo, fakeRateLimitRepo, POLICY_SHA256, null, null, null,
+                () -> {
+                    flagReads.incrementAndGet();
+                    return true;
+                });
+
+        h.handleRequest(createRequest(textUpdate(985, "kiểm tra")), mockContext);
+        h.handleRequest(createRequest(photoUpdate(986, 90_000L, null)), mockContext);
+
+        assertThat(flagReads.get()).isZero();
+    }
+
+    private WebhookHandler handlerWithVoice(boolean enabled) {
+        return new WebhookHandler(fakeTelegram, fakeSqs, "https://sqs.mock.queue", SECRET,
+                fakeUserRepo, fakeAuditRepo, fakeRateLimitRepo, POLICY_SHA256, null, null, null, () -> enabled);
+    }
+
+    private static String photoUpdate(long updateId, Long largestSizeBytes, String mediaGroupId) {
+        String size = largestSizeBytes == null ? "" : ", \"file_size\": " + largestSizeBytes;
+        String group = mediaGroupId == null ? "" : ", \"media_group_id\": \"" + mediaGroupId + "\"";
+        return "{\"update_id\": " + updateId + ", \"message\": {\"message_id\": " + updateId
+                + ", \"from\": {\"id\": 111, \"is_bot\": false}, \"chat\": {\"id\": 222, \"type\": \"private\"}, "
+                + "\"date\": 1729000000" + group + ", \"photo\": ["
+                + "{\"file_id\": \"sm" + updateId + "\", \"file_unique_id\": \"usm" + updateId + "\", \"file_size\": 1200}, "
+                + "{\"file_id\": \"lg" + updateId + "\", \"file_unique_id\": \"ulg" + updateId + "\"" + size + "}]}}";
+    }
+
+    private static String documentUpdate(long updateId, String mime, String fileName, long sizeBytes) {
+        return "{\"update_id\": " + updateId + ", \"message\": {\"message_id\": " + updateId
+                + ", \"from\": {\"id\": 111, \"is_bot\": false}, \"chat\": {\"id\": 222, \"type\": \"private\"}, "
+                + "\"date\": 1729000000, \"document\": {\"file_id\": \"d" + updateId + "\", \"file_unique_id\": \"ud" + updateId
+                + "\", \"mime_type\": \"" + mime + "\", \"file_name\": \"" + fileName + "\", \"file_size\": " + sizeBytes + "}}}";
+    }
+
+    private static String voiceUpdate(long updateId, int durationSeconds) {
+        return "{\"update_id\": " + updateId + ", \"message\": {\"message_id\": " + updateId
+                + ", \"from\": {\"id\": 111, \"is_bot\": false}, \"chat\": {\"id\": 222, \"type\": \"private\"}, "
+                + "\"date\": 1729000000, \"voice\": {\"file_id\": \"v" + updateId + "\", \"file_unique_id\": \"uv" + updateId
+                + "\", \"mime_type\": \"audio/ogg\", \"duration\": " + durationSeconds + ", \"file_size\": 30000}}}";
+    }
+
     // ------------------------------------------------------------------ BE-29: callback ack: người thân
 
     @Test
@@ -666,7 +1007,7 @@ class WebhookHandlerTest {
         }
 
         @Override
-        public Optional<com.askfirst.common.store.BufferStore.State> state(String chatId) {
+        public Optional<State> state(String chatId) {
             return Optional.empty();
         }
 
@@ -755,6 +1096,7 @@ class WebhookHandlerTest {
         String lastText;
         Map<String, Object> lastMarkup;
         String lastCallbackAnswer;
+        final List<String> sentTexts = new ArrayList<>();
 
         public FakeTelegramClient() {
             super("fake-token");
@@ -765,6 +1107,7 @@ class WebhookHandlerTest {
             this.lastChatId = chatId;
             this.lastText = text;
             this.lastMarkup = replyMarkup;
+            this.sentTexts.add(text);
             return 999;
         }
 

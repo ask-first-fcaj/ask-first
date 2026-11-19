@@ -18,6 +18,7 @@ import com.askfirst.common.store.AuditRepo;
 import com.askfirst.common.store.BufferStore;
 import com.askfirst.common.store.DynamoAlertStore;
 import com.askfirst.common.store.DynamoBufferStore;
+import com.askfirst.common.store.DynamoFlagsStore;
 import com.askfirst.common.store.DynamoStoreService;
 import com.askfirst.common.store.RateLimitRepo;
 import com.askfirst.common.store.UserRecord;
@@ -38,6 +39,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 
 public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
@@ -51,6 +53,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
     /** Khóa dedup update_id sống 24 giờ (Telegram chỉ retry update trong thời gian ngắn). */
     private static final long DEDUP_TTL_SECONDS = 24 * 3600L;
+
+    /** Một album nhiều ảnh quá nặng chỉ nhận một câu giải thích trong khoảng này. */
+    private static final long ALBUM_REJECT_TTL_SECONDS = 3600L;
 
     /** Tin trong BUFFER# chỉ tồn tại tạm thời (plan: tối đa 10 phút), worker xóa ngay khi xử lý xong. */
     private static final long BUFFER_TTL_SECONDS = 10 * 60L;
@@ -82,6 +87,12 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     private final AlertStore alertStore;
 
     /**
+     * Cờ feature_voice (BE-34). Chỉ được hỏi khi có tin voice/audio. Mặc định TẮT: MVP chưa hỗ trợ voice nên
+     * mọi voice/audio nhận câu "chưa hỗ trợ" và không bao giờ vào hàng đợi.
+     */
+    private final BooleanSupplier voiceEnabled;
+
+    /**
      * true chỉ khi tạo qua {@link #forLocalDevelopment(TelegramClient)} (long polling trên máy dev):
      * bỏ kiểm tra secret và cho phép chạy không có SQS. Lambda thật luôn là false.
      */
@@ -110,6 +121,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.dedup = DynamoStoreService.create(ddb, tableName);
         this.bufferStore = new DynamoBufferStore(ddb, tableName);
         this.alertStore = new DynamoAlertStore(ddb, tableName);
+        this.voiceEnabled = new VoiceFlag(new DynamoFlagsStore(ddb, tableName));
     }
 
     public WebhookHandler(TelegramClient telegram, SqsClient sqs, String queueUrl, String secret) {
@@ -125,7 +137,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             AuditRepo auditRepo,
             RateLimitRepo rateLimitRepo,
             String policySha256) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, null, false, null, null);
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, null, false, null, null,
+                null);
     }
 
     public WebhookHandler(
@@ -138,7 +151,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             RateLimitRepo rateLimitRepo,
             String policySha256,
             DynamoStoreService dedup) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, dedup, false, null, null);
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, dedup, false, null, null,
+                null);
     }
 
     /** Như trên, có thêm BUFFER# và ALERT# (cách Lambda thật chạy). */
@@ -155,7 +169,25 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             BufferStore bufferStore,
             AlertStore alertStore) {
         this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, dedup, false,
-                bufferStore, alertStore);
+                bufferStore, alertStore, null);
+    }
+
+    /** Như trên, có thêm cờ feature_voice (BE-34). Null = voice tắt. */
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            String policySha256,
+            DynamoStoreService dedup,
+            BufferStore bufferStore,
+            AlertStore alertStore,
+            BooleanSupplier voiceEnabled) {
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, policySha256, dedup, false,
+                bufferStore, alertStore, voiceEnabled);
     }
 
     private WebhookHandler(
@@ -170,7 +202,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             DynamoStoreService dedup,
             boolean localDevelopment,
             BufferStore bufferStore,
-            AlertStore alertStore) {
+            AlertStore alertStore,
+            BooleanSupplier voiceEnabled) {
         this.telegram = telegram;
         this.sqs = sqs;
         this.queueUrl = queueUrl;
@@ -184,6 +217,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.localDevelopment = localDevelopment;
         this.bufferStore = bufferStore;
         this.alertStore = alertStore;
+        this.voiceEnabled = voiceEnabled != null ? voiceEnabled : () -> false;
     }
 
     /**
@@ -191,7 +225,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
      * Đây là đường DUY NHẤT được bỏ qua kiểm tra secret.
      */
     public static WebhookHandler forLocalDevelopment(TelegramClient telegram) {
-        return new WebhookHandler(telegram, null, null, null, null, null, null, DEFAULT_POLICY_SHA256, null, true, null, null);
+        return new WebhookHandler(telegram, null, null, null, null, null, null, DEFAULT_POLICY_SHA256, null, true, null, null, null);
     }
 
     /**
@@ -535,8 +569,16 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return response(200, "CONSENT_REQUIRED");
         }
 
-        // 2. Kiểm tra đồng ý tin nhắn thoại (Voice Consent Check - BE-25)
-        if ("voice".equalsIgnoreCase(inbound.kind())) {
+        // 2. Chặn media quá nặng / quá dài (BE-34) bằng metadata của update, TRƯỚC rate limit, buffer và SQS:
+        //    file bị từ chối không tốn lượt rate limit và không tạo job. Voice/audio khi feature_voice tắt (MVP)
+        //    nhận câu "chưa hỗ trợ" ở đây nên cũng không bao giờ đi tiếp.
+        MediaGuard.Decision mediaDecision = MediaGuard.inspect(inbound, voiceEnabled);
+        if (mediaDecision.rejected()) {
+            return rejectMedia(mediaDecision, inbound, chatId, addressForm, context);
+        }
+
+        // 3. Kiểm tra đồng ý tin nhắn thoại (Voice Consent Check - BE-25), chỉ tới đây khi voice đã được bật
+        if (MediaGuard.isAudioKind(inbound.kind())) {
             boolean hasVoice = (userRepo != null) && userRepo.hasVoiceConsent(userId);
             if (!hasVoice) {
                 String voiceMsg =
@@ -550,7 +592,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
         }
 
-        // 3. Hàng đợi SQS phải sẵn sàng TRƯỚC khi nhận việc: không gửi "⏳" cho một job chắc chắn bị mất.
+        // 4. Hàng đợi SQS phải sẵn sàng TRƯỚC khi nhận việc: không gửi "⏳" cho một job chắc chắn bị mất.
         //    (Chế độ local long polling không có SQS nên được bỏ qua bước enqueue.)
         boolean queueReady = queueUrl != null && !queueUrl.isBlank() && sqs != null;
         if (!queueReady && !localDevelopment) {
@@ -558,7 +600,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return response(500, "QUEUE_NOT_CONFIGURED");
         }
 
-        // 4. Kiểm tra Giới hạn tốc độ người dùng (Rate Limiting - BE-26)
+        // 5. Kiểm tra Giới hạn tốc độ người dùng (Rate Limiting - BE-26)
         if (rateLimitRepo != null) {
             RateLimitRepo.RateLimitResult rlResult = rateLimitRepo.checkAndIncrement(userId);
             if (!rlResult.allowed()) {
@@ -579,7 +621,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         }
 
         // Đường cũ (bufferStore == null): chỉ còn cho test cũ và LocalBotRunner.
-        // 5. Bước tin nhắn chờ ("⏳")
+        // 6. Bước tin nhắn chờ ("⏳")
         if (telegram != null) {
             try {
                 telegram.sendText(
@@ -591,7 +633,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
         }
 
-        // 6. Enqueue vào SQS
+        // 7. Enqueue vào SQS
         if (queueReady) {
             try {
                 String payload = MAPPER.writeValueAsString(inbound);
@@ -607,6 +649,33 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         }
 
         return response(200, "OK");
+    }
+
+    /**
+     * Từ chối media ngay tại webhook (BE-34). Không ghi BUFFER#, không enqueue. Luôn trả 200: đây là kết quả đã
+     * xử lý xong, Telegram không được retry. Album có nhiều ảnh quá nặng chỉ nhận MỘT câu giải thích.
+     */
+    private APIGatewayProxyResponseEvent rejectMedia(
+            MediaGuard.Decision decision, InboundMessage inbound, long chatId, String addressForm, Context context) {
+        log(context, "Từ chối media: " + decision.responseCode() + " kind=" + inbound.kind());
+        boolean explain = true;
+        if (inbound.mediaGroupId() != null && dedup != null) {
+            try {
+                String key = "media-reject:" + inbound.chatId() + ":" + inbound.mediaGroupId();
+                explain = dedup.tryAcquireDedup(key, Instant.now().getEpochSecond() + ALBUM_REJECT_TTL_SECONDS);
+            } catch (Exception e) {
+                log(context, "Không kiểm tra được dedup album, vẫn gửi câu giải thích: " + e.getClass().getSimpleName());
+            }
+        }
+        if (explain && telegram != null) {
+            try {
+                telegram.sendText(chatId, MediaGuard.replyFor(decision, addressForm));
+            } catch (Exception e) {
+                // Không retry: gửi lại cả update cũng chỉ lại bị từ chối
+                log(context, "Không gửi được câu từ chối media: " + e.getClass().getSimpleName());
+            }
+        }
+        return response(200, decision.responseCode());
     }
 
     /**
@@ -675,16 +744,33 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return false;
         }
 
-        byte[] expectedBytes = secret.getBytes(StandardCharsets.UTF_8);
+        byte[] expectedDigest = sha256(secret);
         for (Map.Entry<String, String> entry : headers.entrySet()) {
             if ("X-Telegram-Bot-Api-Secret-Token".equalsIgnoreCase(entry.getKey()) && entry.getValue() != null) {
-                byte[] actualBytes = entry.getValue().getBytes(StandardCharsets.UTF_8);
-                if (MessageDigest.isEqual(expectedBytes, actualBytes)) {
+                if (secretMatches(expectedDigest, entry.getValue())) {
                     return true;
                 }
             }
         }
         return false;
+    }
+
+    /**
+     * So sánh thời gian cố định bằng {@link MessageDigest#isEqual}. Băm SHA-256 cả hai vế trước để hai mảng luôn
+     * dài 32 byte: isEqual thoát sớm khi độ dài khác nhau nên so thẳng sẽ lộ độ dài secret. KHÔNG dùng
+     * String.equals ở đây.
+     */
+    private static boolean secretMatches(byte[] expectedDigest, String provided) {
+        return MessageDigest.isEqual(expectedDigest, sha256(provided));
+    }
+
+    private static byte[] sha256(String value) {
+        try {
+            return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            // Mọi JVM đều có SHA-256; tới đây là môi trường hỏng -> fail-closed
+            throw new IllegalStateException("SHA-256 không khả dụng", e);
+        }
     }
 
     private void log(Context context, String msg) {
