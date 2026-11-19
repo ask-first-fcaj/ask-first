@@ -101,15 +101,31 @@ def init_runtime(env: Mapping[str, str] = os.environ) -> Runtime:
 _RUNTIME: Runtime | None = None
 
 
+def _warm_rag(pipeline: m.Pipeline) -> None:
+    """Nạp trước model + index RAG (chỉ RealPipeline có `retriever`). Lỗi thì bỏ qua: `LazyRetriever` thử lại ở lần tìm sau."""
+    retriever = getattr(pipeline, "retriever", None)
+    if retriever is None:
+        return
+    started = time.perf_counter()
+    try:
+        retriever.search("kiểm tra")
+        info: dict[str, Any] = {"event": "rag_warm", "result": "ok"}
+    except Exception as e:  # noqa: BLE001 — artifact thiếu/sai checksum: chạy tiếp, request sau thử lại
+        info = {"event": "rag_warm", "result": "failed", "error": type(e).__name__}
+    log.info(json.dumps(info | {"ms": round((time.perf_counter() - started) * 1000)}))
+
+
 def _runtime() -> Runtime:
     global _RUNTIME
     if _RUNTIME is None:
         try:
-            _RUNTIME = init_runtime()
+            rt = init_runtime()
         except (NotImplementedError, ValueError, KeyError) as e:
             raise _Fail("fatal", "init", type(e).__name__) from None
         except Exception as e:  # noqa: BLE001
             raise _Fail("retryable", "init", type(e).__name__) from None
+        _warm_rag(rt.pipeline)
+        _RUNTIME = rt
     return _RUNTIME
 
 
@@ -219,3 +235,12 @@ def lambda_handler(event: Any, context: Any = None, runtime: Runtime | None = No
     info["ms"] = round((time.perf_counter() - started) * 1000)
     log.info(json.dumps(info))
     return resp.model_dump(mode="json")
+
+
+# Lambda chạy phần import trong pha INIT (tối đa 10 s, trước request đầu). Dựng runtime và nạp RAG ở đây để tin đầu
+# sau cold start không phải chờ tải + nạp model. Lỗi thì để request đầu thử lại và trả đúng mã lỗi `init`.
+if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+    try:
+        _runtime()
+    except _Fail:
+        pass
