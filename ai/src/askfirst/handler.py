@@ -76,16 +76,26 @@ def _stub_bundle(items: list[m.InboundMessage], session: m.SessionContext | None
 
 
 def init_runtime(env: Mapping[str, str] = os.environ) -> Runtime:
-    """Gọi MỘT lần mỗi cold start. Stub không cache vì `fingerprint` của stub là hằng số."""
+    """Gọi MỘT lần mỗi cold start. Stub không cache vì `fingerprint` của stub là hằng số.
+
+    Bản khác stub đọc `ARTIFACT_BUCKET`, `TABLE_NAME`, `BOT_TOKEN_PARAM` (plan §3.5); thiếu biến → `KeyError` → `fatal/init`.
+    Không gọi mạng ở đây: model tải lười từ S3, bot token đọc lười từ SSM, DynamoDB chỉ gọi khi đọc/ghi cache."""
     impl = env.get("PIPELINE_IMPL", "stub")
     config_dir = pathlib.Path(env.get("CONFIG_DIR", "/var/task/config"))
     if impl == "stub":
         return Runtime(build_pipeline("stub", config_dir, _NoArtifacts(), _NoKV()), _stub_bundle, None)
-    # INT-01: RealPipeline cần bảng DynamoDB (BE-03):
-    # build_pipeline("real", config_dir, S3ArtifactStore(env["ARTIFACT_BUCKET"], config_dir / "artifacts.yaml"),
-    #                DynamoKV(table, "URL#", "INTEL")), TelegramMedia(ssm_token(env["BOT_TOKEN_PARAM"])).build_bundle,
-    # cache=DynamoKV(table, "CACHE#", "VERDICT").
-    return Runtime(build_pipeline(impl, config_dir, _NoArtifacts(), _NoKV()), _stub_bundle, None)
+    if impl != "real":   # kiểm trước khi dựng S3/DynamoDB để impl sai luôn là `fatal/init`, không lẫn với lỗi đọc file cấu hình
+        raise ValueError(f"unknown PIPELINE_IMPL: {impl!r}")
+    import boto3  # import lười: image stub và test không cần boto3
+
+    from askfirst.artifacts.s3 import S3ArtifactStore
+    from askfirst.cache.dynamo import DynamoKV
+    from askfirst.media.telegram import TelegramMedia, ssm_token
+    artifacts = S3ArtifactStore(env["ARTIFACT_BUCKET"], config_dir / "artifacts.yaml")
+    table = boto3.resource("dynamodb").Table(env["TABLE_NAME"])
+    media = TelegramMedia(ssm_token(env["BOT_TOKEN_PARAM"]))
+    return Runtime(build_pipeline(impl, config_dir, artifacts, DynamoKV(table, "URL#", "INTEL")), media.build_bundle,
+                   DynamoKV(table, "CACHE#", "VERDICT"))
 
 
 _RUNTIME: Runtime | None = None
