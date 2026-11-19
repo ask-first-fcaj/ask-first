@@ -408,8 +408,21 @@ class WebhookHandlerBE30Test {
         fakeUserRepo.saveUser(new UserRecord("tg:111", "222"));
         fakeSessionStore.put(new SessionRecord(
                 "222", checkId, "tg:111", "Nội dung", null, 1, Instant.now().getEpochSecond() + 1800));
-        DonationStore failing = (userId, id, text) -> {
-            throw new IllegalStateException("S3 down");
+        DonationStore failing = new DonationStore() {
+            @Override
+            public String saveDonatedSample(String userId, String checkId, String maskedText) {
+                throw new IllegalStateException("S3 down");
+            }
+
+            @Override
+            public void deleteDonatedSamples(String userId) {
+
+            }
+
+            @Override
+            public boolean hasDonatedSamples(String userId) {
+                return false;
+            }
         };
         WebhookHandler h = new WebhookHandler(fakeTelegram, null, "https://sqs.mock.queue", SECRET, fakeUserRepo,
                 fakeAuditRepo, fakeCheckRepo, fakeSessionStore, failing, POLICY_SHA256);
@@ -753,6 +766,16 @@ class WebhookHandlerBE30Test {
             String key = "donated/" + uidHash + "/" + (checkId != null ? checkId : "sample") + ".txt";
             savedSamples.put(key, maskedText);
             return key;
+        }
+
+        @Override
+        public void deleteDonatedSamples(String userId) {
+
+        }
+
+        @Override
+        public boolean hasDonatedSamples(String userId) {
+            return false;
         }
     }
 }

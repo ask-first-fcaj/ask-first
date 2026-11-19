@@ -75,9 +75,44 @@ public class GuardianRepo {
     }
 
     public void delete(String elderUid, String guardianUid) {
+        if (table == null || elderUid == null || guardianUid == null) {
+            return;
+        }
         String pk = elderUid.startsWith("USER#") ? elderUid : "USER#" + elderUid;
         String sk = guardianUid.startsWith("GUARDIAN#") ? guardianUid : "GUARDIAN#" + guardianUid;
         table.deleteItem(Key.builder().partitionValue(pk).sortValue(sk).build());
+    }
+
+    public List<GuardianRecord> listWardsOf(String guardianUid) {
+        if (table == null || guardianUid == null || guardianUid.isBlank()) {
+            return List.of();
+        }
+        String cleanUid = guardianUid.replace("USER#", "").replace("GUARDIAN#", "");
+        String gsi1pk = "WARD_OF#" + cleanUid;
+        QueryConditional queryConditional = QueryConditional.keyEqualTo(
+                Key.builder().partitionValue(gsi1pk).build());
+
+        List<GuardianRecord> results = new ArrayList<>();
+        try {
+            table.index("GSI1").query(QueryEnhancedRequest.builder().queryConditional(queryConditional).build())
+                    .stream()
+                    .flatMap(page -> page.items().stream())
+                    .forEach(results::add);
+        } catch (Exception ignored) {
+        }
+        return results;
+    }
+
+    public void deleteAllGuardians(String userId) {
+        if (userId == null) {
+            return;
+        }
+        for (GuardianRecord g : listGuardians(userId)) {
+            delete(userId, g.getGuardianUid());
+        }
+        for (GuardianRecord w : listWardsOf(userId)) {
+            delete(w.getElderUid(), userId);
+        }
     }
 
     /**
