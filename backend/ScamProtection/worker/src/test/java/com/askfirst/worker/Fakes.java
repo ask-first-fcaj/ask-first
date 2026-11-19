@@ -121,6 +121,13 @@ final class Fakes {
         synchronized boolean exists(String chatId) {
             return meta.containsKey(chatId);
         }
+
+        @Override
+        public synchronized void delete(String chatId) {
+            meta.remove(chatId);
+            placeholder.remove(chatId);
+            msgs.remove(chatId);
+        }
     }
 
     static final class MemFlags implements FlagsStore {

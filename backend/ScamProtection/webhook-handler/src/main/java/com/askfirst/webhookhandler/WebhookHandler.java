@@ -10,7 +10,10 @@ import com.askfirst.common.Ulid;
 import com.askfirst.common.channel.TelegramAdapter;
 import com.askfirst.common.channel.model.InboundMessage;
 import com.askfirst.common.channel.model.TelegramCallbackQuery;
+import com.askfirst.common.store.AuditRecord;
 import com.askfirst.common.store.AuditRepo;
+import com.askfirst.common.store.BufferStore;
+import com.askfirst.common.store.DonationStore;
 import com.askfirst.common.store.DynamoStoreService;
 import com.askfirst.common.store.GuardianRecord;
 import com.askfirst.common.store.GuardianRepo;
@@ -20,7 +23,7 @@ import com.askfirst.common.store.RateLimitRepo;
 import com.askfirst.common.store.CheckRecord;
 import com.askfirst.common.store.CheckRepo;
 import com.askfirst.common.store.CheckStore;
-import com.askfirst.common.store.DonationStore;
+import com.askfirst.common.store.DynamoBufferStore;
 import com.askfirst.common.store.DynamoCheckStore;
 import com.askfirst.common.store.DynamoSessionStore;
 import com.askfirst.common.store.S3DonationStore;
@@ -30,6 +33,7 @@ import com.askfirst.common.store.UserRecord;
 import com.askfirst.common.store.UserRepo;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -38,6 +42,9 @@ import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 import software.amazon.awssdk.services.ssm.SsmClient;
 import software.amazon.awssdk.services.ssm.model.GetParameterRequest;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -50,6 +57,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -81,7 +90,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     private static final long DEDUP_TTL_SECONDS = 24 * 3600L;
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
-            .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+            .registerModule(new JavaTimeModule());
 
     private final String queueUrl;
     private final String secret;
@@ -97,6 +106,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     private final InviteRepo inviteRepo;
     private final CheckStore checkStore;
     private final SessionStore sessionStore;
+    private final BufferStore bufferStore;
     private final DonationStore donationStore;
 
     /**
@@ -152,13 +162,25 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.inviteRepo = new InviteRepo(enhanced, tableName);
         this.checkStore = new DynamoCheckStore(ddb, tableName);
         this.sessionStore = new DynamoSessionStore(ddb, tableName);
+        this.bufferStore = new DynamoBufferStore(ddb, tableName);
+
         String bucketName = System.getenv("DATA_BUCKET_NAME");
+        if (bucketName == null || bucketName.isBlank()) {
+            bucketName = System.getenv("DONATION_BUCKET_NAME");
+        }
         if (bucketName == null || bucketName.isBlank()) {
             bucketName = System.getenv("S3_BUCKET_NAME");
         }
-        this.donationStore = (bucketName != null && !bucketName.isBlank())
-                ? new S3DonationStore(S3Client.create(), bucketName)
-                : null;
+
+        DonationStore dStore = null;
+        if (bucketName != null && !bucketName.isBlank()) {
+            try {
+                dStore = new S3DonationStore(S3Client.create(), bucketName.trim());
+            } catch (Exception ignored) {
+                dStore = null;
+            }
+        }
+        this.donationStore = dStore;
         this.dedup = DynamoStoreService.create(ddb, tableName);
     }
 
@@ -238,7 +260,12 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     }
 
     /**
-     * Constructor 13 tham số (tương thích ngược). Delegate sang constructor đầy đủ 16 tham số.
+     * Constructor đầy đủ (13 tham số). Tất cả các constructor khác delegate vào
+     * đây.
+     *
+     * @param botUsername username của bot (ví dụ "AskFirstBot"), dùng để tạo deep
+     *                    link.
+     *                    Null = không hiển thị nút share (graceful degradation).
      */
     public WebhookHandler(
             TelegramClient telegram,
@@ -256,11 +283,77 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String botUsername) {
         this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
                 guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
-                null, null, null);
+                null, null, null, null);
+    }
+
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            GuardianRepo guardianRepo,
+            InviteRepo inviteRepo,
+            SessionStore sessionStore,
+            BufferStore bufferStore,
+            DonationStore donationStore,
+            String policySha256) {
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
+                guardianRepo, inviteRepo, policySha256, null, false, null,
+                null, sessionStore, bufferStore, donationStore);
+    }
+
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            GuardianRepo guardianRepo,
+            InviteRepo inviteRepo,
+            SessionStore sessionStore,
+            BufferStore bufferStore,
+            DonationStore donationStore,
+            String policySha256,
+            DynamoStoreService dedup,
+            boolean localDevelopment,
+            String botUsername) {
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
+                guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
+                null, sessionStore, bufferStore, donationStore);
     }
 
     /**
-     * Constructor đầy đủ (16 tham số). Tất cả các constructor khác delegate vào đây.
+     * Constructor 16 tham số (main BE-30).
+     */
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            GuardianRepo guardianRepo,
+            InviteRepo inviteRepo,
+            String policySha256,
+            DynamoStoreService dedup,
+            boolean localDevelopment,
+            String botUsername,
+            CheckStore checkStore,
+            SessionStore sessionStore,
+            DonationStore donationStore) {
+        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
+                guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
+                checkStore, sessionStore, null, donationStore);
+    }
+
+    /**
+     * Constructor đầy đủ 17 tham số. Tất cả các constructor khác delegate vào đây.
      *
      * @param botUsername username của bot (ví dụ "AskFirstBot"), dùng để tạo deep link.
      */
@@ -280,6 +373,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String botUsername,
             CheckStore checkStore,
             SessionStore sessionStore,
+            BufferStore bufferStore,
             DonationStore donationStore) {
         this.telegram = telegram;
         this.sqs = sqs;
@@ -297,6 +391,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.botUsername = (botUsername != null && !botUsername.isBlank()) ? botUsername : null;
         this.checkStore = checkStore;
         this.sessionStore = sessionStore;
+        this.bufferStore = bufferStore;
         this.donationStore = donationStore;
     }
 
@@ -313,7 +408,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String policySha256) {
         this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, null,
                 null, null, policySha256, null, false, null,
-                checkStore, sessionStore, donationStore);
+                checkStore, sessionStore, null, donationStore);
     }
 
     public CheckStore getCheckStore() {
@@ -322,6 +417,10 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
     public SessionStore getSessionStore() {
         return sessionStore;
+    }
+
+    public BufferStore getBufferStore() {
+        return bufferStore;
     }
 
     public DonationStore getDonationStore() {
@@ -335,41 +434,55 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
      * Tự động khởi tạo kho lưu trữ in-memory để kiểm thử toàn bộ luồng (/start,
      * /caidat, /nguoithan, /ketnoi) ngay trên máy dev mà không cần AWS DynamoDB.
      */
+
     public static WebhookHandler forLocalDevelopment(TelegramClient telegram) {
         String botUser = System.getenv("TELEGRAM_BOT_USERNAME");
+
         if (botUser == null || botUser.isBlank()) {
             botUser = System.getenv("BOT_USERNAME");
         }
+
         if (botUser == null || botUser.isBlank()) {
             botUser = readEnvFileBotUsername();
         }
+
         if ((botUser == null || botUser.isBlank()) && telegram != null) {
             botUser = telegram.getMeUsername();
         }
+
         return new WebhookHandler(
-                telegram, null, null, null,
+                telegram,
+                null,                       // sqs
+                null,                       // queueUrl
+                null,                       // secret
                 createInMemoryUserRepo(),
                 createInMemoryAuditRepo(),
-                null,
+                null,                       // rateLimitRepo
                 createInMemoryGuardianRepo(),
                 createInMemoryInviteRepo(),
-                DEFAULT_POLICY_SHA256, null, true, botUser,
-                createInMemoryCheckRepo(),
+                DEFAULT_POLICY_SHA256,
+                null,                       // dedup
+                true,                       // localDevelopment
+                botUser,
+                createInMemoryCheckRepo(), // checkStore
                 createInMemorySessionStore(),
-                createInMemoryDonationStore());
+                null,                       // bufferStore
+                createInMemoryDonationStore()
+        );
     }
 
+
     private static String readEnvFileBotUsername() {
-        java.io.File[] candidates = new java.io.File[]{
-                new java.io.File(".env"),
-                new java.io.File("backend/ScamProtection/.env"),
-                new java.io.File("../.env"),
-                new java.io.File("../../.env")
+        File[] candidates = new File[]{
+                new File(".env"),
+                new File("backend/ScamProtection/.env"),
+                new File("../.env"),
+                new File("../../.env")
         };
-        for (java.io.File f : candidates) {
+        for (File f : candidates) {
             if (f.exists() && f.isFile()) {
-                try (java.io.BufferedReader reader = new java.io.BufferedReader(
-                        new java.io.FileReader(f, StandardCharsets.UTF_8))) {
+                try (BufferedReader reader = new BufferedReader(
+                        new FileReader(f, StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
                         line = line.trim();
@@ -388,7 +501,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
     private static UserRepo createInMemoryUserRepo() {
         return new UserRepo() {
-            private final Map<String, UserRecord> users = new java.util.concurrent.ConcurrentHashMap<>();
+            private final Map<String, UserRecord> users = new ConcurrentHashMap<>();
 
             @Override
             public Optional<UserRecord> getUser(String userId) {
@@ -434,12 +547,32 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 UserRecord r = users.computeIfAbsent(userId, k -> new UserRecord(userId, ""));
                 r.setAddressForm(addressForm);
             }
+
+            @Override
+            public void revokeConsent(String userId) {
+                UserRecord r = users.get(userId);
+                if (r != null) {
+                    Map<String, Boolean> revoked = new HashMap<>();
+                    for (String purpose : r.getPurposes().keySet()) {
+                        revoked.put(purpose, false);
+                    }
+                    revoked.put("analyze", false);
+                    r.setPurposes(revoked);
+                    r.setConsentedAt(null);
+                    r.setStatus("CONSENT_REVOKED");
+                }
+            }
+
+            @Override
+            public void deleteUser(String userId) {
+                users.remove(userId);
+            }
         };
     }
 
     private static GuardianRepo createInMemoryGuardianRepo() {
         return new GuardianRepo() {
-            private final Map<String, GuardianRecord> store = new java.util.concurrent.ConcurrentHashMap<>();
+            private final Map<String, GuardianRecord> store = new ConcurrentHashMap<>();
 
             @Override
             public void save(GuardianRecord rec) {
@@ -483,12 +616,26 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             public void updateShareLevel(String elderUid, String guardianUid, int shareLevel) {
                 getGuardian(elderUid, guardianUid).ifPresent(r -> r.setShareLevel(shareLevel));
             }
+
+            @Override
+            public List<GuardianRecord> listWardsOf(String guardianUid) {
+                return store.values().stream()
+                        .filter(r -> guardianUid.equals(r.getGuardianUid()) || ("GUARDIAN#" + guardianUid).equals(r.getSk()))
+                        .toList();
+            }
+
+            @Override
+            public void deleteAllGuardians(String userId) {
+                store.entrySet().removeIf(e ->
+                        userId.equals(e.getValue().getElderUid()) || ("USER#" + userId).equals(e.getValue().getPk())
+                                || userId.equals(e.getValue().getGuardianUid()) || ("GUARDIAN#" + userId).equals(e.getValue().getSk()));
+            }
         };
     }
 
     private static InviteRepo createInMemoryInviteRepo() {
         return new InviteRepo() {
-            private final Map<String, InviteRecord> store = new java.util.concurrent.ConcurrentHashMap<>();
+            private final Map<String, InviteRecord> store = new ConcurrentHashMap<>();
 
             @Override
             public void createInvite(String code, String elderUid, long ttl) {
@@ -517,16 +664,40 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
     private static AuditRepo createInMemoryAuditRepo() {
         return new AuditRepo() {
+            private final List<AuditRecord> records = new CopyOnWriteArrayList<>();
+
             @Override
             public void recordEvent(String userId, String event, String policyVersion, String policySha256, String details) {
-                // In-memory event logger (không cần lưu database thật khi dev local)
+                recordEventAnonymized(userId, event, policyVersion, policySha256, details, userId);
+            }
+
+            @Override
+            public void recordEventAnonymized(String pkUserId, String event, String policyVersion, String policySha256, String details, String anonymizedUserId) {
+                AuditRecord r = new AuditRecord(pkUserId, Instant.now().toString(), event);
+                r.setUserId(anonymizedUserId);
+                r.setPolicyVersion(policyVersion);
+                r.setPolicySha256(policySha256);
+                r.setDetails(details);
+                records.add(r);
+            }
+
+            @Override
+            public List<AuditRecord> listAuditTrail(String userId) {
+                return records.stream()
+                        .filter(r -> userId.equals(r.getUserId()) || (userId.startsWith("USER#") ? r.getPk().equals(userId) : r.getPk().equals("USER#" + userId)))
+                        .toList();
+            }
+
+            @Override
+            public void deleteAuditTrail(String userId) {
+                records.removeIf(r -> userId.equals(r.getUserId()) || (userId.startsWith("USER#") ? r.getPk().equals(userId) : r.getPk().equals("USER#" + userId)));
             }
         };
     }
 
     private static CheckRepo createInMemoryCheckRepo() {
         return new CheckRepo() {
-            private final Map<String, CheckRecord> store = new java.util.concurrent.ConcurrentHashMap<>();
+            private final Map<String, CheckRecord> store = new ConcurrentHashMap<>();
 
             @Override
             public boolean exists(String userId, String checkId) {
@@ -568,7 +739,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
     private static SessionStore createInMemorySessionStore() {
         return new SessionStore() {
-            private final Map<String, SessionRecord> store = new java.util.concurrent.ConcurrentHashMap<>();
+            private final Map<String, SessionRecord> store = new ConcurrentHashMap<>();
 
             @Override
             public Optional<SessionRecord> get(String chatId) {
@@ -589,13 +760,35 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
     private static DonationStore createInMemoryDonationStore() {
         return new DonationStore() {
-            private final Map<String, String> store = new java.util.concurrent.ConcurrentHashMap<>();
+            private final Map<String, String> store = new ConcurrentHashMap<>();
 
             @Override
-            public String saveDonatedSample(String userId, String checkId, String maskedText) {
-                String key = "donated/" + S3DonationStore.hashUid(userId) + "/" + (checkId != null ? checkId : "sample") + ".txt";
-                store.put(key, maskedText);
+            public String saveDonatedSample(
+                    String userId,
+                    String checkId,
+                    String maskedText) {
+
+                String sampleId = (checkId != null && !checkId.isBlank())
+                        ? checkId
+                        : java.util.UUID.randomUUID().toString();
+
+                String key = "donated/" + S3DonationStore.hashUid(userId)
+                        + "/" + sampleId + ".txt";
+
+                store.put(key, maskedText != null ? maskedText : "");
                 return key;
+            }
+
+            @Override
+            public void deleteDonatedSamples(String userId) {
+                String prefix = "donated/" + S3DonationStore.hashUid(userId) + "/";
+                store.keySet().removeIf(key -> key.startsWith(prefix));
+            }
+
+            @Override
+            public boolean hasDonatedSamples(String userId) {
+                String prefix = "donated/" + S3DonationStore.hashUid(userId) + "/";
+                return store.keySet().stream().anyMatch(key -> key.startsWith(prefix));
             }
         };
     }
@@ -875,6 +1068,28 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return response(200, "CALLBACK_HANDLED");
         }
 
+        // BE-31: Callback xác nhận rút đồng ý
+        if ("consent:revoke_confirm".equals(data)) {
+            return executeConsentRevocation(chatId, userId, cb.queryId(), context);
+        } else if ("consent:revoke_cancel".equals(data)) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã giữ lại đồng ý");
+                telegram.sendText(chatId, "Dạ cháu vẫn tiếp tục bảo vệ và đồng hành cùng Bác nhé!");
+            }
+            return response(200, "CONSENT_KEPT");
+        }
+
+        // BE-31: Callback xác nhận xoá dữ liệu
+        if ("data:delete_confirm".equals(data) || "xoadulieu:confirm".equals(data)) {
+            return executeDataDeletion(cb.queryId(), chatId, userId, context);
+        } else if ("data:delete_cancel".equals(data) || "xoadulieu:cancel".equals(data)) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã huỷ xoá dữ liệu");
+                telegram.sendText(chatId, "Dạ cháu đã huỷ yêu cầu xoá dữ liệu, mọi thông tin vẫn được giữ nguyên ạ.");
+            }
+            return response(200, "DATA_DELETION_CANCELLED");
+        }
+
         return response(200, "UNKNOWN_CALLBACK");
     }
 
@@ -947,8 +1162,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                     }
                     String shareUrl = "https://t.me/share/url?url=" + encodedLink + "&text=" + encodedText;
 
-                    java.util.List<java.util.List<Map<String, String>>> rows = new ArrayList<>();
-                    rows.add(java.util.List.of(
+                    List<List<Map<String, String>>> rows = new ArrayList<>();
+                    rows.add(List.of(
                             TelegramClient.urlButtonMap(
                                      new TelegramClient.UrlButton("📤 Gửi lời mời cho con/cháu", shareUrl))));
                     telegram.sendText(chatId, msg, TelegramClient.inlineKeyboardRaw(rows));
@@ -1496,6 +1711,16 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return handleKetNoiCommand(chatId, userId, text, firstName, username, context);
         }
 
+        // BE-31: /rutdongy — Rút lại sự đồng ý
+        if (cmd.startsWith("/rutdongy")) {
+            return handleRutDongYCommand(chatId, userId, text, context);
+        }
+
+        // BE-31: /xoadulieu — Xoá sạch toàn bộ dữ liệu cá nhân
+        if (cmd.startsWith("/xoadulieu")) {
+            return handleXoaDuLieuCommand(chatId, userId, text, context);
+        }
+
         // Lệnh test nút báo sai: CHỈ môi trường local. Trên production lệnh này sẽ cho bất kỳ ai tạo CHECK#/SESSION#
         // giả chứa chính text gốc họ gõ (chưa mask) rồi đẩy lên S3 qua luồng đóng góp.
         if (localDevelopment && (cmd.startsWith("/testbaosai") || cmd.startsWith("/baosai"))) {
@@ -1617,7 +1842,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 }
             } else {
                 StringBuilder sb = new StringBuilder("👨‍👩‍👦 <b>Danh sách người thân</b>\n\n");
-                List<List<InlineButton>> rows = new java.util.ArrayList<>();
+                List<List<InlineButton>> rows = new ArrayList<>();
 
                 if (!guardians.isEmpty()) {
                     sb.append("<b>Người thân bảo vệ Bác:</b>\n");
@@ -1934,6 +2159,204 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         }
 
         return response(200, "INVITE_REDEEMED");
+    }
+
+    // ── BE-31: /rutdongy & /xoadulieu ──────────────────────────────────────────
+
+    private APIGatewayProxyResponseEvent handleRutDongYCommand(
+            long chatId,
+            String userId,
+            String text,
+            Context context) {
+        String lower = text.toLowerCase().trim();
+        if (lower.contains("confirm") || lower.contains("xacnhan")) {
+            return executeConsentRevocation(chatId, userId, null, context);
+        }
+
+        String addressForm = getAddressForm(userId);
+        String confirmMsg = "Nếu rút đồng ý, " + addressForm + " sẽ không thể tiếp tục gửi tin nhắn kiểm tra lừa đảo. "
+                + addressForm + " có chắc chắn không?";
+
+        Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
+                List.of(
+                        new InlineButton("⚠️ Xác nhận rút đồng ý", "consent:revoke_confirm"),
+                        new InlineButton("Giữ lại", "consent:revoke_cancel"))));
+
+        if (telegram != null) {
+            telegram.sendText(chatId, confirmMsg, keyboard);
+        }
+        return response(200, "COMMAND_HANDLED");
+    }
+
+    private APIGatewayProxyResponseEvent executeConsentRevocation(
+            long chatId,
+            String userId,
+            String queryId,
+            Context context) {
+        // Kiểm tra tiền điều kiện: nếu đã rút đồng ý trước đó (idempotency check)
+        if (userRepo != null) {
+            Optional<UserRecord> userOpt = userRepo.getUser(userId);
+            if (userOpt.isPresent() && "CONSENT_REVOKED".equals(userOpt.get().getStatus())) {
+                if (telegram != null) {
+                    if (queryId != null) {
+                        telegram.answerCallbackQuery(queryId, "Bác đã rút đồng ý trước đó");
+                    }
+                    telegram.sendText(chatId,
+                            "Dạ, Bác đã rút đồng ý trước đó rồi ạ.\n\n"
+                                    + "Khi nào Bác cần sử dụng lại, chỉ cần gõ /start để xem và đồng ý lại nhé!");
+                }
+                return response(200, "CONSENT_ALREADY_REVOKED");
+            }
+        }
+
+        // 1. Cập nhật trạng thái người dùng thành CONSENT_REVOKED trong UserRepo
+        if (userRepo != null) {
+            userRepo.revokeConsent(userId);
+        }
+
+        // 2. Huỷ bỏ mọi liên kết người thân đang có (cả 2 chiều)
+        if (guardianRepo != null) {
+            guardianRepo.deleteAllGuardians(userId);
+        }
+
+        // 3. Ghi nhận một bản ghi vào AuditRepo
+        if (auditRepo != null) {
+            auditRepo.recordEvent(userId, "CONSENT_REVOKED", POLICY_VERSION, policySha256,
+                    "Revoked consent via /rutdongy");
+        }
+
+        // 4. Phản hồi cho người dùng qua Telegram
+        if (telegram != null) {
+            if (queryId != null) {
+                telegram.answerCallbackQuery(queryId, "Đã rút đồng ý");
+            }
+            telegram.sendText(chatId,
+                    "Dạ cháu đã ghi nhận rút đồng ý của Bác. Mọi liên kết người thân đã được huỷ bỏ và cháu sẽ ngừng hỗ trợ kiểm tra tin nhắn lừa đảo.\n\n"
+                            + "Khi nào Bác cần sử dụng lại, chỉ cần gõ /start để xem và đồng ý lại nhé!");
+        }
+
+        return response(200, "CONSENT_REVOKED");
+    }
+
+    private APIGatewayProxyResponseEvent handleXoaDuLieuCommand(
+            long chatId,
+            String userId,
+            String text,
+            Context context) {
+        String lower = text.toLowerCase().trim();
+        if (lower.contains("confirm") || lower.contains("xacnhan")) {
+            return executeDataDeletion(null, chatId, userId, context);
+        }
+
+        String addressForm = getAddressForm(userId);
+        String warningMsg = "⚠️ <b>CẢNH BÁO XÓA TOÀN BỘ DỮ LIỆU</b>\n\n"
+                + "Thao tác này sẽ xoá vĩnh viễn trên hệ thống:\n"
+                + "• Hồ sơ người dùng và lịch sử các lần kiểm tra\n"
+                + "• Mọi kết nối với người thân đang bảo vệ " + addressForm + "\n"
+                + "• Toàn bộ dữ liệu phiên chat và mẫu đã đóng góp\n\n"
+                + addressForm + " có chắc chắn muốn xoá sạch toàn bộ dữ liệu không?";
+
+        Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
+                List.of(
+                        new InlineButton("🗑️ Xác nhận xoá dữ liệu", "xoadulieu:confirm"),
+                        new InlineButton("Giữ lại", "xoadulieu:cancel"))));
+
+        if (telegram != null) {
+            telegram.sendText(chatId, warningMsg, keyboard);
+        }
+        return response(200, "COMMAND_HANDLED");
+    }
+
+    private APIGatewayProxyResponseEvent executeDataDeletion(
+            String queryId,
+            long chatId,
+            String userId,
+            Context context) {
+        String chatStr = String.valueOf(chatId);
+
+        // Kiểm tra tiền điều kiện (idempotency check): nếu tài khoản đã bị xoá trước đó
+        boolean hasUser = userRepo != null && userRepo.getUser(userId).isPresent();
+        boolean hasGuardians = guardianRepo != null && !guardianRepo.listGuardians(userId).isEmpty();
+        boolean hasS3 = donationStore != null && donationStore.hasDonatedSamples(userId);
+        if (!hasUser && !hasGuardians && !hasS3) {
+            List<AuditRecord> audits = auditRepo != null ? auditRepo.listAuditTrail(userId) : List.of();
+            boolean hasDeletedAudit = audits.stream().anyMatch(a -> "DATA_DELETED".equals(a.getEvent()));
+            if (hasDeletedAudit) {
+                if (telegram != null) {
+                    if (queryId != null) {
+                        telegram.answerCallbackQuery(queryId, "Dữ liệu đã được xoá trước đó");
+                    }
+                    telegram.sendText(chatId,
+                            "Dạ, toàn bộ dữ liệu của Bác trên hệ thống đã được xoá sạch trước đó rồi ạ!\n\n"
+                                    + "Nếu cần sử dụng lại, Bác chỉ cần gõ /start nhé.");
+                }
+                return response(200, "DATA_ALREADY_DELETED");
+            }
+        }
+
+        try {
+            // 1. Quét và xoá sạch:
+            // 1a. DynamoDB single-table level (nếu dedup / standardClient có sẵn)
+            if (dedup != null) {
+                dedup.purgeUserData(userId, chatStr);
+            }
+
+            // 1b. Bản ghi thông tin người dùng (USER#)
+            if (userRepo != null) {
+                userRepo.deleteUser(userId);
+            }
+
+            // 1c. Các liên kết người thân (GUARDIAN#) ở cả 2 chiều
+            if (guardianRepo != null) {
+                guardianRepo.deleteAllGuardians(userId);
+            }
+
+            // 1d. Các phiên chat (SESSION#)
+            if (sessionStore != null) {
+                sessionStore.delete(chatStr);
+            }
+
+            // 1e. Các bộ đệm (BUFFER#)
+            if (bufferStore != null) {
+                bufferStore.delete(chatStr);
+            }
+
+            // 1f. Thư mục donated/<hash(uid)>/ trên S3
+            if (donationStore != null) {
+                donationStore.deleteDonatedSamples(userId);
+            }
+
+            // 2. Ghi vết kiểm toán ẩn danh vào AuditRepo:
+            // "Tài khoản [hash(uid)] đã yêu cầu xoá dữ liệu vào ngày YYYY-MM-DD"
+            if (auditRepo != null) {
+                auditRepo.deleteAuditTrail(userId);
+                auditRepo.recordDataDeleted(userId, POLICY_VERSION, policySha256);
+            }
+
+            // 3. Gửi tin nhắn thông báo hoàn tất:
+            // "Cháu đã xoá sạch toàn bộ dữ liệu của Bác trên hệ thống rồi ạ!"
+            if (telegram != null) {
+                if (queryId != null) {
+                    telegram.answerCallbackQuery(queryId, "Đã xoá dữ liệu");
+                }
+                telegram.sendText(chatId,
+                        "Cháu đã xoá sạch toàn bộ dữ liệu của Bác trên hệ thống rồi ạ!\n\n"
+                                + "💡 Để bảo vệ quyền riêng tư tuyệt đối, Bác vui lòng tự xóa cuộc trò chuyện này trên ứng dụng Telegram giúp cháu nhé.");
+            }
+
+            return response(200, "DATA_DELETED");
+
+        } catch (Exception e) {
+            log(context, "Lỗi khi dọn dẹp dữ liệu của user " + userId + ": " + e.getMessage());
+            if (telegram != null) {
+                if (queryId != null) {
+                    telegram.answerCallbackQuery(queryId, "Lỗi dọn dẹp dữ liệu");
+                }
+                telegram.sendText(chatId,
+                        "⚠️ Đã có lỗi xảy ra trong quá trình dọn dẹp dữ liệu của Bác. Dữ liệu chưa được xoá hoàn tất, Bác vui lòng thử lại sau giây lát hoặc liên hệ hỗ trợ nhé.");
+            }
+            return response(200, "PURGE_FAILED");
+        }
     }
 
     private APIGatewayProxyResponseEvent handleContentInspection(

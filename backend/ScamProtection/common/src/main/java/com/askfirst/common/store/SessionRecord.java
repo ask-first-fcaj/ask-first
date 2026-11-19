@@ -18,4 +18,3 @@ public record SessionRecord(
         maskedText = maskedText == null ? "" : maskedText;
     }
 }
-
