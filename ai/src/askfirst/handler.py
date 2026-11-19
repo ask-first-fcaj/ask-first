@@ -101,18 +101,31 @@ def init_runtime(env: Mapping[str, str] = os.environ) -> Runtime:
 _RUNTIME: Runtime | None = None
 
 
-def _warm_rag(pipeline: m.Pipeline) -> None:
-    """Nạp trước model + index RAG (chỉ RealPipeline có `retriever`). Lỗi thì bỏ qua: `LazyRetriever` thử lại ở lần tìm sau."""
-    retriever = getattr(pipeline, "retriever", None)
-    if retriever is None:
-        return
+def _timed(event: str, fn: Callable[[], Any]) -> None:
     started = time.perf_counter()
     try:
-        retriever.search("kiểm tra")
-        info: dict[str, Any] = {"event": "rag_warm", "result": "ok"}
-    except Exception as e:  # noqa: BLE001 — artifact thiếu/sai checksum: chạy tiếp, request sau thử lại
-        info = {"event": "rag_warm", "result": "failed", "error": type(e).__name__}
+        fn()
+        info: dict[str, Any] = {"event": event, "result": "ok"}
+    except Exception as e:  # noqa: BLE001 — artifact thiếu/sai checksum: chạy tiếp, lần dùng thật sẽ nạp lại
+        info = {"event": event, "result": "failed", "error": type(e).__name__}
     log.info(json.dumps(info | {"ms": round((time.perf_counter() - started) * 1000)}))
+
+
+def _blank_jpeg() -> bytes:
+    import cv2
+    import numpy as np
+    return cv2.imencode(".jpg", np.full((64, 64, 3), 255, np.uint8))[1].tobytes()
+
+
+def _warm(pipeline: m.Pipeline) -> None:
+    """Nạp trước model RAG và OCR (chỉ RealPipeline có `retriever`, `ocr`), mỗi cái chạy thử một lần.
+    Lỗi thì bỏ qua: model nạp lười nên lần dùng thật sẽ thử lại."""
+    retriever = getattr(pipeline, "retriever", None)
+    if retriever is not None:
+        _timed("rag_warm", lambda: retriever.search("kiểm tra"))
+    ocr = getattr(pipeline, "ocr", None)
+    if ocr is not None:
+        _timed("ocr_warm", lambda: ocr.read(_blank_jpeg()))
 
 
 def _runtime() -> Runtime:
@@ -124,7 +137,7 @@ def _runtime() -> Runtime:
             raise _Fail("fatal", "init", type(e).__name__) from None
         except Exception as e:  # noqa: BLE001
             raise _Fail("retryable", "init", type(e).__name__) from None
-        _warm_rag(rt.pipeline)
+        _warm(rt.pipeline)
         _RUNTIME = rt
     return _RUNTIME
 
