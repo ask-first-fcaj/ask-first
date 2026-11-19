@@ -13,7 +13,10 @@ import java.util.Optional;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
 
-/** {@link BufferStore} trên bảng single-table. Xem Javadoc của interface về cấu trúc item. */
+/**
+ * {@link BufferStore} trên bảng single-table. Xem Javadoc của interface về cấu
+ * trúc item.
+ */
 public final class DynamoBufferStore implements BufferStore {
 
     private static final int MAX_BATCH_ATTEMPTS = 4;
@@ -117,14 +120,16 @@ public final class DynamoBufferStore implements BufferStore {
             for (Map<String, AttributeValue> item : page.items()) {
                 result.add(AiCodec.fromJson(item.get("payload").s(), InboundMessage.class));
             }
-            startKey = page.hasLastEvaluatedKey() && !page.lastEvaluatedKey().isEmpty() ? page.lastEvaluatedKey() : null;
+            startKey = page.hasLastEvaluatedKey() && !page.lastEvaluatedKey().isEmpty() ? page.lastEvaluatedKey()
+                    : null;
         } while (startKey != null);
         return result;
     }
 
     @Override
     public boolean finish(String chatId, long seq) {
-        // Chỉ được xoá META khi MỌI tin ≤ seq đã bị xoá thật sự. Nếu còn sót, giữ META để
+        // Chỉ được xoá META khi MỌI tin ≤ seq đã bị xoá thật sự. Nếu còn sót, giữ META
+        // để
         // max_seq tiếp tục tăng: cụm sau không đếm lại từ 1 và không đọc lẫn MSG# cũ.
         boolean allDeleted = deleteMessagesUpTo(chatId, seq);
         if (allDeleted) {
@@ -149,7 +154,8 @@ public final class DynamoBufferStore implements BufferStore {
                     .expressionAttributeValues(Map.of(":seq", n(seq)))
                     .returnValues(ReturnValue.ALL_NEW)
                     .build());
-            // false chỉ khi thật sự có tin mới; dọn dẹp chưa xong thì META vẫn giữ nhưng không có gì cần xử lý thêm
+            // false chỉ khi thật sự có tin mới; dọn dẹp chưa xong thì META vẫn giữ nhưng
+            // không có gì cần xử lý thêm
             return DynamoItems.num(response.attributes(), "max_seq", seq) <= seq;
         } catch (ConditionalCheckFailedException alreadyDone) {
             // Retry / đã xóa hẳn: true nếu buffer không còn
@@ -157,10 +163,21 @@ public final class DynamoBufferStore implements BufferStore {
         }
     }
 
+    @Override
+    public void delete(String chatId) {
+        long maxSeq = state(chatId).map(State::maxSeq).orElse(0L);
+        if (maxSeq > 0 && !deleteMessagesUpTo(chatId, maxSeq)) {
+            throw new IllegalStateException("Không xóa hết MSG# của buffer");
+        }
+        client.deleteItem(DeleteItemRequest.builder().tableName(table).key(key(pk(chatId), META)).build());
+    }
+
     /**
-     * Xóa theo lô. Trả về true CHỈ KHI toàn bộ MSG# ≤ seq đã bị xoá (không lỗi, không còn UnprocessedItems).
+     * Xóa theo lô. Trả về true CHỈ KHI toàn bộ MSG# ≤ seq đã bị xoá (không lỗi,
+     * không còn UnprocessedItems).
      * Lỗi / throttle không ném ra ngoài, nhưng caller phải biết để không xoá META.
-     * Item sót sẽ bị xoá ở lần finish kế tiếp (range 1..seq); TTL chỉ là lưới an toàn cuối, không đảm bảo thời hạn.
+     * Item sót sẽ bị xoá ở lần finish kế tiếp (range 1..seq); TTL chỉ là lưới an
+     * toàn cuối, không đảm bảo thời hạn.
      */
     private boolean deleteMessagesUpTo(String chatId, long seq) {
         try {
@@ -185,7 +202,8 @@ public final class DynamoBufferStore implements BufferStore {
                                     DynamoStoreService.ATTR_SK, item.get(DynamoStoreService.ATTR_SK))).build())
                             .build());
                 }
-                startKey = page.hasLastEvaluatedKey() && !page.lastEvaluatedKey().isEmpty() ? page.lastEvaluatedKey() : null;
+                startKey = page.hasLastEvaluatedKey() && !page.lastEvaluatedKey().isEmpty() ? page.lastEvaluatedKey()
+                        : null;
             } while (startKey != null);
             for (int i = 0; i < deletes.size(); i += 25) {
                 if (!batchDelete(deletes.subList(i, Math.min(i + 25, deletes.size())))) {
@@ -198,7 +216,10 @@ public final class DynamoBufferStore implements BufferStore {
         }
     }
 
-    /** batchWriteItem khi bị throttle không ném lỗi mà trả UnprocessedItems: phải retry có backoff. */
+    /**
+     * batchWriteItem khi bị throttle không ném lỗi mà trả UnprocessedItems: phải
+     * retry có backoff.
+     */
     private boolean batchDelete(List<WriteRequest> chunk) {
         Map<String, List<WriteRequest>> pending = Map.of(table, chunk);
         for (int attempt = 0; attempt < MAX_BATCH_ATTEMPTS; attempt++) {

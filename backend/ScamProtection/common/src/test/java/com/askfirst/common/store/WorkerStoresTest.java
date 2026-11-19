@@ -364,4 +364,18 @@ class WorkerStoresTest {
         assertThat(buffer.itemsAfter(chat, 0, 2)).isEmpty();
         assertThat(buffer.append(chat, message(chat, 9), ttl())).isEqualTo(1);   // đã xóa sạch nên bắt đầu lại từ 1 là đúng
     }
+
+    @Test
+    @DisplayName("BufferStore: delete xóa hết META và MSG#, chat chưa có buffer thì không lỗi")
+    void bufferDelete() {
+        buffer.delete(chat);
+        buffer.append(chat, message(chat, 1), ttl());
+        buffer.append(chat, message(chat, 2), ttl());
+
+        buffer.delete(chat);
+
+        assertThat(buffer.state(chat)).isEmpty();
+        assertThat(buffer.itemsAfter(chat, 0, 2)).isEmpty();
+        assertThat(buffer.append(chat, message(chat, 9), ttl())).isEqualTo(1);
+    }
 }

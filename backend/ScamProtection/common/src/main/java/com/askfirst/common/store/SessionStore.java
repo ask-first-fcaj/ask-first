@@ -16,4 +16,3 @@ public interface SessionStore {
     /** Xóa phiên theo chatId. */
     void delete(String chatId);
 }
-
