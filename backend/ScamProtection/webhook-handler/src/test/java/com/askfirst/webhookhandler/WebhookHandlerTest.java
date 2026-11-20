@@ -599,7 +599,8 @@ class WebhookHandlerTest {
                 null,               // CheckStore
                 null,               // SessionStore
                 buffer,             // BufferStore
-                null                // DonationStore
+                null,                // DonationStore
+                alerts
         );
     }
 

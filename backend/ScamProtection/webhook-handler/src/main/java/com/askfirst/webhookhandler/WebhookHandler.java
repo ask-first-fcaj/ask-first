@@ -292,7 +292,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String botUsername) {
         this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
                 guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
-                null, null, null, null);
+                null, null, null, null, null);
     }
 
     public WebhookHandler(
@@ -311,7 +311,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String policySha256) {
         this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
                 guardianRepo, inviteRepo, policySha256, null, false, null,
-                null, sessionStore, bufferStore, donationStore);
+                null, sessionStore, bufferStore, donationStore, null);
     }
 
     public WebhookHandler(
@@ -333,7 +333,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String botUsername) {
         this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
                 guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
-                null, sessionStore, bufferStore, donationStore);
+                null, sessionStore, bufferStore, donationStore, null);
     }
 
     /**
@@ -358,13 +358,14 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             DonationStore donationStore) {
         this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
                 guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
-                checkStore, sessionStore, null, donationStore);
+                checkStore, sessionStore, null, donationStore, null);
     }
 
     /**
-     * Constructor đầy đủ 17 tham số. Tất cả các constructor khác delegate vào đây.
+     * Constructor đầy đủ 18 tham số. Tất cả các constructor khác delegate vào đây.
      *
      * @param botUsername username của bot (ví dụ "AskFirstBot"), dùng để tạo deep link.
+     * @param alertStore  kho cảnh báo người thân (null = bỏ qua callback ack:).
      */
     public WebhookHandler(
             TelegramClient telegram,
@@ -383,7 +384,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             CheckStore checkStore,
             SessionStore sessionStore,
             BufferStore bufferStore,
-            DonationStore donationStore) {
+            DonationStore donationStore,
+            AlertStore alertStore) {
         this.telegram = telegram;
         this.sqs = sqs;
         this.queueUrl = queueUrl;
@@ -402,7 +404,23 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.sessionStore = sessionStore;
         this.bufferStore = bufferStore;
         this.donationStore = donationStore;
-        this.alertStore = null; // chỉ khởi tạo trong constructor Lambda (DynamoAlertStore)
+        this.alertStore = alertStore;
+    }
+
+    /**
+     * Constructor tiện cho test BE-29: inject BufferStore + AlertStore (các repo khác null).
+     */
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            BufferStore bufferStore,
+            AlertStore alertStore) {
+        this(telegram, sqs, queueUrl, secret,
+                null, null, null, null, null,
+                DEFAULT_POLICY_SHA256, null, false, null,
+                null, null, bufferStore, null, alertStore);
     }
 
     public WebhookHandler(
@@ -418,7 +436,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String policySha256) {
         this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, null,
                 null, null, policySha256, null, false, null,
-                checkStore, sessionStore, null, donationStore);
+                checkStore, sessionStore, null, donationStore, null);
     }
 
     public CheckStore getCheckStore() {
@@ -477,7 +495,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 createInMemoryCheckRepo(), // checkStore
                 createInMemorySessionStore(),
                 null,                       // bufferStore
-                createInMemoryDonationStore()
+                createInMemoryDonationStore(),
+                 null
+                 // alertStore - THÊM MỚI
         );
     }
 
