@@ -212,7 +212,13 @@ public final class AnalyzeProcessor {
         return Result.PROCESSED;
     }
 
-    /** SQS đã giao đủ số lần mà vẫn lỗi: báo "bận" để người cao tuổi không phải chờ mãi ở tin "⏳". Best-effort. */
+    /**
+     * SQS đã giao đủ số lần mà vẫn lỗi: báo "bận" để người cao tuổi không phải chờ mãi ở tin "⏳". Best-effort.
+     *
+     * <p>Đây là nơi DUY NHẤT báo "bận" trên đường bình thường. Sau khi xử lý xong (báo, hoặc xác định không cần báo)
+     * luôn ghi dấu CHECK# (outcome gave_up | superseded) để {@link DlqHandler}, chạy sau khi job rơi vào DLQ,
+     * biết job này đã được xử lý và không báo lần nữa.
+     */
     public void notifyGaveUp(AnalyzeJob job) {
         try {
             // Đã có CHECK# nghĩa là người cao tuổi đã nhận kết quả thật (job chỉ lỗi ở bước dọn dẹp): không được đè
@@ -222,14 +228,35 @@ public final class AnalyzeProcessor {
                 log.accept("analyze job=" + job.jobId() + " give_up_skip=already_done");
                 return;
             }
-            Integer placeholder = buffer.state(job.chatId()).map(BufferStore.State::placeholderId).orElse(null);
+            Optional<BufferStore.State> state = buffer.state(job.chatId());
+            // Có tin mới hơn trong cụm: job mới nhất sẽ trả lời cả cụm và dùng chung tin "⏳", không được đụng vào.
+            if (state.isPresent()
+                    && (job.seq() < state.get().maxSeq() || job.seq() <= state.get().doneSeq())) {
+                markHandled(job, "superseded");
+                log.accept("analyze job=" + job.jobId() + " give_up_skip=superseded seq=" + job.seq());
+                return;
+            }
+            Integer placeholder = state.map(BufferStore.State::placeholderId).orElse(null);
             Elder elder = directory.elder(job.userId()).orElse(new Elder("Bác", false));
             Out msg = new Out(WorkerMessages.busy(elder.addressForm()), List.of(), false);
             deliver(job.chatId(), placeholder, List.of(msg));
+            // Ghi dấu NGAY sau khi đã báo, trước khi dọn buffer: DlqHandler dựa vào dấu này để không báo lần hai.
+            markHandled(job, "gave_up");
             // Đóng cụm tin để tin gửi lại sau đó không bị gộp với nội dung của job đã bỏ cuộc
             buffer.finish(job.chatId(), job.seq());
         } catch (RuntimeException e) {
             log.accept("analyze job=" + job.jobId() + " give_up_notice_failed");
+        }
+    }
+
+    /** Dấu "job này đã được xử lý xong ở nhánh bỏ cuộc". Best-effort: lỗi ghi chỉ log, không làm hỏng việc dọn buffer. */
+    private void markHandled(AnalyzeJob job, String outcome) {
+        try {
+            checks.put(new CheckRecord(job.jobId(), job.userId(), outcome, "UNSURE", 0, "OTHER", "OTHER",
+                    "none", List.of(), List.of(), List.of(), false, clock.instant().toString(),
+                    clock.instant().getEpochSecond() + RECORD_TTL_SECONDS));
+        } catch (RuntimeException e) {
+            log.accept("analyze job=" + job.jobId() + " give_up_mark_failed");
         }
     }
 
