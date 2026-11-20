@@ -1,0 +1,1343 @@
+# kb/alerts.yaml (AI-29): corpus cảnh báo lừa đảo chính thức cho RAG (ARCH §6.5). Index dựng bằng ai/scripts/build_index.py.
+#
+# Schema (scripts/validate_kb.py kiểm): `id`; `scenario` theo bảng mã eval/LABELING.md §1 (không dùng N0, OTHER); `title`, `summary`;
+# `url` của chính bài viết; `publisher` (cơ quan ra cảnh báo, báo thì ghi "Báo X (dẫn Công an Y)"); `date` là ngày đăng hiện trên trang;
+# `tier: media` khi host không thuộc .gov.vn hay kb/allowlist.yaml: báo (kể cả báo ngành công an như congan.com.vn, cand.vn) và
+# xaydungchinhsach.chinhphu.vn (chinhphu.vn chưa có trong allowlist); `verified_at`.
+#
+# Nguồn gốc nội dung (đọc kỹ trước khi tin):
+#  - Ngày 2026-11-11 đã mở từng bài trong `url`, đọc thân bài và ngày đăng trên trang. Bài không mở được, không thấy ngày đăng,
+#    hoặc báo thương mại không dẫn cảnh báo của cơ quan nhà nước thì không lấy.
+#  - `title` và `summary` viết lại bằng lời của team (soạn nháp có AI hỗ trợ, người soạn đọc bài gốc), không chép nguyên văn
+#    (ARCH §6.5, tránh vấn đề bản quyền). Chi tiết trong `summary` (số tiền, tên miền giả, tên cơ quan) lấy từ đúng bài đó.
+#    Không ghi số điện thoại, số tài khoản, tên nạn nhân. Đã đối chiếu ngẫu nhiên 3 mục với bài gốc; chưa có người thứ hai soát hết.
+#  - Mỗi bài chỉ gắn một mã kịch bản (mã chính của bài), dù bài có nhắc thêm chiêu khác.
+#  - `summary` là đoạn được embed để tìm kiếm và đưa vào prompt judge (`<canh_bao_lien_quan>`), nên tả cụ thể kẻ gian giả ai,
+#    qua kênh nào, dụ gì và đòi làm gì.
+
+- id: A001
+  scenario: N1.1
+  title: "Giả công an mời lên phường giải trình hồ sơ vụ án rồi chuyển máy cho 'lãnh đạo'"
+  summary: >-
+    Kẻ gian gọi điện xưng cán bộ công an đang điều tra vụ rửa tiền, buôn lậu, ma túy, nói tên hoặc căn cước của người nghe bị lợi dụng và
+    mời lên công an phường "làm thủ tục", "giải trình hồ sơ". Để tăng độ tin, chúng chuyển máy cho người xưng lãnh đạo cấp cao hơn, rồi
+    dẫn tới việc khai thông tin, đòi chuyển tiền "kiểm tra tài khoản", cài app lạ, đọc OTP. Nhắm nhiều vào người già, người sống một mình.
+  url: "https://congan.ninhbinh.gov.vn/canh-giac-lua-dao-gia-danh-cong-an-goi-nguoi-dan-den-cong-an-phuong-de-lam-thu-tuc-hanh-chinh"
+  publisher: "Công an tỉnh Ninh Bình"
+  date: "2025-07-03"
+  verified_at: 2026-11-11
+
+- id: A002
+  scenario: N1.1
+  title: "Giả công an, viện kiểm sát gọi điện dọa dính vụ rửa tiền, ma túy để đòi chuyển tiền"
+  summary: >-
+    Kẻ gian gọi điện bằng số trông giống đầu số cơ quan nhà nước hoặc số quốc tế, xưng là công an, viện kiểm sát hay tòa án, báo người
+    nghe dính vào vụ rửa tiền, ma túy, tài khoản bị dùng cho tội phạm. Chúng bắt giữ bí mật với gia đình, rồi đòi chuyển tiền vào "tài
+    khoản kiểm tra" để xác minh, gửi giấy triệu tập giả qua email, mạng xã hội kèm mã QR hoặc link, hay bắt cài app giả để chiếm điện
+    thoại và lấy OTP.
+  url: "https://congan.quangngai.gov.vn/danh-muc-san-pham/-tin-tuc-su-kien/canh-bao-thu-doan-lua-dao-gia-danh-cong-an-dung-chuyen-lien-quan-vu-an-de-chiem-doat-tai-san.html"
+  publisher: "Công an tỉnh Quảng Ngãi"
+  date: "2025-08-04"
+  verified_at: 2026-11-11
+
+- id: A003
+  scenario: N1.1
+  title: "Công an giả dọa tội ma túy rồi ép học sinh, sinh viên tự cô lập để tống tiền gia đình"
+  summary: >-
+    Sau một cuộc gọi giả shipper hỏi địa chỉ, kẻ gian xưng công an báo nạn nhân dính đường dây ma túy, rửa tiền. Chúng bắt cài Zoom, bật
+    camera, chia sẻ màn hình, chuyển tiền để "chứng minh trong sạch", rồi ép vào nhà nghỉ, cắt liên lạc, đòi mật khẩu Zalo, Facebook và
+    nhắn gia đình đòi tiền chuộc. Có lúc chúng gọi video mặc đồ công an, dựng cảnh trụ sở, ép quay clip nhạy cảm để khống chế.
+  url: "https://bocongan.gov.vn/bai-viet/canh-bao-bien-tuong-thu-doan-bat-coc-online-1757302259"
+  publisher: "Bộ Công an (Công an tỉnh Đồng Nai)"
+  date: "2025-09-08"
+  verified_at: 2026-11-11
+
+- id: A004
+  scenario: N1.1
+  title: "Bắt cóc online: giả công an ép thanh niên tự trốn rồi gọi người nhà đòi tiền chuộc"
+  summary: >-
+    Kẻ gian gọi điện xưng công an, báo nạn nhân là nghi can rửa tiền vì tài khoản có số tiền lớn bất thường, buộc giữ kín và làm việc qua
+    Zoom. Chúng đòi chứng minh tài chính bằng cách vay mượn người thân, rồi dàn dựng vụ "tự bắt cóc": bắt nạn nhân đổi chỗ trọ liên tục,
+    tự gọi về nhà báo bị bắt cóc. Người nhà, kể cả ông bà, bị dọa bán sang Campuchia nếu không chuyển gấp tiền chuộc.
+  url: "https://bocongan.gov.vn/bai-viet/dong-thap-canh-bao-thu-doan-lua-dao-bat-coc-online-nham-vao-gioi-tre-1760686785"
+  publisher: "Bộ Công an (Công an tỉnh Đồng Tháp)"
+  date: "2025-10-17"
+  verified_at: 2026-11-11
+
+- id: A005
+  scenario: N1.1
+  title: "Gọi video mặc sắc phục, gửi lệnh bắt giả qua Zalo để ép chuyển tiền xác minh"
+  summary: >-
+    Kẻ gian báo tài khoản của nạn nhân dính đường dây rửa tiền, ma túy quốc tế, bắt kết bạn Zalo, Messenger, gửi lệnh bắt, quyết định khởi
+    tố giả có dấu đỏ, ghép ảnh nạn nhân. Rồi chúng gọi video mặc đồ công an, viện kiểm sát, có khi dùng deepfake, nói đây là "vụ án mật",
+    bắt khai hết sổ tiết kiệm, chuyển tiền vào "tài khoản xác minh" hoặc cài app chứa mã độc để chiếm điện thoại.
+  url: "https://congan.lamdong.gov.vn/canh-giac-voi-chieu-tro-gia-danh-cong-an-qua-video-call--cong-nghe-deepfake-va-mat-canh-giac-dan-den-mat-tien-N2598.aspx"
+  publisher: "Công an tỉnh Lâm Đồng (Công an xã Tân Hải)"
+  date: "2025-12-11"
+  verified_at: 2026-11-11
+
+- id: A006
+  scenario: N1.1
+  title: "Người xưng công an Hà Nội dọa dính vụ ma túy, đòi chuyển 1,2 tỷ phục vụ điều tra"
+  summary: >-
+    Một phụ nữ ở Hà Tĩnh nhận cuộc gọi số lạ, người gọi tự xưng cán bộ công an, nói chị liên quan đường dây mua bán ma túy đang được công
+    an thành phố khác thụ lý. Hắn bắt khai báo qua điện thoại để "chứng minh vô tội", liên tục đe dọa, rồi yêu cầu chuyển 1,2 tỷ đồng vào
+    tài khoản do hắn đưa để "phục vụ điều tra". Ngay cả khi nạn nhân đã ở trụ sở công an, chúng vẫn gọi thúc ép chuyển tiền.
+  url: "https://congan.com.vn/vu-an/canh-giac/kip-thoi-ngan-chan-vu-gia-danh-cong-an-goi-dien-hu-doa-lua-dao-12-ty-dong_193369.html"
+  publisher: "Báo Công an TP. Hồ Chí Minh (dẫn Công an xã Cẩm Duệ, tỉnh Hà Tĩnh)"
+  date: "2026-05-27"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A007
+  scenario: N1.1
+  title: "Giả Phó Viện trưởng Viện kiểm sát báo bị mạo danh mở tài khoản, đòi chuyển tiền"
+  summary: >-
+    Một người dân ở Hưng Yên nhận cuộc gọi của kẻ tự xưng lãnh đạo Viện kiểm sát nhân dân khu vực ở Hà Nội, báo ông bị kẻ khác dùng thông
+    tin để mở tài khoản ngân hàng phục vụ việc phạm pháp. Kẻ gian dọa dẫm, bắt giữ bí mật với người thân, đòi chuyển hơn 45 triệu đồng vào
+    tài khoản chúng đưa để "phục vụ điều tra", đồng thời moi thông tin cá nhân và tài khoản ngân hàng.
+  url: "https://congan.hungyen.gov.vn/cong-an-xa-le-quy-don-kip-thoi-ngan-chan-vu-gia-danh-can-bo-vien-kiem-sat-de-lua-dao-chiem-doat-tai--c240075.html"
+  publisher: "Công an tỉnh Hưng Yên (Công an xã Lê Quý Đôn)"
+  date: "2026-09-09"
+  verified_at: 2026-11-11
+
+- id: A008
+  scenario: N1.1
+  title: "Giả công an nhắm vào người cao tuổi: đọc đúng thông tin cá nhân rồi dọa bắt"
+  summary: >-
+    Kẻ gian gọi cho người già, xưng công an, viện kiểm sát, tòa án hoặc ngân hàng, đọc đúng họ tên, số căn cước, địa chỉ để tạo lòng tin,
+    rồi dọa sắp bị bắt, phong tỏa tài khoản, kê biên tài sản. Chúng bắt giấu con cháu, đòi khai tài khoản, mật khẩu, OTP, bấm link, quét
+    QR, cài app hoặc chuyển tiền để "xác minh", "chứng minh không liên quan". Công an không bao giờ đòi chuyển tiền qua điện thoại.
+  url: "https://congan.khanhhoa.gov.vn/vi/canh-bao-thu-doan-lua-dao-gia-danh-cong-an-nham-den-nguoi-cao-tuoi"
+  publisher: "Công an tỉnh Khánh Hòa"
+  date: "2026-10-06"
+  verified_at: 2026-11-11
+
+- id: A009
+  scenario: N1.2
+  title: "Giả nhân viên khoa cấp cứu nhờ công an xã báo người nhà bị tai nạn để đòi viện phí"
+  summary: >-
+    Kẻ gian xưng nhân viên khoa cấp cứu bệnh viện tỉnh, gọi cho công an xã nhờ báo gia đình rằng người thân bị tai nạn giao thông nặng
+    đang được cấp cứu, kèm số điện thoại để liên hệ. Khi gia đình tin và gọi lại, chúng đòi chuyển gấp tiền viện phí vào tài khoản cá nhân
+    rồi cắt liên lạc. Biến thể khác là giả giáo viên báo con bị tai nạn. Cấp cứu không bắt đóng viện phí trước qua điện thoại.
+  url: "https://conganthanhhoa.gov.vn/phong-chong-toi-pham/thong-bao-tim-chu-so-huu-phuong-tien/canh-bao-toi-pham-gia-danh-nhan-vien-benh-vien-goi-dien-yeu-cau-chuyen-tien-vien-phi-de-chiem-doat.html"
+  publisher: "Công an tỉnh Thanh Hóa"
+  date: "2024-07-31"
+  verified_at: 2026-11-11
+
+- id: A010
+  scenario: N1.2
+  title: "Giả giáo viên, nhân viên y tế báo học sinh cấp cứu, đòi phụ huynh chuyển tiền mổ"
+  summary: >-
+    Phụ huynh ở TP. Hồ Chí Minh nhận cuộc gọi của người xưng giáo viên, bạn bè hoặc nhân viên y tế, báo con bị tai nạn nặng đang cấp cứu ở
+    một bệnh viện lớn, cần chuyển gấp 30–40 triệu đồng để bác sĩ phẫu thuật. Kẻ gian nắm rõ họ tên và trường học của con nên phụ huynh dễ
+    tin. Nhiều người chạy tới viện mới biết con không hề nhập viện. Cần gọi ngay cho trường, bệnh viện để kiểm tra.
+  url: "https://vtv.vn/xa-hoi/tai-dien-lua-dao-phu-huynh-chuyen-tien-gap-vi-con-dang-cap-cuu-20241119114720115.htm"
+  publisher: "VTV (dẫn Công an TP. Hồ Chí Minh)"
+  date: "2024-11-19"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A011
+  scenario: N1.2
+  title: "Cụ bà suýt chuyển hơn 2 tỷ vì cuộc gọi báo con trai bị tai nạn cần mổ gấp"
+  summary: >-
+    Một cụ bà 76 tuổi ở Hà Tĩnh nhận cuộc gọi báo con trai bị tai nạn giao thông nguy kịch, phải chuyển tiền ngay để phẫu thuật. Kẻ gian
+    gọi dồn dập, gây áp lực, khiến bà bán hết số vàng tích góp hơn 2 tỷ đồng và ra ngân hàng chuyển tiền, dù nhân viên nhiều lần can ngăn.
+    Ngân hàng báo công an kịp thời ngăn lại. Công an lưu ý chiêu giả người thân gặp nạn nhắm vào tâm lý lo lắng của người già.
+  url: "https://bocongan.gov.vn/bai-viet/ngan-chan-kip-thoi-hai-vu-lua-dao-qua-dien-thoai-voi-thu-doan-tinh-vi-1764821336"
+  publisher: "Bộ Công an (Công an tỉnh Hà Tĩnh)"
+  date: "2025-12-04"
+  verified_at: 2026-11-11
+
+- id: A012
+  scenario: N1.2
+  title: "Giả cán bộ trại giam gọi người nhà phạm nhân đòi tiền lo tại ngoại, viện phí"
+  summary: >-
+    Kẻ gian dò thông tin người bị tạm giữ, tạm giam qua báo chí, mạng xã hội, rồi gọi điện, nhắn Telegram, Facebook cho người nhà, xưng
+    điều tra viên hoặc quản giáo, gửi kèm lý lịch bị can, lệnh tạm giam cắt ghép. Chúng đòi tiền để "lo" cho được tại ngoại, giảm án,
+    chuyển buồng, thăm gặp, hoặc bịa chuyện người thân ốm nặng cần đóng viện phí, vi phạm nội quy cần "bảo lãnh", nhận tiền xong thì cắt
+    liên lạc.
+  url: "https://congan.hungyen.gov.vn/thu-doan-gia-danh-luc-luong-cong-an-lien-he-nguoi-nha-cua-nguoi-bi-tam-giu-nguoi-bi-tam-giam-va-pham-nhan-de-thuc-hien-hanh-vi-lua-dao-chiem-doat-tai-san-c236216.html"
+  publisher: "Công an tỉnh Hưng Yên (Trại tạm giam số 2)"
+  date: "2026-05-22"
+  verified_at: 2026-11-11
+
+- id: A013
+  scenario: N1.2
+  title: "Giả cán bộ bệnh viện báo con gái tai nạn nguy kịch, đòi chuyển 100 triệu cấp cứu"
+  summary: >-
+    Một phụ nữ ở Lào Cai nhận cuộc gọi của kẻ tự xưng cán bộ khoa cấp cứu bệnh viện đa khoa tỉnh, đọc đúng tên, ngày sinh con gái và báo
+    cô bị tai nạn giao thông nguy kịch. Hắn đòi chuyển ngay 100 triệu đồng để làm thủ tục nhập viện, cấp cứu, phẫu thuật. Không gọi được
+    cho con nên bà rất hoảng, nhưng thấy bất thường đã đến công an xã, được xác nhận đây là chiêu giả nhân viên y tế.
+  url: "https://baolaocai.vn/gia-danh-benh-vien-yeu-cau-chuyen-100-trieu-dong-de-cap-cuu-cho-nguoi-than-post905090.html"
+  publisher: "Báo Lào Cai (dẫn Công an xã Phúc Khánh)"
+  date: "2026-07-31"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A014
+  scenario: N1.3
+  title: "Giả nhân viên ngân hàng gọi điện, nhắn Zalo hỗ trợ cập nhật sinh trắc học"
+  summary: >-
+    Kẻ gian xưng là nhân viên ngân hàng, gọi điện, nhắn tin hoặc kết bạn Zalo, Telegram, ngỏ ý giúp cài đặt xác thực sinh trắc học cho
+    người ngại ra quầy. Chúng đòi ảnh căn cước, ảnh khuôn mặt, thông tin tài khoản, có khi gọi video để lấy thêm giọng nói, rồi gửi đường
+    link bắt tải ứng dụng "hỗ trợ sinh trắc học" và lấy sạch tiền. Ngân hàng không chủ động gọi hướng dẫn việc này; không đưa OTP, mật
+    khẩu cho ai.
+  url: "https://congan.hungyen.gov.vn/canh-bao-thu-doan-lua-dao-loi-dung-viec-cai-dat-sinh-trac-hoc-c229412.html"
+  publisher: "Công an tỉnh Hưng Yên"
+  date: "2024-11-05"
+  verified_at: 2026-11-11
+
+- id: A015
+  scenario: N1.3
+  title: "Giả ngân hàng báo phí lạ trên thẻ, đòi khoá thẻ hoặc mời mở, nâng cấp thẻ"
+  summary: >-
+    Đối tượng dùng cuộc gọi VOIP giả đầu số cố định hoặc SIM rác, xưng nhân viên ngân hàng, báo thẻ tín dụng phát sinh khoản phí bất
+    thường cần khoá tạm để huỷ, hoặc mời phát hành, nâng cấp thẻ. Nạn nhân được gửi đường link giống trang ngân hàng để đăng nhập, sau đó
+    bị lấy thông tin và rút hết tiền. Còn có email giả ngân hàng báo trúng thưởng, hoàn tiền và web giả Ngân hàng Nhà nước phát tán file
+    APK độc hại.
+  url: "https://congan.khanhhoa.gov.vn/vi/canh-giac-thu-doan-lua-dao-mao-danh-hoat-dong-cua-ngan-hang"
+  publisher: "Công an tỉnh Khánh Hòa"
+  date: "2025-10-17"
+  verified_at: 2026-11-11
+
+- id: A016
+  scenario: N1.3
+  title: "SMS giả Vietcombank báo khoá tài khoản, đổi điểm, dẫn tới web đăng nhập giả"
+  summary: >-
+    Tin nhắn từ số di động lạ giả Vietcombank báo điểm ưu đãi Priority sắp hết hạn, hoặc tài khoản bị khoá, cần cập nhật thông tin, nhận
+    quà hoàn tiền, kèm link kiểu vietcombank-priority.com. Trang giả có giao diện đăng nhập giống ngân hàng; khi nạn nhân nhập tài khoản,
+    mật khẩu và OTP, kẻ gian lập tức chuyển sạch tiền. Dấu hiệu: tin nhắn không có tên thương hiệu ngân hàng, tên miền đuôi .com, .xyz
+    thay vì .com.vn.
+  url: "https://congan.ninhbinh.gov.vn/canh-bao-thu-doan-gia-mao-website-cua-ngan-hang-de-chiem-doat-tai-san"
+  publisher: "Công an tỉnh Ninh Bình"
+  date: "2026-04-06"
+  verified_at: 2026-11-11
+
+- id: A017
+  scenario: N1.3
+  title: "Tin nhắn giả Techcombank báo điểm thưởng thẻ tín dụng sắp hết hạn"
+  summary: >-
+    Người dân nhận SMS mạo danh Techcombank báo hàng nghìn điểm thưởng thẻ tín dụng hết hạn trong ngày, kèm lời giục đổi quà ngay. Đường
+    link có tên miền na ná ngân hàng như techcombank.cfd hay tcb.lat dẫn tới trang giả đòi nhập số thẻ, ngày hết hạn, mã CVV, mật khẩu và
+    OTP. Có thông tin rồi, chúng quẹt thẻ, liên kết ví điện tử hoặc gọi điện giả nhân viên để xin thêm OTP. Mồi nhử thường là điểm thưởng,
+    hoàn tiền, voucher.
+  url: "https://congan.gialai.gov.vn/vi/news/canh-giac-canh-bao/canh-bao-thu-doan-gia-mao-ngan-hang-techcombank-de-chiem-doat-thong-tin-the-tin-dung-12767.html"
+  publisher: "Công an tỉnh Gia Lai"
+  date: "2026-07-08"
+  verified_at: 2026-11-11
+
+- id: A018
+  scenario: N1.3
+  title: "Gọi điện mời nâng hạn mức thẻ tín dụng rồi xin mã OTP để quẹt thẻ"
+  summary: >-
+    Kẻ gian gọi điện xưng nhân viên ngân hàng, đọc đúng vài thông tin cá nhân để lấy lòng tin, rồi mời nâng hạn mức thẻ tín dụng (ví dụ từ
+    30 lên 70 triệu) để hưởng ưu đãi mua sắm trên sàn TMĐT. Chúng xin ảnh căn cước, ảnh chân dung và mã OTP gửi về máy, bảo chờ duyệt. Chỉ
+    ít phút sau thẻ phát sinh giao dịch mua hàng gần 70 triệu đồng. Ngân hàng thật không bao giờ xin OTP, mã PIN, CVV qua điện thoại.
+  url: "https://congan.vinhlong.gov.vn/canh-bao-phuong-thuc-thu-doan-cua-toi-pham/canh-giac-thu-doan-mao-danh-nhan-vien-ngan-hang-ho-tro-nang-han-muc-the-tin-dung-de-chiem-doat-tai-san-6626.html"
+  publisher: "Công an tỉnh Vĩnh Long"
+  date: "2026-09-09"
+  verified_at: 2026-11-11
+
+- id: A019
+  scenario: N1.3
+  title: "Quảng cáo vay vốn trên Facebook, giả nhân viên VIB thu phí giải ngân"
+  summary: >-
+    Nhóm lừa đảo chạy quảng cáo Facebook "hỗ trợ tài chính, vay vốn" thủ tục đơn giản, lãi thấp, tự động nhắn Messenger khi có người bình
+    luận. Người vay được mời kết bạn Zalo với tài khoản mang tên nhân viên ngân hàng VIB, nộp ảnh căn cước, ký "hợp đồng vay" và "thông
+    báo giải ngân" giả. Sau đó chúng đòi chuyển phí hồ sơ, phí giải ngân, tiền thuế hay tiền bảo đảm khoản vay, nhận xong thì không giải
+    ngân.
+  url: "https://www.bocongan.gov.vn/bai-viet/bac-ninh-canh-giac-thu-doan-gia-danh-nhan-vien-ngan-hang-lua-dao-vay-von-1792286442"
+  publisher: "Bộ Công an (Công an tỉnh Bắc Ninh)"
+  date: "2026-10-18"
+  verified_at: 2026-11-11
+
+- id: A020
+  scenario: N1.3
+  title: "Người quen qua mạng xưng nhân viên ngân hàng mời vay, đòi phí trước"
+  summary: >-
+    Một người làm quen qua mạng xã hội, tự nhận làm ở ngân hàng lớn, hứa lo khoản vay lãi thấp, không cần thế chấp, giải ngân nhanh. Khi
+    nạn nhân cần vay 50 triệu, hắn đòi chuyển trước 5 triệu với lý do sửa thông tin cá nhân cho đủ điều kiện giải ngân. Công an xã ở Phú
+    Thọ đã kịp ngăn. Bất kỳ khoản vay nào bắt nộp trước phí hồ sơ, phí xác minh, bảo hiểm hay giải ngân đều là dấu hiệu lừa đảo.
+  url: "https://mps.gov.vn/bai-viet/phu-tho-cong-an-xa-lac-son-kip-thoi-ngan-chan-vu-lua-dao-gia-danh-nhan-vien-ngan-hang-1793435269"
+  publisher: "Bộ Công an (Công an tỉnh Phú Thọ)"
+  date: "2026-10-31"
+  verified_at: 2026-11-11
+
+- id: A021
+  scenario: N1.4
+  title: "Giả cán bộ thuế gửi giấy mời, đòi kê khai qua link và cài eTax giả"
+  summary: >-
+    Lợi dụng việc bỏ thuế khoán chuyển sang kê khai, kẻ gian gửi qua bưu điện, email, Zalo các giấy mời, thông báo hoàn thuế hay cập nhật
+    thông tin thuế giả, rồi gọi điện xưng cán bộ chi cục, đội thuế, đọc đúng mã số thuế để lấy lòng tin. Chúng dẫn tới trang giả như
+    etax-gdt[.]online hoặc gửi file APK tên "eTax Mobile", "HoTroThue". App này xin quyền đọc tin nhắn, điều khiển máy để lấy OTP và rút
+    tiền ngân hàng.
+  url: "https://congan.quangninh.gov.vn/thong-bao/thu-doan-toi-pham/canh-giac-thu-doan-lua-dao-mao-danh-co-quan-thue-trong-qua-trinh-trien-khai-chinh-sach-chuyen-doi-quan-ly-thue-2854.html"
+  publisher: "Công an tỉnh Quảng Ninh"
+  date: "2026-02-27"
+  verified_at: 2026-11-11
+
+- id: A022
+  scenario: N1.4
+  title: "Gọi điện xưng Tổng cục Thuế, doạ điều tra trốn thuế để ép cài app"
+  summary: >-
+    Kẻ gian gọi từ số lạ, giọng nghiêm khắc, xưng cán bộ Tổng cục Thuế, Sở Tài chính hoặc cảnh sát kinh tế, báo nạn nhân bị điều tra vì
+    trốn thuế, sai hóa đơn; gửi thêm giấy mời, quyết định cưỡng chế nợ thuế giả qua mạng xã hội, dọa hồ sơ đã chuyển cơ quan điều tra. Sau
+    khi gây hoảng sợ, chúng bắt bấm link, cài ứng dụng kê khai thuế giả có quyền xem, điều khiển màn hình. App thuế thật duy nhất là eTax
+    Mobile trên kho chính thức.
+  url: "https://congan.khanhhoa.gov.vn/vi/canh-bao-thu-doan-mao-danh-co-quan-thue-de-lua-dao-chiem-doat-tai-san"
+  publisher: "Công an tỉnh Khánh Hòa"
+  date: "2026-04-20"
+  verified_at: 2026-11-11
+
+- id: A023
+  scenario: N1.4
+  title: "Giả cán bộ công an gọi phụ huynh làm định danh điện tử mức 2 cho con"
+  summary: >-
+    Mùa tuyển sinh, kẻ gian gọi điện xưng cán bộ công an, cán bộ quản lý cư trú hay hỗ trợ dịch vụ công, báo dữ liệu căn cước của học sinh
+    bị sai, hồ sơ chưa hợp lệ, cần xác thực gấp kẻo ảnh hưởng nhập học. Có kẻ mặc đồ giống công an gọi video. Chúng bắt bấm link, cài app
+    giả "dịch vụ công", "đồng bộ dữ liệu dân cư" hoặc đọc OTP, rồi chiếm điện thoại, rút tiền. Định danh mức 2 cho trẻ chỉ làm trực tiếp
+    tại cơ quan công an.
+  url: "https://congan.ninhbinh.gov.vn/canh-bao-thu-doan-loi-dung-dang-ky-dinh-danh-dien-tu-muc-do-2-cho-tre-em-de-lua-dao-chiem-doat-tai-san"
+  publisher: "Công an tỉnh Ninh Bình"
+  date: "2026-05-13"
+  verified_at: 2026-11-11
+
+- id: A024
+  scenario: N1.4
+  title: "Website giả Cổng Dịch vụ công Quốc gia đánh cắp tài khoản ngân hàng"
+  summary: >-
+    Công an phát hiện trang web dichvuconghanhchinh.com dựng giao diện gần giống Cổng Dịch vụ công Quốc gia. Người dân bị dẫn vào đăng
+    nhập, khai thông tin cá nhân, tài khoản ngân hàng, mã OTP hoặc làm theo thao tác để kẻ gian chiếm tài khoản và rút tiền. Cổng dịch vụ
+    công thật dùng tên miền đuôi gov.vn; cần soi kỹ tên miền trước khi đăng nhập, không cài ứng dụng do người lạ chỉ qua điện thoại hay
+    mạng xã hội.
+  url: "https://congan.ninhbinh.gov.vn/canh-giac-voi-website-gia-mao-cong-dich-vu-cong-quoc-gia-nham-lua-dao-chiem-doat-tai-san"
+  publisher: "Công an tỉnh Ninh Bình"
+  date: "2026-06-22"
+  verified_at: 2026-11-11
+
+- id: A025
+  scenario: N1.4
+  title: "Tin nhắn giả CSGT báo phạt nguội, link tới web giống Cổng Dịch vụ công"
+  summary: >-
+    Kẻ gian mạo danh Công an, CSGT gửi SMS báo xe vi phạm giao thông chưa nộp phạt, dọa tăng mức phạt nếu không nộp trong 48 giờ hoặc dụ
+    giảm 50% nếu nộp sớm. Link đính kèm mở ra website giả giao diện Cổng Dịch vụ công Quốc gia, bắt đăng nhập ngân hàng, nhập số thẻ, mật
+    khẩu, OTP rồi rút tiền. Công an không thu phạt qua link trong tin nhắn; tra cứu vi phạm chỉ trên VNeID, VNeTraffic hoặc cổng chính
+    thức.
+  url: "https://bocongan.gov.vn/bai-viet/canh-bao-thu-doan-gia-danh-co-quan-cong-an-gui-tin-nhan-phat-nguoi-kem-duong-link-gia-mao-de-lua-dao-chiem-doat-tai-san-1788945012"
+  publisher: "Bộ Công an (Công an TP. Hà Nội)"
+  date: "2026-09-09"
+  verified_at: 2026-11-11
+
+- id: A026
+  scenario: N1.4
+  title: "Giả cán bộ cập nhật dữ liệu đất đai, \"số hóa sổ đỏ\" để thu phí, lấy OTP"
+  summary: >-
+    Kẻ gian gọi điện, nhắn tin xưng cán bộ đang cập nhật thông tin đất đai, dùng tên, ảnh đại diện giống cơ quan nhà nước, hứa làm thủ tục
+    nhanh, rẻ. Chúng gửi link, mã QR tới trang giả cổng dịch vụ công, đòi ảnh căn cước, sổ đỏ, bắt cài app lạ hoặc chia sẻ màn hình, rồi
+    đòi nộp "phí số hóa", thuế, lệ phí, nhập mật khẩu ngân hàng và OTP. Người gọi biết tên, địa chỉ mình không có nghĩa là cán bộ thật;
+    hãy hỏi thẳng UBND xã.
+  url: "https://congan.hungyen.gov.vn/cong-an-xa-luong-bang-khuyen-cao-canh-giac-voi-thu-doan-mao-danh-can-bo-so-hoa-so-do-de-lua-dao-c240341.html"
+  publisher: "Công an tỉnh Hưng Yên"
+  date: "2026-09-18"
+  verified_at: 2026-11-11
+
+- id: A027
+  scenario: N1.4
+  title: "Giả cán bộ BHXH báo hồ sơ bảo hiểm lỗi, đòi chuyển mã sang số căn cước"
+  summary: >-
+    Đối tượng gọi điện, nhắn tin xưng cán bộ bảo hiểm xã hội hoặc cơ quan nhà nước, nói hồ sơ bảo hiểm bị lỗi hay phải chuyển mã BHXH sang
+    số căn cước. Chúng xin số căn cước, ảnh giấy tờ, tài khoản ngân hàng, OTP, bắt bấm link, quét mã QR hoặc cài ứng dụng để "cập nhật dữ
+    liệu", rồi rút tiền. Ở một xã thuộc Hưng Yên, nhiều người đã mất hơn 100 triệu đồng. Không chuyển tiền, không cài app theo hướng dẫn
+    qua điện thoại.
+  url: "https://congan.hungyen.gov.vn/cong-an-xa-trieu-viet-vuong-canh-bao-thu-doan-lua-dao-qua-cuoc-goi-gia-danh-bao-hiem-xa-hoi-c241551.html"
+  publisher: "Công an tỉnh Hưng Yên"
+  date: "2026-10-12"
+  verified_at: 2026-11-11
+
+- id: A028
+  scenario: N1.5
+  title: "Gọi giả số điện lực dọa cắt điện, gửi app Epoint và QR có logo EVN"
+  summary: >-
+    Kẻ gian dùng công nghệ giả số hiển thị giống tổng đài điện lực, gọi báo nợ tiền điện và dọa cắt điện nếu không thanh toán ngay. Qua
+    Zalo chúng gửi link bắt cài ứng dụng giả tên Epoint chứa mã độc, yêu cầu mở app ngân hàng, dùng căn cước và quét mã QR gắn logo EVN;
+    nạn nhân ở Nghệ An bị trừ gần 700 triệu đồng, may được công an chặn lại kịp. Điện lực không đòi cài app lạ để đóng tiền.
+  url: "https://congan.com.vn/vu-an/canh-giac/kip-thoi-ngan-chan-vu-gia-danh-nhan-vien-dien-luc-de-lua-dao_174308.html"
+  publisher: "Báo Công an TP.HCM (dẫn Công an tỉnh Nghệ An)"
+  date: "2025-02-21"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A029
+  scenario: N1.5
+  title: "Giả nhân viên Viettel tặng data, báo nợ cước để xin mã OTP"
+  summary: >-
+    Nhiều thuê bao Viettel nhận cuộc gọi từ số lạ, sim rác tự xưng chăm sóc khách hàng Viettel, mời gia hạn gói cước, tặng data miễn phí
+    hoặc báo đang nợ cước sắp bị khóa SIM. Chúng bảo mở ứng dụng My Viettel và đọc mã OTP để nâng cấp hay thanh toán dịch vụ, sau đó chiếm
+    tiền trong tài khoản ngân hàng, ví điện tử. Muốn đổi gói cước nên ra cửa hàng hoặc kênh chính thức của nhà mạng.
+  url: "https://congan.tayninh.gov.vn/vi/chi-tiet-tin-tuc?Id=255836"
+  publisher: "Công an tỉnh Tây Ninh"
+  date: "2025-07-30"
+  verified_at: 2026-11-11
+
+- id: A030
+  scenario: N1.5
+  title: "Giả nhân viên EVN kiểm tra hóa đơn tiền điện, dụ cài app để lấy tiền"
+  summary: >-
+    Lợi dụng việc nhiều người thắc mắc hóa đơn tiền điện tăng, kẻ gian xưng là nhân viên điện lực EVN, kết bạn và gọi qua Zalo, xin ảnh
+    hóa đơn rồi nói khách chưa cập nhật địa chỉ mới nên không kiểm tra được. Chúng gửi link hoặc bảo cài ứng dụng giả chứa mã độc, gọi
+    video để lấy dữ liệu khuôn mặt, đòi OTP và thông tin ngân hàng rồi rút tiền. Ngành điện không bắt cài app để xử lý hay thanh toán tiền
+    điện.
+  url: "https://congan.thainguyen.gov.vn/index.php/tin-tuc/tin-hoat-dong/canh-bao-lua-dao-mao-danh-nhan-vien-dien-luc-694.html"
+  publisher: "Công an tỉnh Thái Nguyên"
+  date: "2025-09-09"
+  verified_at: 2026-11-11
+
+- id: A031
+  scenario: N1.5
+  title: "Giả điện lực báo nợ tiền điện, bắt cài app CSKH giả và quét mặt"
+  summary: >-
+    Một người dân TP.HCM nhận cuộc gọi của kẻ xưng nhân viên điện lực báo chưa đóng tiền điện, rồi được hướng dẫn cài ứng dụng chăm sóc
+    khách hàng EVNSPC giả và xác thực khuôn mặt; ngay sau đó tài khoản mất hơn 2,25 tỷ đồng. EVNSPC cho biết không thu tiền điện qua Zalo
+    hay SMS, app thật chỉ tải từ CH Play/App Store và không đòi quét mặt, vân tay. Đừng bấm link, cài app theo người lạ.
+  url: "https://baochinhphu.vn/evnspc-canh-bao-tinh-trang-gia-danh-nhan-vien-dien-luc-lua-dao-cai-ung-dung-cham-soc-khach-hang-chiem-doat-tien-102250927150419365.htm"
+  publisher: "Báo Điện tử Chính phủ (dẫn EVNSPC và Công an TP.HCM)"
+  date: "2025-09-27"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A032
+  scenario: N1.5
+  title: "Giả nhà mạng hỗ trợ đăng ký SIM chính chủ, đòi ảnh căn cước và OTP"
+  summary: >-
+    Kẻ gian tự xưng nhân viên Viettel, Vinaphone, Mobifone gọi điện, nhắn tin báo thuê bao chưa đăng ký chính chủ hoặc thông tin chưa
+    đúng, phải cập nhật gấp kẻo bị khóa SIM. Chúng đòi chụp căn cước, đọc mã OTP gửi về máy, bấm vào link lạ và cài ứng dụng theo hướng
+    dẫn, rồi chiếm quyền tài khoản ngân hàng, ví điện tử. Chỉ cập nhật thuê bao tại điểm giao dịch hoặc ứng dụng chính thức của nhà mạng.
+  url: "https://congan.gialai.gov.vn/vi/news/canh-giac-canh-bao/cong-an-xa-son-lang-canh-bao-thu-doan-lua-dao-ho-tro-chuan-hoa-sim-chinh-chu-11740.html"
+  publisher: "Công an tỉnh Gia Lai (Công an xã Sơn Lang)"
+  date: "2026-06-09"
+  verified_at: 2026-11-11
+
+- id: A033
+  scenario: N1.5
+  title: "Giả nhà mạng đòi chuẩn hóa thuê bao, dọa khóa SIM để lấy OTP"
+  summary: >-
+    Lợi dụng quy định xác thực thuê bao mới, kẻ gian xưng nhân viên Viettel, VinaPhone, MobiFone gọi điện, nhắn tin hoặc liên hệ qua mạng
+    xã hội, báo thông tin thuê bao sai hoặc chưa chuẩn hóa, dọa khóa một chiều, hai chiều hay thu hồi số. Chúng đòi ảnh giấy tờ, số căn
+    cước, tài khoản ngân hàng, mã OTP, hoặc gửi link web giả, bắt cài ứng dụng lạ hay app điều khiển từ xa để chiếm quyền điện thoại và
+    rút tiền.
+  url: "https://congan.laichau.gov.vn/an-ninh-trat-tu/canh-giac-thu-doan-gia-danh-nha-mang-chuan-hoa-thue-bao-de-lua-dao-chiem-doat-tai-san-5763.html"
+  publisher: "Công an tỉnh Lai Châu"
+  date: "2026-07-24"
+  verified_at: 2026-11-11
+
+- id: A034
+  scenario: N1.6
+  title: "Giả sàn TMĐT, siêu thị tặng quà tri ân rồi dụ chuyển tiền nhận quà"
+  summary: >-
+    Qua mạng xã hội, kẻ gian giả nhân viên sàn thương mại điện tử, siêu thị hay thương hiệu báo được nhận quà tri ân miễn phí, rồi kéo nạn
+    nhân sang Telegram làm thủ tục nhận quà. Ban đầu có thể trả thưởng nhỏ, sau đó đòi chuyển tiền ngày càng lớn, viện cớ ghi sai thông
+    tin để bắt nộp thêm; một phụ nữ ở Đà Nẵng mất 16,8 triệu đồng mà không nhận được quà. Đừng chuyển tiền để nhận quà miễn phí.
+  url: "https://danang.gov.vn/w/thu-doan-lua-ao-ang-sau-nhung-mon-qua-tri-an-khach-hang"
+  publisher: "Cổng TTĐT TP. Đà Nẵng (dẫn Công an TP. Đà Nẵng)"
+  date: "2025-05-26"
+  verified_at: 2026-11-11
+
+- id: A035
+  scenario: N1.6
+  title: "Trang giả nhãn hàng lớn báo trúng quà tri ân, đòi phí ship và thuế"
+  summary: >-
+    Kẻ gian lập website, fanpage nhái logo, giao diện các nhãn hàng nổi tiếng, tên miền chỉ khác vài ký tự hoặc đuôi .xyz, .site, .online,
+    đăng chương trình tri ân, quay số may mắn tặng iPhone, xe máy, tivi, có tài khoản ảo khen đã nhận quà. Chúng nhắn qua Messenger, Zalo,
+    SMS báo trúng thưởng, xin căn cước, địa chỉ, rồi bắt chuyển phí vận chuyển, phí hồ sơ, thuế VAT, bảo hiểm để nhận quà và chặn liên
+    lạc.
+  url: "https://congan.quangngai.gov.vn/danh-muc-san-pham/-tin-tuc-su-kien/canh-bao-lua-dao-qua-hinh-thuc-tri-an-khach-hang.html"
+  publisher: "Công an tỉnh Quảng Ngãi"
+  date: "2025-08-16"
+  verified_at: 2026-11-11
+
+- id: A036
+  scenario: N1.6
+  title: "Gọi báo trúng tivi, tủ lạnh rồi ép mua hàng giá gấp nhiều lần"
+  summary: >-
+    Đường dây núp bóng công ty ma, dùng đầu số tổng đài qua Internet, giả nhân viên chăm sóc khách hàng, trung tâm mua sắm hoặc sàn TMĐT
+    gọi báo trúng tiền mặt hay tivi, tủ lạnh, ghế massage. Để đủ điều kiện nhận giải, nạn nhân bị ép mua sữa, thực phẩm chức năng, máy đo
+    huyết áp với lý do tạo mã trúng thưởng, kích hoạt giải, nộp thuế phí; hàng giao có giá gấp 8 đến 10 lần. Nhắm vào người già ở nông
+    thôn.
+  url: "https://bocongan.gov.vn/bai-viet/cong-an-tinh-thanh-hoa-triet-pha-duong-day-lua-dao-bang-hinh-thuc-thong-bao-trung-thuong-1766998122"
+  publisher: "Bộ Công an (Công an tỉnh Thanh Hóa)"
+  date: "2025-12-29"
+  verified_at: 2026-11-11
+
+- id: A037
+  scenario: N1.6
+  title: "Giả CSKH Shopee, Lazada báo đơn lỗi để hoàn tiền, đòi OTP và phí"
+  summary: >-
+    Kẻ gian nắm sẵn họ tên, số điện thoại và món hàng vừa mua, xưng là nhân viên chăm sóc khách hàng Shopee, Lazada, TikTok Shop hoặc đơn
+    vị vận chuyển, báo đơn hàng hỏng hay kho hết hàng nên cần hoàn tiền. Chúng kéo sang Zalo, Telegram, gửi link giả giao diện ngân hàng
+    bắt nhập tên đăng nhập, mật khẩu, mã OTP, hoặc đòi chuyển phí kích hoạt lệnh hoàn tiền. Chỉ kiểm tra đơn trong app chính thức của sàn.
+  url: "https://congan.khanhhoa.gov.vn/vi/canh-bao-chieu-tro-lua-dao-hoan-tien-don-hang"
+  publisher: "Công an tỉnh Khánh Hòa"
+  date: "2026-04-21"
+  verified_at: 2026-11-11
+
+- id: A038
+  scenario: N1.6
+  title: "Giả nhân viên điện máy đến nhà tặng quà tri ân rồi mượn tiền"
+  summary: >-
+    Hai đối tượng giả nhân viên siêu thị điện máy, nói sắp khai trương cửa hàng, đến tận nhà dân tặng quà tri ân nhỏ như nước giặt, dụng
+    cụ mài dao, đèn tích điện để lấy lòng tin. Sau đó chúng hỏi mượn tiền để chụp ảnh báo cáo công ty, hứa trả ngay và tặng thêm quà lớn,
+    rồi cầm tiền bỏ đi; một người dân ở Bắc Ninh mất 20 triệu đồng. Không cho người lạ mượn tiền hay chuyển tiền để nhận quà miễn phí.
+  url: "https://bocongan.gov.vn/bai-viet/bac-ninh-canh-giac-thu-doan-gia-danh-nhan-vien-dien-may-tang-qua-tri-an-de-lua-dao-1793022390"
+  publisher: "Bộ Công an (Công an thành phố Bắc Ninh)"
+  date: "2026-10-27"
+  verified_at: 2026-11-11
+
+- id: A039
+  scenario: N2.1
+  title: "Giả giọng, giả mặt người thân bằng AI báo tai nạn để đòi tiền viện phí"
+  summary: >-
+    Tại Phú Thọ đã có người bị lừa qua cuộc gọi, video Deepfake giả người thân hoặc cán bộ cơ quan. Kịch bản thường gặp: người nhà bị tai
+    nạn cần đóng viện phí trong vài phút, hoặc đang làm việc với công an cần tiền bảo lãnh. Số lạ có thể hiện tên người quen, giọng thiếu
+    cảm xúc, khẩu hình lệch, tài khoản nhận tiền không trùng tên. Có khi chúng còn đòi OTP, mật khẩu hoặc bảo cài ứng dụng. Hãy gọi lại số
+    thật, hỏi chuyện riêng trước khi chuyển.
+  url: "https://congan.phutho.gov.vn/article/Canh-giac-voi-thu-doan-lua-dao-gia-giong-noi-18536-48"
+  publisher: "Công an tỉnh Phú Thọ"
+  date: "2025-11-04"
+  verified_at: 2026-11-11
+
+- id: A040
+  scenario: N2.1
+  title: "Cuộc gọi video Deepfake giả người thân, bạn bè để đòi chuyển tiền"
+  summary: >-
+    Kẻ gian dùng AI dựng video, giọng nói giống người thân, bạn bè hoặc nhân viên ngân hàng rồi gọi video cho nạn nhân để nhờ chuyển tiền
+    gấp vào một tài khoản lạ. Cuộc gọi thường rất ngắn, mặt ít biểu cảm, cử động gượng, ánh sáng và màu da lạ, tiếng không khớp hình;
+    chúng đổ cho mất sóng rồi cúp máy. Cần gọi lại qua kênh khác, kiểm tra tên chủ tài khoản nhận tiền, không chuyển tiền theo cuộc gọi
+    chưa xác thực.
+  url: "https://congan.ninhbinh.gov.vn/luc-luong-cong-an-tinh-canh-bao-thu-doan-lua-dao-bang-cuoc-goi-video-deepfake"
+  publisher: "Công an tỉnh Ninh Bình"
+  date: "2026-06-04"
+  verified_at: 2026-11-11
+
+- id: A041
+  scenario: N2.1
+  title: "AI nhân bản giọng nói người thân, dựng chuyện khẩn cấp để lừa tiền"
+  summary: >-
+    Chỉ cần vài giây ghi âm từ mạng xã hội hay cuộc gọi, kẻ gian dùng AI tạo giọng giống hệt con cái, bạn bè, có thể nói chuyện trực tiếp
+    theo thời gian thực và giả cả số hiển thị của người thân. Chúng dựng cảnh bị bắt cóc, tai nạn, bị giam giữ rồi giục chuyển tiền ngay,
+    dặn giữ kín. Đừng cố đoán giọng thật hay giả: thấy bị hối thúc, đòi bí mật, chuyển tiền kiểu lạ thì gác máy, gọi lại số quen; nên đặt
+    trước "mật mã gia đình".
+  url: "https://congan.nghean.gov.vn/thong-tin-chuyen-de/canh-bao-toi-pham/202606/canh-bao-gia-tang-tinh-trang-lua-dao-nhan-ban-giong-noi-bang-tri-tue-nhan-tao-1057930"
+  publisher: "Công an tỉnh Nghệ An"
+  date: "2026-06-16"
+  verified_at: 2026-11-11
+
+- id: A042
+  scenario: N2.1
+  title: "Thấy mặt, nghe giọng người quen qua video vẫn có thể là Deepfake"
+  summary: >-
+    Đối tượng gom ảnh, video, giọng nói trên Facebook, Zalo, TikTok hoặc từ tài khoản bị chiếm để làm cuộc gọi giả con cháu, vợ chồng báo
+    tai nạn, cấp cứu, mất điện thoại; có thể giả cả lãnh đạo yêu cầu kế toán chuyển tiền "bí mật". Cuộc gọi vài giây rồi ngắt vì "sóng
+    yếu", sau đó gửi số tài khoản lạ, thúc chuyển ngay, dặn đừng gọi lại. Dấu hiệu: đòi giữ bí mật, tài khoản khác tên, đòi OTP, gửi link
+    hay QR, né câu hỏi riêng.
+  url: "https://congan.tayninh.gov.vn/vi/chi-tiet-tin-tuc?Id=280373"
+  publisher: "Công an tỉnh Tây Ninh"
+  date: "2026-09-15"
+  verified_at: 2026-11-11
+
+- id: A043
+  scenario: N2.2
+  title: "Cuộc gọi không nói gì: dò dữ liệu và lấy mẫu giọng để giả danh"
+  summary: >-
+    Nhiều người nhận cuộc gọi lạ không có tiếng. Đây là cách kẻ xấu xác minh số đang dùng, dùng bot nghe giọng để phân loại theo giới
+    tính, tuổi, nhắm người già, nội trợ, người thất nghiệp; nếu tiếp tục trả lời, giọng nói có thể bị thu lại để giả danh trong các cuộc
+    gọi lừa đảo sau. Cục An toàn thông tin khuyến cáo không nghe, không gọi lại số lạ nhất là số quốc tế, không cung cấp thông tin dù
+    người gọi xưng ngân hàng hay công an.
+  url: "https://dantri.com.vn/cong-nghe/cuoc-goi-den-nhung-khong-noi-gi-chuyen-gia-tiet-lo-manh-khoe-lua-dao-20250225101845070.htm"
+  publisher: "Báo Dân trí (dẫn Cục An toàn thông tin)"
+  date: "2025-02-26"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A044
+  scenario: N2.2
+  title: "Cuộc gọi im lặng chờ người nghe nói \"alo\" để thu giọng nhân bản bằng AI"
+  summary: >-
+    Số lạ gọi tới, đầu dây im lặng một hai giây rồi tắt. Chỉ cần người nghe nói "alo" hay ho nhẹ, hệ thống biết số đó có người thật dùng,
+    dữ liệu bị bán cho nhóm gọi rác, lừa đảo. Giọng thu được có thể bị AI nhân bản để giả người thân lừa tiền gia đình; gọi lại đầu số
+    quốc tế còn mất cước cao. Không gọi lại số lạ, gác máy ngay khi nghi ngờ, không đọc thông tin, OTP, số tài khoản qua điện thoại.
+  url: "https://congan.quangngai.gov.vn/danh-muc-san-pham/-tin-tuc-su-kien/nhan-dien-cac-cuoc-goi-lua-dao-va-cach-phong-tranh.html"
+  publisher: "Công an tỉnh Quảng Ngãi"
+  date: "2025-10-24"
+  verified_at: 2026-11-11
+
+- id: A045
+  scenario: N2.2
+  title: "Cuộc gọi nháy máy vài giây để dò số và ghi âm giọng nói làm giả"
+  summary: >-
+    Người dân liên tục nhận cuộc gọi đổ chuông khoảng 3 giây từ các đầu số cố định lạ rồi tắt. Mục đích là xác thực số còn dùng; khi nghe
+    máy hoặc gọi lại, giọng nói có thể bị ghi âm, phân tích để đoán tuổi, giới tính, rồi dùng AI sao chép giọng làm cuộc gọi lừa người
+    khác. Gọi lại còn có thể bị tính cước rất cao, bị giữ máy bằng tổng đài tự động. Không gọi lại số lạ, chặn và báo nhà mạng, không cung
+    cấp thông tin.
+  url: "https://congan.nghean.gov.vn/thong-tin-chuyen-de/canh-bao-toi-pham/202608/canh-giac-cuoc-goi-nhay-may-tu-dau-so-022-024-028-1059662"
+  publisher: "Công an tỉnh Nghệ An (dẫn Cục An ninh mạng và phòng, chống tội phạm sử dụng công nghệ cao)"
+  date: "2026-08-24"
+  verified_at: 2026-11-11
+
+- id: A046
+  scenario: N2.3
+  title: "Tống tiền bằng ảnh cắt ghép hoặc ảnh quay lén khi chat tán tỉnh"
+  summary: >-
+    Công an Hà Tĩnh phát hiện kẻ gian nhắm người có điều kiện kinh tế, có địa vị, cán bộ nhà nước. Chúng ghép mặt nạn nhân vào ảnh, video
+    nhạy cảm, hoặc kết bạn, tán tỉnh rồi lén quay chụp khi trò chuyện. Sau đó dùng SIM rác, Zalo, Facebook ảo, email gửi ảnh và dọa viết
+    đơn, tung ảnh nếu không trả tiền; nhiều người sợ mất uy tín đã lặng lẽ chuyển tiền. Không xóa tin, không phát tán, không chuyển tiền,
+    báo công an ngay.
+  url: "https://congan.hatinh.gov.vn/tin-tuc-su-kien/an-ninh-trat-tu/canh-bao-thu-doan-de-doa-tong-tien-bang-hinh-anh-video-nhay-cam-1739330902.caht"
+  publisher: "Công an tỉnh Hà Tĩnh"
+  date: "2025-02-12"
+  verified_at: 2026-11-11
+
+- id: A047
+  scenario: N2.3
+  title: "Đường dây dùng AI ghép ảnh nhạy cảm tống tiền cán bộ, doanh nhân"
+  summary: >-
+    Cục Cảnh sát hình sự phát hiện nhiều doanh nhân, cán bộ nhận tin nhắn từ số lạ kèm ảnh nhạy cảm và lời dọa phát tán ở nơi làm việc
+    hoặc trên mạng nếu không trả tiền. Nhóm người nước ngoài dùng AI, Deepfake dựng ảnh, video rồi bắt nạn nhân chuyển tiền vào ví điện
+    tử, sau đó rửa tiền qua tài khoản thuê và tiền số. Cần hạn chế đăng ảnh cá nhân, cảnh giác số lạ, không cho thuê tài khoản ngân hàng,
+    báo ngay công an.
+  url: "https://dantri.com.vn/phap-luat/cac-can-bo-doanh-nhan-bi-cat-ghep-anh-nhay-cam-de-tong-tien-nhu-the-nao-20250425180959379.htm"
+  publisher: "Báo Dân trí (dẫn Bộ Công an)"
+  date: "2025-04-25"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A048
+  scenario: N2.3
+  title: "Ghép mặt vào ảnh, video nhạy cảm bằng AI rồi dọa phát tán để đòi tiền"
+  summary: >-
+    Đối tượng lấy ảnh, video, thông tin cá nhân trên mạng xã hội rồi dùng phần mềm chỉnh sửa hoặc AI ghép khuôn mặt nạn nhân vào cảnh nhạy
+    cảm không có thật. Chúng gửi sản phẩm giả cho nạn nhân, dọa gửi tới gia đình, đồng nghiệp hoặc đăng công khai nếu không chuyển tiền;
+    nhận tiền xong vẫn tiếp tục ép đòi thêm. Không hoảng, không chuyển tiền, không làm theo; lưu tin nhắn, tài khoản, đường link và báo
+    công an.
+  url: "https://congan.ninhbinh.gov.vn/canh-giac-thu-doan-su-dung-cong-nghe-ghep-anh-video-nhay-cam-de-de-doa-tong-tien"
+  publisher: "Công an tỉnh Ninh Bình (Công an xã Yên Cường)"
+  date: "2026-10-26"
+  verified_at: 2026-11-11
+
+- id: A049
+  scenario: N2.3
+  title: "Deepfake tạo video nhạy cảm giả, nhắm cán bộ, người có uy tín để tống tiền"
+  summary: >-
+    Bộ Công an ghi nhận ở Thanh Hóa gần 20 người bị dọa bằng ảnh, video nhạy cảm cắt ghép, có người bị đòi tới 1,5 tỷ đồng. Đối tượng nhắm
+    người công khai nhiều thông tin, nhất là cán bộ, công chức; gửi ảnh giả qua mạng xã hội, điện thoại, ứng dụng nhắn tin, đặt hạn chót
+    rất ngắn, gọi dọa liên tục, bắt giữ bí mật và cấm báo công an. Đây là cưỡng đoạt tài sản; không chuyển tiền, giữ chứng cứ và trình
+    báo.
+  url: "https://congan.ninhbinh.gov.vn/cong-an-phuong-yen-son-tuyen-truyen-canh-bao-thu-doan-su-dung-cong-nghe-ai-ghep-anh-video-nhay-cam-de-de-doa-tong-tien"
+  publisher: "Công an tỉnh Ninh Bình (Công an phường Yên Sơn)"
+  date: "2026-10-28"
+  verified_at: 2026-11-11
+
+- id: A050
+  scenario: N3.1
+  title: "Việc đánh giá tour du lịch nhận hoa hồng trên website công ty du lịch giả"
+  summary: >-
+    Kẻ gian tự xưng nhân viên công ty du lịch, mời làm việc đánh giá tour qua mạng để nhận hoa hồng, dùng website giống hệt trang thật,
+    tên miền chỉ khác một ký tự. Vài lần đầu được trả tiền; sau đó phải nạp tiền mỗi lượt, bị báo thiếu điểm, làm sai bước nên nạp thêm,
+    kèm văn bản đóng thuế giả có dấu và chữ ký. Một nạn nhân ở Hà Nội mất 116 triệu đồng và còn bị ghép ảnh đe dọa để nạp tiếp.
+  url: "https://nhandan.vn/bi-lua-ca-tram-trieu-dong-vi-sap-bay-danh-gia-dich-vu-du-lich-post867044.html"
+  publisher: "Báo Nhân Dân"
+  date: "2025-03-23"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A051
+  scenario: N3.1
+  title: "Giả sàn thương mại điện tử tuyển cộng tác viên chốt đơn, bắt đặt cọc theo đơn"
+  summary: >-
+    Kẻ gian mạo danh nhân viên sàn thương mại điện tử hoặc công ty cung ứng hàng hóa, tuyển cộng tác viên bán hàng online không cần kho
+    bãi. Mỗi khi có khách đặt (thực chất là tài khoản ảo của chúng), cộng tác viên phải chuyển đơn về "công ty" kèm tiền đặt cọc. Ban đầu
+    được hoàn cọc và hoa hồng; khi đơn và tiền cọc tăng, "công ty" trì hoãn thanh toán, bắt nộp thêm phí nâng cấp hội viên, thuế thu nhập
+    rồi cắt liên lạc.
+  url: "https://congan.quangninh.gov.vn/pctp-tren-khong-gian-mang/canh-bao-thu-doan-du-do-nan-nhan-lam-cong-tac-vien-chot-don-hang-online-de-lua-dao-chiem-doat-tai-san-33741.html"
+  publisher: "Công an tỉnh Quảng Ninh"
+  date: "2025-03-27"
+  verified_at: 2026-11-11
+
+- id: A052
+  scenario: N3.1
+  title: "Tuyển cộng tác viên online đặt đơn hàng ảo, nạp tiền càng lúc càng lớn"
+  summary: >-
+    Kẻ gian đăng tin tuyển cộng tác viên làm tại nhà trên Facebook, Zalo, Telegram, hứa thu nhập vài trăm nghìn đến vài triệu mỗi ngày,
+    không cần kinh nghiệm. Việc được giao là đặt đơn hàng ảo để tăng tương tác cho gian hàng thương mại điện tử. Mấy đơn đầu nhỏ, được
+    hoàn tiền kèm hoa hồng để tạo lòng tin; sau đó bị ép chuyển nhiều hơn để "đạt chỉ tiêu", "mở khóa cấp cao" rồi bị chặn liên lạc, mất
+    trắng.
+  url: "https://congan.quangngai.gov.vn/danh-muc-san-pham/-tin-tuc-su-kien/canh-bao-thu-doan-lua-dao-tuyen-cong-tac-vien-online-dat-don-hang-ao-de-chiem-doat-tai-san.html"
+  publisher: "Công an tỉnh Quảng Ngãi"
+  date: "2025-07-30"
+  verified_at: 2026-11-11
+
+- id: A053
+  scenario: N3.1
+  title: "Fanpage giả nghệ sĩ, KOL tuyển cộng tác viên xem video nhận hoa hồng"
+  summary: >-
+    Nhóm lừa đảo lập nhiều Fanpage Facebook mạo danh nghệ sĩ, người nổi tiếng, KOL rồi đăng bài tuyển cộng tác viên làm tại nhà: xem
+    video, chia sẻ link, làm nhiệm vụ để nhận hoa hồng. Nạn nhân, phần đông là phụ nữ nội trợ, được trả vài khoản nhỏ lúc đầu, sau đó bị
+    yêu cầu chuyển tiền lớn để "mua nhiệm vụ", "nạp vốn", "bảo đảm tài khoản" rồi bị cắt liên lạc. Công an tỉnh Thanh Hóa đã triệt phá một
+    đường dây kiểu này.
+  url: "https://conganthanhhoa.gov.vn/tin-tuc-su-kien/tin-an-ninh-trat-tu/canh-bao-thu-doan-gia-mao-nguoi-noi-tieng-kol-tuyen-cong-tac-vien-online-de-lua-dao.html"
+  publisher: "Công an tỉnh Thanh Hóa"
+  date: "2025-10-09"
+  verified_at: 2026-11-11
+
+- id: A054
+  scenario: N3.1
+  title: "Làm nhiệm vụ bấm thích, đánh giá sản phẩm nhận hoa hồng rồi bị ép nạp tiền"
+  summary: >-
+    Tin tuyển việc "nhẹ, lương cao, chỉ cần điện thoại" được đăng trên Facebook, Zalo, TikTok, Telegram, có tài khoản ảo bình luận tạo tin
+    tưởng. Người tham gia được kéo sang app nhắn tin, làm nhiệm vụ bấm thích, theo dõi trang, đánh giá hoặc thanh toán đơn hàng để hưởng
+    hoa hồng. Sau vài lần được trả đủ, họ bị yêu cầu ứng tiền, ký quỹ, nâng cấp thành viên; khi muốn rút thì bị đòi thêm phí, thuế, báo
+    thao tác sai rồi bị chặn.
+  url: "https://congan.vinhlong.gov.vn/canh-bao-phuong-thuc-thu-doan-cua-toi-pham/canh-giac-voi-thu-doan-lua-dao-tuyen-cong-tac-vien-lam-viec-online-5066.html"
+  publisher: "Công an tỉnh Vĩnh Long"
+  date: "2026-07-20"
+  verified_at: 2026-11-11
+
+- id: A055
+  scenario: N3.1
+  title: "Giả nhà tuyển dụng công ty nước ngoài qua WhatsApp, đòi phí xác minh hồ sơ"
+  summary: >-
+    Đối tượng dùng tài khoản WhatsApp có ảnh đại diện lịch sự, xưng là nhân viên tuyển dụng của công ty, tập đoàn nước ngoài, tự nhắn báo
+    đã xem hồ sơ và mời làm việc từ xa lương cao. Sau buổi "phỏng vấn" sơ sài qua tin nhắn, nạn nhân được báo trúng tuyển và bị đòi chuyển
+    "phí xác minh", "phí hoàn thiện hồ sơ", "phí đào tạo", hứa hoàn lại; có khi còn gửi link lạ, bảo cài ứng dụng để lấy thông tin ngân
+    hàng, mã OTP.
+  url: "https://congan.tayninh.gov.vn/vi/chi-tiet-tin-tuc?Id=280042"
+  publisher: "Công an tỉnh Tây Ninh"
+  date: "2026-08-21"
+  verified_at: 2026-11-11
+
+- id: A056
+  scenario: N3.1
+  title: "App xem phim ngắn nhận thưởng: đủ ngưỡng rút tiền lại đòi phí mở khóa"
+  summary: >-
+    Các ứng dụng, website xem phim ngắn quảng cáo "vừa giải trí vừa kiếm tiền", tặng sẵn tiền thưởng khi đăng ký. Người dùng phải xem hàng
+    chục video, quảng cáo, điểm danh, tải thêm app (thường là tệp APK ngoài kho chính thức) để đạt ngưỡng rút tiền. Khi đạt ngưỡng, hệ
+    thống báo tài khoản chưa xác minh, phải nâng cấp VIP hoặc đóng phí giao dịch; chuyển tiền xong thì bị chặn, kèm nguy cơ nhiễm mã độc,
+    lộ dữ liệu ngân hàng.
+  url: "https://conganthanhhoa.gov.vn/phong-chong-toi-pham/thong-bao-tim-chu-so-huu-phuong-tien/canh-bao-sap-bay-xem-phim-ngan-nhan-thuong-tu-nguy-co-mat-du-lieu-den-chiem-doat-tien-trong-tai-khoan-ngan-hang2.html"
+  publisher: "Công an tỉnh Thanh Hóa"
+  date: "2026-10-14"
+  verified_at: 2026-11-11
+
+- id: A057
+  scenario: N3.2
+  title: "Gọi điện xưng nhân viên công ty chứng khoán lớn, mời vào sàn giao dịch giả"
+  summary: >-
+    Đối tượng gọi điện tự nhận là nhân viên các công ty chứng khoán có tiếng như VNDirect, SSI, mời người dân tham gia đầu tư trên sàn
+    chứng khoán, tiền ảo, ngoại hối do chúng dựng lên. Ban đầu cho nạn nhân thắng và rút được tiền, rồi thúc tăng vốn giao dịch; khi nạn
+    nhân hết khả năng nạp, chúng can thiệp hệ thống để chiếm toàn bộ tiền. Công an khuyên không vào nhóm kín, không tin lời mời lãi cao
+    khi chưa xác minh.
+  url: "https://congan.ninhbinh.gov.vn/canh-bao-thu-doan-lua-dao-bang-hinh-thuc-keu-goi-dau-tu-tai-chinh-chung-khoan-tren-khong-gian-mang"
+  publisher: "Công an tỉnh Ninh Bình"
+  date: "2025-03-02"
+  verified_at: 2026-11-11
+
+- id: A058
+  scenario: N3.2
+  title: "Người lạ đóng vai chuyên gia rủ đầu tư chứng khoán qua link web, app giả"
+  summary: >-
+    Kẻ gian tìm hiểu trước thông tin nạn nhân rồi làm quen tình cờ qua Zalo, Facebook, đóng vai chuyên gia ngân hàng hoặc doanh nhân thành
+    đạt ở nước ngoài, chia sẻ "kinh nghiệm" và "mẹo" đầu tư chứng khoán lãi nhanh. Khi đã tin, nạn nhân được gửi đường link web, app chứng
+    khoán giả để đăng nhập và nộp tiền mua mã cổ phiếu. Tại Đồng Nai, có người chuyển gần 400 triệu đồng mới biết bị lừa.
+  url: "https://dongnai.gov.vn/vi/news/phong-chong-toi-pham-canh-bao-toi-pham/canh-giac-voi-chieu-lua-dau-tu-chung-khoan-53873.html"
+  publisher: "Cổng TTĐT tỉnh Đồng Nai (dẫn Công an tỉnh Đồng Nai)"
+  date: "2025-06-25"
+  verified_at: 2026-11-11
+
+- id: A059
+  scenario: N3.2
+  title: "Các chiêu lừa đầu tư tiền ảo: đa cấp Ponzi, coin rác, giả chuyên gia nhóm kín"
+  summary: >-
+    Công an nêu các dạng lừa đầu tư tiền ảo, Bitcoin, ngoại hối: mô hình đa cấp hứa lãi rất cao, lấy tiền người sau trả người trước, tổ
+    chức hội thảo hào nhoáng; dự án "coin rác" quảng cáo rầm rộ, thuê người nổi tiếng; web, ví điện tử giả để lấy thông tin đăng nhập; và
+    kẻ giả chuyên gia đầu tư khoe cuộc sống giàu có, kéo người vào nhóm kín Telegram, Zalo, Facebook với "kèo chắc thắng" rồi dẫn tới dự
+    án lừa đảo.
+  url: "https://congan.cantho.gov.vn/canh-bao-toi-pham/nhan-dien-mot-so-hinh-thuc-lua-dao-bang-hinh-thuc-dau-tu-tien-ao-tien-ky-thuat-so-3133.html"
+  publisher: "Công an TP. Cần Thơ"
+  date: "2025-08-14"
+  verified_at: 2026-11-11
+
+- id: A060
+  scenario: N3.2
+  title: "Sàn tiền mã hóa giả kèm văn bản giả Ủy ban Chứng khoán Nhà nước"
+  summary: >-
+    Đối tượng vào các hội nhóm chứng khoán, tiền số trên Facebook, Telegram, Zalo, quảng bá "quỹ đầu tư VIP", "dự án nội bộ", "sàn quốc
+    tế" lãi cao, kèm tài liệu giả logo, con dấu, chữ ký của Ủy ban Chứng khoán Nhà nước. Nạn nhân được hướng dẫn mua tiền mã hóa hoặc
+    chuyển khoản vào tài khoản cá nhân; lúc đầu thấy lãi, rút được ít. Khi nạp nhiều, tài khoản bị khóa vì "nghi rửa tiền" và bị đòi phí
+    giải tỏa, thuế, ký quỹ, phí VIP.
+  url: "https://congan.tayninh.gov.vn/vi/chi-tiet-tin-tuc?Id=268989"
+  publisher: "Công an tỉnh Tây Ninh"
+  date: "2026-06-10"
+  verified_at: 2026-11-11
+
+- id: A061
+  scenario: N3.2
+  title: "Sàn Forex trôi nổi: cho nếm lãi, dụ nạp lớn rồi đòi phí rút tiền"
+  summary: >-
+    Theo Công an TP. Hà Nội, kẻ gian lập website, ứng dụng, sàn Forex không rõ nguồn gốc, quảng cáo trên mạng xã hội lợi nhuận cao, "không
+    rủi ro". Trong nhóm kín có người đóng vai chuyên gia tài chính, cố vấn, mở "khóa học miễn phí". Nạn nhân nạp ít, thấy lãi hoặc rút
+    được một phần, rồi bị thúc nạp lớn; sau đó tài khoản báo lỗi, thua lỗ, phải nộp phí giải ngân, thuế, phí chống rửa tiền rồi bị khóa,
+    cắt liên lạc.
+  url: "https://baophapluat.vn/canh-giac-chieu-lua-dau-tu-forex-cho-nem-loi-nhuan-roi-du-nap-tien-lon.html"
+  publisher: "Báo Pháp luật Việt Nam (dẫn Công an TP. Hà Nội)"
+  date: "2026-09-18"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A062
+  scenario: N3.2
+  title: "Website, app giả công ty chứng khoán, mời vào phòng VIP nhóm chuyên gia"
+  summary: >-
+    Kẻ gian dùng tên, logo, ảnh lãnh đạo của công ty chứng khoán, công ty quản lý quỹ thật để dựng website, app giả, tên miền chỉ lệch vài
+    ký tự, phát tán qua mạng xã hội và nhóm chat. Chúng xưng chuyên gia, nhân viên tư vấn, mời vào "phòng VIP", mua cổ phiếu ưu đãi, nộp
+    tiền kích hoạt tài khoản, nâng hạn mức. Hệ thống hiện lãi ảo; khi rút vốn thì bị đòi thuế, phí xác thực, phí giải ngân liên tục.
+  url: "https://lsvn.vn/canh-giac-thu-doan-gia-mao-cong-ty-chung-khoan-cong-ty-quan-ly-quy-de-lua-dao-a179962.html"
+  publisher: "Báo Luật sư Việt Nam (dẫn Công an TP. Hà Nội)"
+  date: "2026-09-29"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A063
+  scenario: N3.3
+  title: "Làm quen trong nhóm bất động sản, tạo tình cảm rồi rủ vào sàn đầu tư giả"
+  summary: >-
+    Kẻ gian dùng tài khoản Facebook giả có ảnh người ngoại hình đẹp, vào nhóm mua bán, cho thuê bất động sản để kết bạn với người đăng
+    tin, phần lớn là phụ nữ khá giả. Chúng kể chuyện đời khổ, nay làm bác sĩ, kỹ sư ở nước ngoài để tạo thiện cảm, rồi rủ đầu tư sàn tài
+    chính, chứng khoán, tiền ảo, cho đăng nhập "tài khoản người thân" để chơi thử thấy thắng. Nạn nhân nạp tiền, rút được ít, rồi nạp lớn
+    thì bị khóa tài khoản.
+  url: "https://bocongan.gov.vn/bai-viet/canh-bao-thu-doan-du-do-tham-gia-dau-tu-tai-chinh-san-chung-khoan-tien-ao-tren-khong-gian-mang-d22-t44828"
+  publisher: "Bộ Công an"
+  date: "2025-05-02"
+  verified_at: 2026-11-11
+
+- id: A064
+  scenario: N3.3
+  title: "Kết bạn Zalo giả nhầm số với phụ nữ trung niên, bẫy tình dẫn tới đầu tư ảo"
+  summary: >-
+    Đường dây đặt tại Campuchia được giao danh sách số điện thoại, tài khoản Zalo của phụ nữ trung niên, kết bạn với lý do "nhắn nhầm" rồi
+    trò chuyện thân mật theo kịch bản soạn sẵn. Khi đã có tình cảm, chúng rủ đầu tư trên website giả hứa lãi cao, hướng dẫn tải app, mở
+    tài khoản, chuyển tiền; ban đầu luôn báo lãi, cho rút. Nạp lớn thì bị đòi đóng thuế, sửa lỗi giao dịch, nâng VIP. Ở Quảng Trị có người
+    mất hơn 2,5 tỷ đồng.
+  url: "https://antv.gov.vn/phap-luat-3/canh-bao-bay-tinh-lua-dao-dau-tu-tren-mang-5CE90DDD3.html"
+  publisher: "Truyền hình CAND - ANTV (Bộ Công an, dẫn Công an tỉnh Quảng Trị)"
+  date: "2026-06-01"
+  verified_at: 2026-11-11
+
+- id: A065
+  scenario: N3.3
+  title: "Gói quà từ nước ngoài bị giữ, giả cán bộ hải quan, an ninh hàng không đòi phí"
+  summary: >-
+    Tài khoản Facebook mang tên người nước ngoài kết bạn, tạo tình cảm với một phụ nữ ở Lào Cai thời gian dài, rồi báo đã gửi quà giá trị
+    lớn về Việt Nam, kèm ảnh bưu kiện. Tiếp đó một người khác gọi điện xưng cán bộ hải quan, an ninh hàng không, nói gói hàng bị giữ, đòi
+    140 triệu đồng "phí thông quan", tin nhắn dồn dập giục đi vay. Tin nhắn dùng AI và dịch máy, câu chữ gượng gạo; bà đến công an xác
+    minh nên không mất tiền.
+  url: "https://bocongan.gov.vn/bai-viet/cong-an-xa-bat-xat-kip-thoi-ngan-chan-vu-lua-dao-qua-tang-quoc-te-giup-nguoi-dan-tranh-mat-140-trieu-dong-1783613735"
+  publisher: "Bộ Công an (Công an tỉnh Lào Cai)"
+  date: "2026-07-09"
+  verified_at: 2026-11-11
+
+- id: A066
+  scenario: N3.3
+  title: "Bạn trai ngoại quốc trên Facebook hứa tặng tiền, vàng, đòi trước phí hải quan"
+  summary: >-
+    Một phụ nữ ở Hà Nội làm quen với người đàn ông nước ngoài qua Facebook; sau thời gian trò chuyện, người này hứa tặng 50.000 USD và số
+    vàng khoảng 900 triệu đồng. Để nhận quà, chị bị yêu cầu chuyển trước 90 triệu đồng vào tài khoản chỉ định, gọi là phí hải quan tại sân
+    bay Tân Sơn Nhất. Ngân hàng báo công an phường, giao dịch được chặn kịp. Công an Hà Nội nhắc không chuyển tiền trước để nhận quà từ
+    người quen qua mạng.
+  url: "https://anninhthudo.vn/canh-bao-thu-doan-lua-dao-hua-tang-qua-chuyen-tien-tu-nuoc-ngoai-post671696.antd"
+  publisher: "Báo An ninh Thủ đô (dẫn Công an TP. Hà Nội)"
+  date: "2026-10-12"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A067
+  scenario: N3.3
+  title: "Bẫy tình qua mạng: bán kỷ vật để đóng phí dịch vụ sân bay nhận quà ngoại"
+  summary: >-
+    Ở xã Đak Đoa (Gia Lai), một phụ nữ được kẻ gian làm quen, tạo tình cảm qua mạng rồi hứa gửi hộp quà từ nước ngoài. Để nhận quà, chị bị
+    yêu cầu chuyển tiền vào tài khoản lạ gọi là "phí dịch vụ sân bay", đến mức bán dây chuyền kỷ vật của mẹ được 14 triệu đồng và đang nhờ
+    tiệm điện thoại chuyển khoản. Người dân báo qua fanpage, công an xã đến kịp, chặn giao dịch.
+  url: "https://thanhnien.vn/cong-an-gia-lai-chan-dung-vu-lua-dao-tren-mang-de-nhan-qua-ngoai-quoc-185261108142853629.htm"
+  publisher: "Báo Thanh Niên (dẫn Công an xã Đak Đoa, tỉnh Gia Lai)"
+  date: "2026-11-08"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A068
+  scenario: N4.1
+  title: "Shop ảo trên Facebook, Zalo bán hàng rẻ bất thường, bắt chuyển khoản hoặc đặt cọc"
+  summary: >-
+    Đối tượng lập trang bán hàng ảo trên Facebook, Zalo, rao đồ điện tử, gia dụng, quần áo, hàng hiệu chỉ bằng một phần ba, một phần tư
+    giá thị trường với lý do xả kho, phá sản, hàng xách tay. Bài đăng có nhiều lượt thích, bình luận khen từ tài khoản ảo. Shop đòi chuyển
+    trước toàn bộ tiền hoặc tiền cọc, phí ship rồi mới gửi hàng; nhận tiền xong thì chặn liên lạc. Dấu hiệu: không địa chỉ thật, số điện
+    thoại không liên lạc được.
+  url: "https://congan.ninhbinh.gov.vn/canh-bao-chieu-tro-shop-ao-lua-dao-tren-facebook"
+  publisher: "Công an tỉnh Ninh Bình (Công an phường Hà Nam)"
+  date: "2026-05-12"
+  verified_at: 2026-11-11
+
+- id: A069
+  scenario: N4.1
+  title: "Giả cán bộ công an đặt mua hàng số lượng lớn, dẫn mối nhà cung cấp để lừa tiền cọc"
+  summary: >-
+    Đối tượng gọi điện, nhắn Zalo cho cơ sở kinh doanh, xưng cán bộ hậu cần một trại giam ở Cần Thơ, cần mua gấp số lượng lớn quạt công
+    nghiệp. Khi chủ hàng báo không đủ hàng, chúng giới thiệu một công ty cung cấp quen giá rẻ, hứa sẽ mua lại toàn bộ để chủ hàng hưởng
+    chênh lệch. Nạn nhân chuyển tiền đặt cọc cho công ty đó thì bị cắt liên lạc hoặc đòi thêm tiền. Phải gọi số chính thức của đơn vị để
+    xác minh đơn hàng.
+  url: "https://congan.cantho.gov.vn/dau-tranh-phan-bac/canh-giac-thu-doan-gia-danh-can-bo-cong-an-dat-mua-hang-so-luong-lon-de-lua-chuyen-tien-dat-coc-9446.html"
+  publisher: "Công an TP. Cần Thơ"
+  date: "2026-08-01"
+  verified_at: 2026-11-11
+
+- id: A070
+  scenario: N4.1
+  title: "Bấm phát lại loa báo chuyển khoản, đưa ảnh giao dịch giả để lấy hàng và tiền thừa"
+  summary: >-
+    Lúc cửa hàng đông khách, đối tượng mua món hàng nhỏ, nói sẽ quét mã QR trả bằng tờ tiền lớn hơn rồi xin lại tiền mặt thừa. Chúng giả
+    vờ thao tác chuyển khoản, lén bấm nút phát lại trên loa báo chuyển khoản để loa đọc lại giao dịch của khách trước, hoặc đưa ảnh chụp
+    màn hình chuyển khoản đã chỉnh sửa, viện cớ mạng yếu. Thực tế không có tiền về. Người bán phải mở app ngân hàng kiểm tra số dư trước
+    khi giao hàng, trả tiền.
+  url: "https://congan.vinhlong.gov.vn/thong-tin-can-biet/canh-giac-thu-doan-lua-dao-loi-dung-loa-bao-chuyen-khoan-khi-thanh-toan-quet-ma-qr-6779.html"
+  publisher: "Công an tỉnh Vĩnh Long"
+  date: "2026-09-18"
+  verified_at: 2026-11-11
+
+- id: A071
+  scenario: N4.1
+  title: "Dùng app ngân hàng giả tạo màn hình chuyển khoản thành công lừa tiểu thương"
+  summary: >-
+    Kẻ gian giả làm khách mua hàng ở chợ, tiệm tạp hóa, quán ăn, nhắm vào người bán lớn tuổi. Chúng dùng ứng dụng giả giao diện ngân hàng
+    (mua trên các hội nhóm mạng) để tạo màn hình "chuyển tiền thành công" với số tiền, người nhận tuỳ chỉnh, rồi nói ngân hàng nghẽn mạng,
+    tiền về chậm để giục giao hàng. Dấu hiệu: chỉ cho xem điện thoại của khách, thúc giục. Chỉ giao hàng khi tự kiểm tra thấy tiền vào tài
+    khoản.
+  url: "https://congan.hungyen.gov.vn/cong-an-xa-duc-hop-canh-bao-thu-doan-mua-ban-va-su-dung-ung-dung-ngan-hang-gia-mao-de-lua-dao-tieu-t-c242135.html"
+  publisher: "Công an tỉnh Hưng Yên (Công an xã Đức Hợp)"
+  date: "2026-10-29"
+  verified_at: 2026-11-11
+
+- id: A072
+  scenario: N4.2
+  title: "Fanpage tích xanh giả khách sạn, hãng lữ hành nhận đặt phòng, vé rồi chiếm tiền cọc"
+  summary: >-
+    Đối tượng thuê dịch vụ hoặc mua lại tài khoản Facebook có tích xanh, đổi tên thành khu nghỉ dưỡng, khách sạn, công ty lữ hành uy tín,
+    chép nguyên thông tin của cơ sở thật và chạy quảng cáo nhận đặt phòng, vé máy bay, combo du lịch với giá ngang thị trường. Khách được
+    yêu cầu cọc trước một nửa, nhận mã đặt phòng giả rồi bị giục trả nốt toàn bộ. Dấu hiệu: trang mới lập hoặc mới đổi tên; cần gọi số
+    chính thức của cơ sở kiểm tra mã.
+  url: "https://bocongan.gov.vn/bai-viet/canh-bao-thu-doan-lua-dao-mua-du-lich-d22-t45881"
+  publisher: "Bộ Công an"
+  date: "2025-07-05"
+  verified_at: 2026-11-11
+
+- id: A073
+  scenario: N4.2
+  title: "Giả lễ tân resort nổi tiếng, giảm giá phòng sâu, giục chuyển cọc gấp để giữ chỗ"
+  summary: >-
+    Đối tượng lập fanpage Facebook, TikTok, Zalo, cả website giả các khách sạn, homestay, resort ở Đà Nẵng, Nha Trang, Đà Lạt, Phú Quốc,
+    dùng ảnh thật và rao giảm 40–70%. Chúng xưng lễ tân, gửi hợp đồng, hóa đơn giả, kéo khách vào nhóm chat có nhiều tài khoản ảo, rồi
+    giục chuyển cọc trong 1–2 tiếng kẻo hết phòng. Có vụ mất hơn 400 triệu đồng qua trang giả một khách sạn Đà Nẵng. Nên đặt qua website
+    chính thức hoặc ứng dụng đặt phòng uy tín.
+  url: "https://congan.cantho.gov.vn/canh-bao-toi-pham/canh-bao-thu-doan-lua-dao-dip-he-gia-danh-co-so-du-lich-lua-dao-tien-dat-phong-khach-san-du-lich-khu-nghi-duong-3139.html"
+  publisher: "Công an TP. Cần Thơ"
+  date: "2025-08-14"
+  verified_at: 2026-11-11
+
+- id: A074
+  scenario: N4.2
+  title: "Đại lý vé máy bay giả trên mạng xã hội gửi mã giữ chỗ thật rồi huỷ sau khi nhận tiền"
+  summary: >-
+    Đối tượng vào các hội nhóm du lịch, thanh lý vé trên Facebook, Zalo, đặt tên "đại lý vé cấp 1", "phòng vé máy bay", dùng logo hãng bay
+    và ảnh nhân viên mặc đồng phục, chào "vé thanh lý", "vé suất ngoại giao" rẻ hơn thị trường. Chúng giữ chỗ thật trên web hãng rồi gửi
+    mã cho khách tự kiểm tra; khách chuyển tiền xong thì mã bị huỷ hoặc hết hạn, bị chặn liên lạc, có người còn bị đòi chuyển thêm vì "sai
+    nội dung", "chưa xuất vé".
+  url: "https://congan.ninhbinh.gov.vn/cong-an-tinh-ninh-binh-canh-bao-thu-doan-lua-dao-ban-ve-may-bay-gia-re-tren-mang-xa-hoi-mua-du-lich-he"
+  publisher: "Công an tỉnh Ninh Bình"
+  date: "2026-05-21"
+  verified_at: 2026-11-11
+
+- id: A075
+  scenario: N4.2
+  title: "Combo du lịch, homestay, villa ảo giá rẻ trên mạng: chuyển cọc xong bị chặn liên lạc"
+  summary: >-
+    Đối tượng lập fanpage giả công ty du lịch, khách sạn, resort, homestay, rao combo, vé máy bay, phòng nghỉ giảm 30–50%, dùng tài khoản
+    ảo bình luận khen và ảnh giao dịch, xác nhận đặt phòng làm giả. Có trang chép ảnh villa đẹp trên mạng rồi cho thuê với giá rất thấp.
+    Khách chuyển tiền cọc hoặc thanh toán xong thì bị chặn, xoá tài khoản; đến nơi mới biết không có phòng, không có vé. Tránh chuyển cọc
+    vào tài khoản cá nhân.
+  url: "https://congan.ninhbinh.gov.vn/canh-giac-voi-cac-chieu-tro-lua-dao-dat-tour-phong-nghi-dip-du-lich-he-2026"
+  publisher: "Công an tỉnh Ninh Bình (Công an phường Yên Sơn)"
+  date: "2026-05-27"
+  verified_at: 2026-11-11
+
+- id: A076
+  scenario: N4.3
+  title: "Bộ Công an chỉ ra các chiêu giả shipper đòi chuyển khoản tiền hàng"
+  summary: >-
+    Kẻ gian mua dữ liệu người hay mua hàng online, giả shipper gọi đúng lúc chủ nhà vắng, gửi số tài khoản đòi trả tiền hàng, rồi báo chưa
+    nhận được tiền hoặc báo đã đăng ký gói dịch vụ 2 đến 10 triệu đồng mỗi tháng, bắt chuyển tiếp để hủy. Có kẻ giao tận nơi hàng rởm
+    không cho kiểm tra, hoặc gửi web giả, app theo dõi đơn để chiếm điện thoại. Không đặt hàng thì từ chối, không quét QR lạ.
+  url: "https://xaydungchinhsach.chinhphu.vn/nhan-biet-phuong-thuc-thu-doan-lua-dao-gia-danh-shipper-de-chu-dong-phong-ngua-11925041311574264.htm"
+  publisher: "Cổng TTĐT Chính phủ (dẫn Bộ Công an)"
+  date: "2025-04-13"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A077
+  scenario: N4.3
+  title: "Giả shipper báo đơn chưa thanh toán, dọa nợ xấu để ép chuyển khoản"
+  summary: >-
+    Kẻ gian gọi điện tự xưng nhân viên giao hàng của đơn vị vận chuyển hoặc sàn Lazada, Shopee, Tiki, TikTok, báo có một đơn hàng không rõ
+    nguồn gốc đang chờ giao hay bị giữ vì chưa thanh toán. Chúng tạo áp lực, dọa đưa vào danh sách nợ xấu hoặc bắt chịu phí phạt trả hàng,
+    rồi hối thúc chuyển khoản vào tài khoản cá nhân hay đọc OTP, số thẻ ngân hàng. Hãy tự liên hệ đơn vị vận chuyển, sàn chính thức để xác
+    minh.
+  url: "https://congan.hungyen.gov.vn/canh-bao-mao-danh-nhan-vien-giao-hang-de-lua-dao-chuyen-khoan-c230019.html"
+  publisher: "Công an tỉnh Hưng Yên"
+  date: "2025-05-14"
+  verified_at: 2026-11-11
+
+- id: A078
+  scenario: N4.3
+  title: "Giả shipper biết rõ đơn hàng, báo chuyển nhầm rồi bắt đóng phí"
+  summary: >-
+    Kẻ gian gọi liên tục, đọc đúng món hàng và số tiền của đơn đã đặt, xưng shipper và gửi số tài khoản để trả tiền hàng khi nạn nhân đang
+    vắng nhà. Vừa chuyển xong, chúng báo chuyển sai, nói nạn nhân đã thành nhân viên của đơn vị giao hàng và phải nộp thêm vài triệu đồng,
+    hoặc báo đã đăng ký gói dịch vụ phải chuyển tiền để hủy. Có kẻ còn giao tận nơi hàng không giá trị và đòi thanh toán trước.
+  url: "https://congan.com.vn/vu-an/canh-giac/canh-bao-cac-thu-doan-lua-dao-duoi-hinh-thuc-van-chuyen-hang-tien_178986.html"
+  publisher: "Báo Công an TP.HCM (dẫn Bộ Công an, Công an TP.HCM)"
+  date: "2025-06-09"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A079
+  scenario: N4.3
+  title: "Giả shipper thu tiền đơn nhỏ rồi dọa trừ tiền thẻ bảo hiểm hàng hóa"
+  summary: >-
+    Kẻ gian giả shipper gọi báo có đơn hàng hơn trăm nghìn đồng đã gửi người nhà, bảo chuyển khoản thanh toán. Ngay sau đó chúng nhắn tin
+    giả Bưu điện Việt Nam, nói nạn nhân chuyển nhầm vào tài khoản mở thẻ bảo hiểm hàng hóa tự động, sẽ bị trừ 4,2 triệu đồng mỗi tháng nếu
+    không làm theo hướng dẫn hủy, rồi dẫn dụ thao tác để lấy tiền. Đơn vị vận chuyển không có loại thẻ hay khoản trừ tiền như vậy.
+  url: "https://congan.lamdong.gov.vn/canh-bao-thu-doan-gia-danh-shipper-lua-dao-chiem-doat-tai-san-N817.aspx"
+  publisher: "Công an tỉnh Lâm Đồng (Công an xã Kiến Đức)"
+  date: "2025-08-29"
+  verified_at: 2026-11-11
+
+- id: A080
+  scenario: N4.3
+  title: "Giả nhân viên Viettel Post báo đơn hàng lạ, đòi phí hủy đơn và OTP"
+  summary: >-
+    Kẻ gian dùng công nghệ giả số hiển thị giống tổng đài giao hàng, xưng nhân viên Viettel Post, báo có đơn TikTok Shop, Shopee, Lazada
+    chưa thanh toán, bị lỗi hoặc đơn không đặt cần hủy hay hoàn tiền. Chúng đòi OTP, tài khoản ngân hàng, bắt bấm link, kết bạn Zalo, cài
+    ứng dụng điều khiển máy hoặc chuyển tiền phí xác minh, phí hủy đơn. Không đặt hàng thì kiểm tra trong app chính thức của sàn.
+  url: "https://congan.gialai.gov.vn/vi/news/canh-giac-canh-bao/canh-bao-thu-doan-gia-danh-viettel-post-de-lua-dao-qua-cuoc-goi-15002.html"
+  publisher: "Công an tỉnh Gia Lai"
+  date: "2026-10-01"
+  verified_at: 2026-11-11
+
+- id: A081
+  scenario: N5.1
+  title: "Giả ngân hàng báo thẻ bất thường, dẫn vào app giả để “bảo toàn tài khoản”"
+  summary: >-
+    Kẻ gian gọi báo thẻ ngân hàng có giao dịch bất thường, nghi bị đánh cắp, tỏ ra lo lắng giúp đỡ, rồi kết bạn Zalo gửi “quyết định” giả
+    có logo, con dấu. Chúng yêu cầu đăng nhập một ứng dụng để huỷ thẻ hay bảo toàn tài khoản; thực chất là app giả, nạn nhân bị dẫn dắt
+    thao tác khiến tiền tự chuyển đi. Ngân hàng không xử lý qua Zalo; không đưa OTP cho ai, gọi tổng đài chính thức của ngân hàng để kiểm
+    tra.
+  url: "https://laodong.vn/phap-luat/cong-an-ba-ria-vung-tau-canh-bao-thu-doan-gia-mao-ngan-hang-de-lua-dao-1508247.ldo"
+  publisher: "Báo Lao Động (dẫn Công an tỉnh Bà Rịa - Vũng Tàu)"
+  date: "2025-05-17"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A082
+  scenario: N5.1
+  title: "Giả cán bộ xã, cảnh sát khu vực dụ cài VNeID giả sau sáp nhập tỉnh"
+  summary: >-
+    Lợi dụng việc sắp xếp lại đơn vị hành chính, kẻ gian gọi điện xưng cán bộ UBND xã/phường hoặc cảnh sát khu vực, đọc trước thông tin cá
+    nhân để tạo lòng tin rồi yêu cầu cập nhật dữ liệu. Chúng gửi đường link hoặc bảo cài ứng dụng VNeID, dịch vụ công giả chứa mã độc, từ
+    đó chiếm quyền điện thoại, dụ lấy OTP ngân hàng hoặc bắt nhìn vào màn hình để lấy dữ liệu khuôn mặt rồi rút tiền. VNeID thật chỉ tải
+    từ CH Play/App Store.
+  url: "https://bocongan.gov.vn/bai-viet/canh-bao-thu-doan-lua-dao-cai-ung-dung-vneid-gia-mao-d22-t45880"
+  publisher: "Bộ Công an"
+  date: "2025-07-05"
+  verified_at: 2026-11-11
+
+- id: A083
+  scenario: N5.1
+  title: "App vay tiền online giả: lấy danh bạ, ảnh rồi đe doạ, bôi nhọ đòi nợ"
+  summary: >-
+    Đối tượng quảng cáo khoản vay nhanh, lãi thấp, không cần thế chấp qua Zalo, tin nhắn, cuộc gọi, rồi gửi link hoặc hướng dẫn tải ứng
+    dụng vay không rõ nguồn gốc. App đòi quyền truy cập danh bạ, hình ảnh, vị trí. Sau đó chúng giải ngân ít hơn số đăng ký, áp phí và lãi
+    rất cao, gọi điện đe doạ, cắt ghép ảnh bôi nhọ gửi người thân để ép chuyển tiền. Chỉ vay qua ngân hàng, tổ chức tín dụng hợp pháp,
+    không cấp quyền cho app lạ.
+  url: "https://congan.gialai.gov.vn/vi/news/canh-giac-canh-bao/nhan-dien-bay-ung-dung-vay-tien-truc-tuyen-thu-doan-lua-dao-ngay-cang-tinh-vi-11118.html"
+  publisher: "Công an tỉnh Gia Lai"
+  date: "2026-05-07"
+  verified_at: 2026-11-11
+
+- id: A084
+  scenario: N5.1
+  title: "Cảnh báo file .apk gửi qua Zalo, Messenger, SMS để chiếm quyền điện thoại"
+  summary: >-
+    Đối tượng giả công an, cán bộ thuế, điện lực, ngân hàng hoặc nhân viên kỹ thuật gọi điện, nhắn tin yêu cầu “cập nhật thông tin”, “xác
+    minh tài khoản”, “đồng bộ dữ liệu”. Sau đó chúng gửi link web giả hoặc file cài đặt đuôi .apk qua Zalo, Messenger, SMS, kèm yêu cầu
+    bật quyền trợ năng, chia sẻ màn hình. Mã độc lấy mật khẩu, OTP, điều khiển máy để chuyển tiền. Dấu hiệu: tên miền lạ, app ngoài CH
+    Play/App Store, bị thúc ép, doạ khoá tài khoản.
+  url: "https://soha.vn/cong-an-phat-thong-bao-quan-trong-toi-nguoi-dung-zalo-messenger-va-sms-198260728183717493.htm"
+  publisher: "Soha (dẫn Công an tỉnh Tây Ninh)"
+  date: "2026-07-29"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A085
+  scenario: N5.1
+  title: "Giả cán bộ BHXH bắt cài app “thẻ Bảo hiểm xã hội điện tử” qua link Zalo"
+  summary: >-
+    Kẻ gian gọi điện xưng cán bộ Bảo hiểm xã hội hoặc chính quyền địa phương, báo cần đồng bộ thẻ BHXH, BHYT điện tử, nhất là thẻ BHYT của
+    trẻ dưới 6 tuổi. Khi người dân bận không đến UBND được, chúng đề nghị “hỗ trợ từ xa”, bảo kết bạn Zalo rồi gửi link cài ứng dụng giả
+    tên “Bảo hiểm xã hội điện tử”. Cấp quyền xong là điện thoại bị chiếm quyền, lộ OTP và tài khoản ngân hàng bị rút tiền. VssID, VNeID
+    chỉ tải từ kho chính thức.
+  url: "https://congan.hungyen.gov.vn/canh-bao-thu-doan-lua-dao-yeu-cau-cai-dat-the-bao-hiem-xa-hoi-dien-tu-c241499.html"
+  publisher: "Công an tỉnh Hưng Yên"
+  date: "2026-10-10"
+  verified_at: 2026-11-11
+
+- id: A086
+  scenario: N5.1
+  title: "Giả nhân viên điện, nước đến tận nhà cài ứng dụng chứa mã độc"
+  summary: >-
+    Kẻ gian mặc đồng phục, đeo thẻ giả, tự xưng nhân viên điện lực hoặc cấp nước đến nhà, lấy lý do kiểm tra định kỳ, chuyển hoá đơn điện
+    tử, cập nhật hợp đồng hay hoàn tiền hoá đơn. Chúng thúc giục quét QR, mở link tải app giả hoặc xin cầm điện thoại để tự cài, rồi đòi
+    bật quyền trợ năng, đọc tin nhắn. Có quyền rồi chúng chuyển tiền khỏi ngân hàng, ví điện tử và chiếm Zalo, Facebook để lừa tiếp người
+    quen.
+  url: "https://congan.ninhbinh.gov.vn/canh-bao-thu-doan-gia-danh-nhan-vien-dien-nuoc-den-nha-yeu-cau-cai-ung-dung-de-lua-dao-va-chiem-doat-tai-san"
+  publisher: "Công an tỉnh Ninh Bình"
+  date: "2026-10-14"
+  verified_at: 2026-11-11
+
+- id: A087
+  scenario: N5.2
+  title: "Giả nhân viên đăng kiểm trên Zalo, gọi video bắt quay lại màn hình giao dịch"
+  summary: >-
+    Đối tượng dùng Zalo giả xưng cán bộ trung tâm đăng kiểm, nhắn tin hỗ trợ đặt lịch đăng kiểm xe, gửi thông tin phương tiện để tạo tin
+    tưởng. Chúng bảo chuyển khoản phí nhỏ qua mã QR, rồi yêu cầu gọi video và quay lại toàn bộ quá trình giao dịch trên điện thoại. Qua đó
+    chúng thu được OTP, khuôn mặt, dữ liệu sinh trắc học, chiếm tài khoản ngân hàng và rút hết tiền. Đăng kiểm không làm việc qua Zalo cá
+    nhân, không đòi gọi video hay quay màn hình.
+  url: "https://baovephapluat.vn/van-hoa-xa-hoi/doi-song-xa-hoi/canh-bao-thu-doan-lua-dao-chiem-doat-tai-san-bang-hinh-thuc-cuoc-goi-video-194595.html"
+  publisher: "Báo Bảo vệ Pháp luật (dẫn Công an tỉnh Lạng Sơn)"
+  date: "2026-03-07"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A088
+  scenario: N5.2
+  title: "Lừa hoàn tiền đặt phòng, giả ngân hàng bắt chia sẻ màn hình điện thoại"
+  summary: >-
+    Đối tượng lập trang Facebook giả cho thuê phòng nghỉ giá rẻ, nhận tiền cọc rồi báo hệ thống lỗi hoặc phòng đã có khách, hứa hoàn tiền.
+    Tiếp đó chúng đóng vai nhân viên ngân hàng, ví điện tử, hướng dẫn thao tác trên app thanh toán và yêu cầu chia sẻ màn hình điện thoại
+    để “hoàn tiền nhanh”. Qua màn hình, chúng thấy thông tin đăng nhập, mã xác thực rồi chuyển sạch tiền. Đơn vị uy tín không bao giờ đòi
+    chia sẻ màn hình để hoàn tiền.
+  url: "https://danang.gov.vn/vi/web/dng/w/canh-bao-thu-doan-lua-dao-hoan-tien-dich-vu-chiem-doat-tai-san-qua-chia-se-man-hinh-dien-thoai"
+  publisher: "Cổng TTĐT TP. Đà Nẵng (dẫn Công an TP. Đà Nẵng)"
+  date: "2026-06-04"
+  verified_at: 2026-11-11
+
+- id: A089
+  scenario: N5.2
+  title: "Quảng Ninh: chia sẻ màn hình để “hoàn tiền” cọc phòng, mất hàng chục triệu"
+  summary: >-
+    Công an Quảng Ninh nhận nhiều phản ánh: kẻ gian quảng cáo phòng nghỉ dưỡng giá ưu đãi trên Facebook giả, nhận cọc rồi viện cớ lỗi hệ
+    thống để làm thủ tục hoàn tiền. Chúng giả nhân viên ngân hàng hoặc ví điện tử, chỉ thao tác trên app thanh toán và yêu cầu bật chia sẻ
+    màn hình. Nhìn được mật khẩu, mã xác thực, chúng chiếm tài khoản và chuyển tiền trái phép, có người mất hàng chục triệu đồng. Không
+    cài app hay chia sẻ màn hình theo lời người lạ.
+  url: "https://vtv.vn/canh-giac-chieu-tro-lua-dao-hoan-tien-dich-vu-qua-chia-se-man-hinh-dien-thoai-100260719162838747.htm"
+  publisher: "VTV (dẫn Công an tỉnh Quảng Ninh)"
+  date: "2026-07-19"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A090
+  scenario: N5.2
+  title: "Gọi FaceTime giả nhân viên Apple, ngân hàng, đòi chia sẻ màn hình iPhone"
+  summary: >-
+    Kẻ gian gọi video FaceTime, ăn mặc và dựng phông nền như trung tâm hỗ trợ, tự xưng nhân viên Apple, ngân hàng, bộ phận kỹ thuật hoặc
+    cán bộ nhà nước. Chúng báo Apple ID bị xâm nhập, tài khoản có giao dịch lạ để gây hoảng, rồi đòi mật khẩu, mã xác thực hai lớp, OTP
+    hoặc hướng dẫn chia sẻ màn hình để theo dõi lúc đăng nhập và chiếm tài khoản, rút tiền. Apple không bao giờ hỏi mật khẩu hay mã xác
+    minh qua cuộc gọi.
+  url: "https://congan.tayninh.gov.vn/vi/chi-tiet-tin-tuc?Id=279881"
+  publisher: "Công an tỉnh Tây Ninh"
+  date: "2026-08-11"
+  verified_at: 2026-11-11
+
+- id: A091
+  scenario: N5.3
+  title: "Mã QR thanh toán giả: gửi qua mạng hoặc dán đè lên mã thật ở cửa hàng, cây xăng"
+  summary: >-
+    Kẻ gian giả người bán hoặc đơn vị dịch vụ gửi cho nạn nhân mã QR "thanh toán" thực chất trỏ về tài khoản của chúng; hoặc dán mã QR giả
+    đè lên mã thật ở điểm bán hàng, cây xăng, quán cà phê để khách quét là tiền chảy vào tài khoản lừa đảo. Có mã QR gửi qua mạng xã hội,
+    email dẫn tới web giả đòi mật khẩu, OTP. Dấu hiệu: bị giục chuyển gấp, tên người nhận không khớp. Phải đọc kỹ tên, số tài khoản trước
+    khi xác nhận.
+  url: "https://congan.laichau.gov.vn/thu-doan-pham-toi/canh-giac-voi-chieu-tro-lua-dao-quet-ma-qr-trong-thanh-toan-online-3416.html"
+  publisher: "Công an tỉnh Lai Châu"
+  date: "2025-08-27"
+  verified_at: 2026-11-11
+
+- id: A092
+  scenario: N5.3
+  title: "Mã QR độc dán ở bãi xe, cây ATM, bệnh viện hoặc kèm phiếu trúng thưởng để chiếm tiền"
+  summary: >-
+    Đối tượng gửi mã QR qua tin nhắn, mạng xã hội, email hoặc dán ở điểm thanh toán, bãi đỗ xe, cây ATM với lời mời "xác nhận giao dịch",
+    "nhận quà", "tra cứu đơn hàng"; quét vào là tới web giả lấy thông tin hoặc bị cài app độc chiếm điện thoại. Ở bệnh viện, quán ăn,
+    chúng dán chồng QR giả lên mã thật. Chúng còn kèm QR trong bưu phẩm, phiếu trúng thưởng. Dấu hiệu: mã bị dán lệch, tên người nhận
+    không đúng cơ sở, link có ký tự lạ.
+  url: "https://congan.hungyen.gov.vn/canh-giac-voi-thu-doan-lua-dao-qua-ma-qr-code-c231593.html"
+  publisher: "Công an tỉnh Hưng Yên"
+  date: "2025-10-30"
+  verified_at: 2026-11-11
+
+- id: A093
+  scenario: N5.3
+  title: "QR giả dẫn tới web nhái ngân hàng, ví điện tử hoặc dán đè mã ở quán ăn, bãi giữ xe"
+  summary: >-
+    Đối tượng tạo mã QR dẫn tới trang giả ngân hàng, ví điện tử, cơ quan nhà nước để lấy thông tin đăng nhập, OTP và rút tiền; in dán đè
+    QR giả lên mã thanh toán của cửa hàng, quán ăn, bãi giữ xe để tiền vào tài khoản chúng. Chúng còn gửi QR qua tin nhắn, mạng xã hội với
+    lời mời nhận quà, trúng thưởng, hoàn tiền, xác minh tài khoản, hỗ trợ từ cơ quan chức năng, rồi đòi thông tin ngân hàng hoặc cài app
+    chứa mã độc.
+  url: "https://congan.nghean.gov.vn/thong-tin-chuyen-de/canh-bao-toi-pham/202604/phong-chong-lua-dao-qua-ma-qr-trong-thoi-dai-so-1056552/"
+  publisher: "Công an tỉnh Nghệ An"
+  date: "2026-04-21"
+  verified_at: 2026-11-11
+
+- id: A094
+  scenario: N5.3
+  title: "Gửi quà Trung thu, quà tri ân tới nhà kèm mã QR dẫn tới web giả hoặc app độc"
+  summary: >-
+    Dùng thông tin cá nhân bị lộ, đối tượng gửi bưu phẩm tới tận nhà, ghi "quà tri ân khách hàng", "quà Trung thu", gắn logo thương hiệu
+    hoặc sàn thương mại điện tử. Trong hộp có mã QR mời quét để "xác thực nhận quà", nhận voucher, lì xì; quét vào là tới web giả ngân
+    hàng, sàn TMĐT đòi căn cước, mật khẩu, OTP, hoặc bị bảo tải app lạ (.apk) cho phép điều khiển máy từ xa. Có khi còn đòi phí vận
+    chuyển, phí kích hoạt quà.
+  url: "https://bocongan.gov.vn/bai-viet/canh-bao-thu-doan-tang-qua-trung-thu-du-quet-ma-qr-de-chiem-doat-tai-san-1789980256"
+  publisher: "Bộ Công an (Công an tỉnh Cao Bằng)"
+  date: "2026-09-21"
+  verified_at: 2026-11-11
+
+- id: A095
+  scenario: N5.4
+  title: "Quét mã QR bình chọn bị chiếm Zalo, kẻ gian nhắn bạn bè hỏi vay tiền"
+  summary: >-
+    Đối tượng tấn công tài khoản Zalo, Facebook có mật khẩu đơn giản hoặc lừa chủ tài khoản quét mã QR "bình chọn cho cháu", rồi nghiên
+    cứu lịch sử trò chuyện, cách xưng hô để nhắn người quen xin vay tiền, nhờ mua đồ, mua thẻ điện thoại. Có trường hợp chúng còn ghép
+    mặt, giọng bằng AI để gọi video giả. Khi nhận tin vay tiền, gọi lại số điện thoại đã biết để xác minh, không chuyển theo tin nhắn hay
+    video call.
+  url: "https://nhandan.vn/canh-giac-tai-dien-hanh-vi-lua-dao-chiem-doat-tai-san-qua-mang-xa-hoi-post920173.html"
+  publisher: "Báo Nhân Dân (dẫn cơ quan Công an)"
+  date: "2025-11-03"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A096
+  scenario: N5.4
+  title: "Hack Zalo rồi giả cấp trên, người thân nhắn vay tiền gấp"
+  summary: >-
+    Kẻ gian gửi link bình chọn, khảo sát, nhận quà hoặc mã QR để lấy OTP, đăng nhập Zalo của nạn nhân trên máy khác. Chúng đọc tin nhắn cũ
+    để bắt chước cách xưng hô, rồi nhắn cả danh bạ: đang có việc gấp, tài khoản bị lỗi, đi công tác cần vay tạm; có khi giả sếp ép cấp
+    dưới chuyển tiền, gửi số tài khoản tên gần giống, thậm chí gọi video Deepfake ngắn. Phải gọi số điện thoại thật để xác nhận, không qua
+    Zalo.
+  url: "https://congan.khanhhoa.gov.vn/vi/canh-bao-thu-doan-chiem-quyen-dieu-khien-zalo-gia-danh-cap-tren-nguoi-than-de-vay-tien-gap"
+  publisher: "Công an tỉnh Khánh Hòa"
+  date: "2026-05-18"
+  verified_at: 2026-11-11
+
+- id: A097
+  scenario: N5.4
+  title: "Link bình chọn cuộc thi trên Zalo dẫn tới mất tài khoản, bị mượn tiền"
+  summary: >-
+    Tại Gia Lai, nhiều tài khoản Zalo bị chiếm sau khi chủ tài khoản bấm vào link giả bình chọn cuộc thi, sự kiện. Đối tượng dùng chính
+    tài khoản đó nhắn bạn bè, người thân hỏi vay, mượn tiền và tiếp tục rải link độc để chiếm thêm tài khoản khác. Không mở link lạ đòi
+    đăng nhập, bình chọn, nhận thưởng; thấy tin vay tiền qua Zalo thì gọi điện trực tiếp kiểm tra; bật xác thực hai lớp, không đưa OTP.
+  url: "https://congan.gialai.gov.vn/vi/news/canh-giac-canh-bao/canh-bao-thu-doan-chiem-quyen-tai-khoan-zalo-de-lua-dao-chiem-doat-tai-san-11482.html"
+  publisher: "Công an tỉnh Gia Lai (Công an xã Tuy Phước Bắc)"
+  date: "2026-06-02"
+  verified_at: 2026-11-11
+
+- id: A098
+  scenario: N5.4
+  title: "Zalo mạo danh người quen nhờ gọi hỏi vay hộ, rồi dùng biên lai giả"
+  summary: >-
+    Một tài khoản Zalo mang tên, ảnh giống người thân không hỏi vay thẳng mà nhờ nạn nhân gọi cho người nhà, giả vờ hỏi vay 20 triệu đồng
+    mua quà tặng vợ. Khi đã có lòng tin, đối tượng có thể gửi ảnh giao dịch, thông báo chuyển khoản giả, kêu giao dịch lỗi và yêu cầu
+    chuyển tiền để "xác nhận". Đừng nhận diện người liên hệ qua tên và ảnh đại diện; gọi theo số đã lưu hoặc gặp mặt trước khi chuyển hay
+    nhận tiền.
+  url: "https://bocongan.gov.vn/bai-viet/phu-tho-canh-giac-thu-doan-dung-kich-ban-mao-danh-zalo-nguoi-quen-de-lua-dao-1788481818"
+  publisher: "Bộ Công an (Công an tỉnh Phú Thọ)"
+  date: "2026-09-04"
+  verified_at: 2026-11-11
+
+- id: A099
+  scenario: N5.4
+  title: "5 cách kẻ gian chiếm Zalo để mạo danh chủ tài khoản vay tiền người quen"
+  summary: >-
+    Chúng giả nhân viên Zalo xin mã OTP "gửi nhầm", lập trang đăng nhập Zalo giả kèm link xem ảnh, bình chọn, dụ cài ứng dụng chứa mã độc,
+    nhờ quét mã QR đăng nhập, hoặc dùng mật khẩu bị lộ ở nơi khác. Chiếm được tài khoản, chúng xem lịch sử chat rồi nhắn người thân vay
+    tiền, viện cớ đang họp không nghe máy được, giục chuyển ngay hoặc gửi link độc. Không đưa OTP cho ai, gọi điện xác minh trước khi
+    chuyển.
+  url: "https://congan.hue.gov.vn/bai-viet/canh-giac-5-thu-doan-chiem-quyen-tai-khoan-zalo-mao-danh-nguoi-than-de-lua-chuyen-tien-8072"
+  publisher: "Công an TP. Huế"
+  date: "2026-11-02"
+  verified_at: 2026-11-11
+
+- id: A100
+  scenario: N6
+  title: "Fanpage giả 'cơ quan chuyên trách Bộ Công an' hứa lấy lại tiền bị lừa miễn phí"
+  summary: >-
+    Trên Facebook xuất hiện fanpage tự xưng là cơ quan chuyên trách của Bộ Công an về khắc phục hậu quả tội phạm công nghệ cao, cắt ghép
+    video phỏng vấn lãnh đạo công an tỉnh trên truyền hình để tạo lòng tin, quảng cáo giúp lấy lại tiền bị lừa hoàn toàn miễn phí. Bộ Công
+    an không có đơn vị này; việc thu hồi tài sản không làm qua mạng xã hội, không thu phí. Không đưa thông tin, tài khoản, OTP cho các
+    trang đó.
+  url: "https://congan.quangbinh.gov.vn/gia-mao-co-quan-cong-an-de-lua-dao-ho-tro-lay-lai-tien-bi-lua/"
+  publisher: "Công an tỉnh Quảng Trị"
+  date: "2025-10-06"
+  verified_at: 2026-11-11
+
+- id: A101
+  scenario: N6
+  title: "Giả công an, luật sư trên mạng xã hội nhận 'hỗ trợ thu hồi tiền', đòi phí hồ sơ"
+  summary: >-
+    Kẻ gian lập trang mạng xã hội có tên gần giống đơn vị thuộc Bộ Công an, Cục An ninh mạng, đăng lại bài cảnh báo của báo chí cho giống
+    thật, rồi săn bài cầu cứu của người bị lừa để nhắn tin. Chúng xưng công an, luật sư, chuyên gia công nghệ, nói đã tìm ra kẻ lừa, đang
+    phong tỏa tài khoản, rồi đòi thông tin ngân hàng và phí "xử lý hồ sơ", gửi giấy tờ giả, thúc giục và dọa mất cơ hội lấy lại tiền.
+  url: "https://vtv.vn/canh-giac-thu-doan-gia-danh-can-bo-cong-an-luat-su-ho-tro-lay-lai-tien-bi-lua-dao-100260423221108059.htm"
+  publisher: "VTV (dẫn Công an tỉnh Hưng Yên)"
+  date: "2026-04-24"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A102
+  scenario: N6
+  title: "Giả luật sư hứa thu hồi tiền mất vì sàn vàng ảo để lừa nạn nhân lần hai"
+  summary: >-
+    Sau khi dụ người dân đầu tư vàng trên sàn ảo qua app và lấy hết tiền, đường dây lừa đảo cho người giả luật sư, chuyên gia tài chính,
+    nhân viên hỗ trợ liên hệ nạn nhân, hứa lấy lại nhanh toàn bộ số tiền đã mất. Để tạo lòng tin, chúng đưa ra quy trình có vẻ chuyên
+    nghiệp, rồi bắt chuyển trước phí dịch vụ, phí xác minh hoặc khai tài khoản ngân hàng; khi nạn nhân hết tiền thì cắt liên lạc.
+  url: "https://cand.vn/canh-giac-thu-doan-lua-dao-lay-lai-tien-da-mat-post825132.html"
+  publisher: "Báo Công an nhân dân (dẫn Công an TP. Cần Thơ)"
+  date: "2026-10-17"
+  tier: media
+  verified_at: 2026-11-11
+
+- id: A103
+  scenario: N6
+  title: "Facebook đội lốt điều tra viên gửi hồ sơ vụ án giả, đòi 10% phí để trả lại tiền"
+  summary: >-
+    Một phụ nữ ở Quảng Ngãi bị lừa trên trang bán ngọc trai báo trúng thưởng, rồi tìm đến một tài khoản Facebook có ảnh mặc sắc phục công
+    an, xưng điều tra viên hứa lấy lại tiền. Kẻ này gửi bộ hồ sơ vụ án mang tên Bộ Công an với con dấu, chữ ký giả, báo số tiền sẽ được
+    thu hồi và đòi nộp trước 10% "phí xác minh chính chủ" vào tài khoản cá nhân. Công an không thu phí kiểu này.
+  url: "https://congan.quangngai.gov.vn/danh-muc-san-pham/-tin-tuc-su-kien/canh-bao-lua-dao-mo-ngoc-trai-trung-thuong-va-gia-danh-cong-an-ho-tro-thu-hoi-tien.html"
+  publisher: "Công an tỉnh Quảng Ngãi (Phòng Cảnh sát hình sự)"
+  date: "2026-10-30"
+  verified_at: 2026-11-11

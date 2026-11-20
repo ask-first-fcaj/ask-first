@@ -11,6 +11,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -76,6 +77,12 @@ public class TelegramClient {
 
     public record InlineButton(String text, String callbackData) {}
 
+    /**
+     * Nút URL (mở trình duyệt hoặc deep link Telegram) thay vì gửi callback_data.
+     * Dùng kèm {@link #inlineKeyboardRaw(java.util.List)} khi cần trộn loại nút.
+     */
+    public record UrlButton(String text, String url) {}
+
     public static Map<String, Object> inlineKeyboard(java.util.List<java.util.List<InlineButton>> rows) {
         java.util.List<java.util.List<Map<String, String>>> keyboard = new java.util.ArrayList<>();
         for (java.util.List<InlineButton> row : rows) {
@@ -86,6 +93,25 @@ public class TelegramClient {
             keyboard.add(rowMap);
         }
         return Map.of("inline_keyboard", keyboard);
+    }
+
+    /**
+     * Tạo inline keyboard từ danh sách rows đã được serialize thành Map (hỗ trợ cả callback_data và url).
+     * Mỗi phần tử trong row là Map {"text": "...", "callback_data": "..."} hoặc {"text": "...", "url": "..."}.
+     */
+    public static Map<String, Object> inlineKeyboardRaw(
+            java.util.List<java.util.List<Map<String, String>>> rows) {
+        return Map.of("inline_keyboard", rows);
+    }
+
+    /** Tạo Map nút URL để dùng với {@link #inlineKeyboardRaw(java.util.List)}. */
+    public static Map<String, String> urlButtonMap(UrlButton btn) {
+        return Map.of("text", btn.text(), "url", btn.url());
+    }
+
+    /** Tạo Map nút callback để dùng với {@link #inlineKeyboardRaw(java.util.List)}. */
+    public static Map<String, String> callbackButtonMap(InlineButton btn) {
+        return Map.of("text", btn.text(), "callback_data", btn.callbackData());
     }
 
     /**
@@ -166,6 +192,21 @@ public class TelegramClient {
     }
 
     /**
+     * Edits only the inline keyboard markup of an existing message (e.g. to remove or update buttons).
+     */
+    public void editReplyMarkup(long chatId, int messageId, Map<String, Object> replyMarkup) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("chat_id", chatId);
+        body.put("message_id", messageId);
+        if (replyMarkup != null && !replyMarkup.isEmpty()) {
+            body.put("reply_markup", replyMarkup);
+        } else {
+            body.put("reply_markup", Map.of("inline_keyboard", List.of()));
+        }
+        executePost("/editMessageReplyMarkup", body);
+    }
+
+    /**
      * Sends a contact card (e.g. for emergency contact sharing).
      */
     public void sendContact(long chatId, String phoneNumber, String firstName, String lastName) {
@@ -188,6 +229,25 @@ public class TelegramClient {
                 "action", action
         );
         executePost("/sendChatAction", body);
+    }
+
+    /**
+     * Lấy username của bot từ Telegram API (gọi /getMe).
+     *
+     * @return username không có ký tự '@' (ví dụ: "AskFirstBot"), hoặc null nếu không lấy được.
+     */
+    public String getMeUsername() {
+        try {
+            JsonNode result = executePost("/getMe", Map.of());
+            if (result != null) {
+                String u = result.path("username").asText(null);
+                if (u != null && !u.isBlank()) {
+                    return u;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     /**

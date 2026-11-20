@@ -1,0 +1,108 @@
+# Eval gate (AI-09, plan §3.8, ARCH §6.11): PR đổi prompt, KB, luật, cấu hình model hoặc code pipeline thì chạy bộ eval
+# trên nhánh gốc (baseline) và trên PR bằng `eval/run_eval.py --pipeline real`, comment bảng so sánh vào PR, đỏ khi trượt.
+#
+# Hai chế độ, chọn tự động:
+#  - Có biến repo `EVAL_AWS_ROLE_ARN` (role OIDC được gọi Bedrock, BE2 tạo): judge thật, cổng đầy đủ: recall ≥ 90%,
+#    báo nhầm ≤ 10%, và không tệ hơn baseline quá 2 điểm.
+#  - Chưa có: không có quyền Bedrock nên pipeline tự chạy chỉ luật (`rules_only`). Ngưỡng 90%/10% không áp được (chỉ luật
+#    chỉ bắt khoảng 20%), nên chỉ đỏ khi tệ hơn baseline quá 2 điểm (`--drift-only`): vẫn bắt được PR làm hỏng luật/KB.
+# Job đỏ chưa chặn merge: chặn thật là bật "required status check" cho job này trong branch protection (từ M4, plan).
+name: Eval gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - prompts/**
+      - kb/**
+      - ai/config/models.yaml
+      - ai/src/askfirst/pipeline/**
+      - ai/src/askfirst/llm/**
+      - eval/run_eval.py
+      - eval/datasets/**
+      - .github/workflows/eval.yml
+
+permissions:
+  contents: read
+  pull-requests: write   # comment bảng so sánh
+  id-token: write        # OIDC sang AWS khi có EVAL_AWS_ROLE_ARN
+
+concurrency:
+  group: eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AWS_EC2_METADATA_DISABLED: "true"   # không có role thì botocore khỏi dò IMDS cho từng lời gọi
+      CACHE_DIR: ${{ github.workspace }}/.eval-cache
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || 'main' }}
+          path: .base
+      - uses: astral-sh/setup-uv@v5
+      - name: Chọn chế độ
+        id: mode
+        env:
+          ROLE: ${{ vars.EVAL_AWS_ROLE_ARN }}
+        run: |
+          if [ -n "$ROLE" ]; then
+            echo "mode=llm" >> "$GITHUB_OUTPUT"; echo "gate_flags=" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=rules_only" >> "$GITHUB_OUTPUT"; echo "gate_flags=--drift-only" >> "$GITHUB_OUTPUT"
+            echo "::notice::Chưa có EVAL_AWS_ROLE_ARN: chạy chỉ luật, chỉ so với baseline"
+          fi
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: steps.mode.outputs.mode == 'llm'
+        with:
+          role-to-assume: ${{ vars.EVAL_AWS_ROLE_ARN }}
+          aws-region: ap-southeast-2
+      - uses: actions/cache@v4
+        with:
+          path: .eval-cache
+          key: eval-${{ steps.mode.outputs.mode }}-${{ github.sha }}
+          restore-keys: eval-${{ steps.mode.outputs.mode }}-
+      - name: Baseline (nhánh gốc)
+        working-directory: .base/ai
+        run: |
+          uv python install 3.12
+          uv run python ../eval/run_eval.py --pipeline real --cache "$CACHE_DIR" --out "$RUNNER_TEMP/base" > /dev/null
+      - name: PR
+        id: gate
+        working-directory: ai
+        run: |
+          uv run python ../eval/run_eval.py --pipeline real --cache "$CACHE_DIR" --out "$RUNNER_TEMP/pr" \
+            --baseline "$RUNNER_TEMP/base/report.json" --gate ${{ steps.mode.outputs.gate_flags }}
+      - name: Comment vào PR
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && steps.gate.outcome != 'skipped'
+        uses: actions/github-script@v7
+        env:
+          MODE: ${{ steps.mode.outputs.mode }}
+          REPORT: ${{ runner.temp }}/pr/report.md
+        with:
+          script: |
+            const fs = require('fs');
+            const head = '### Eval gate';
+            const note = process.env.MODE === 'llm'
+              ? 'Judge thật (Bedrock). Cổng: recall ≥ 90%, báo nhầm ≤ 10%, lệch baseline ≤ 2 điểm.'
+              : 'Chỉ luật (CI chưa có quyền Bedrock). Cổng chỉ so với baseline của nhánh gốc, lệch ≤ 2 điểm.';
+            const report = fs.existsSync(process.env.REPORT) ? fs.readFileSync(process.env.REPORT, 'utf8') : 'Không có báo cáo (lỗi khi chạy, xem log).';
+            const body = `${head}\n\n${note}\n\n${report}`.slice(0, 60000);
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const old = comments.find(c => c.user.type === 'Bot' && c.body.startsWith(head));
+            if (old) await github.rest.issues.updateComment({ owner, repo, comment_id: old.id, body });
+            else await github.rest.issues.createComment({ owner, repo, issue_number, body });
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/base/
+            ${{ runner.temp }}/pr/
+          retention-days: 14

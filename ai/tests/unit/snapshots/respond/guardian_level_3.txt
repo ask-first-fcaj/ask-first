@@ -1,0 +1,7 @@
+--- message 0 (silent=False) [ack: ✅ Tôi đã liên hệ]
+⚠️ <b>Lan</b> vừa hỏi Bot về một tin có nguy cơ lừa đảo (mức <b>NGHI NGỜ</b>) lúc 14:05 ngày 03/11. Hãy gọi cho Lan ngay.
+
+Kịch bản: Giả dịch vụ công (phạt nguội, VNeID, trợ cấp), dụ vào web giả hoặc cài app giả.
+• Tin báo phạt nguội kèm link. Phạt nguội thật không gửi link nộp tiền qua tin nhắn.
+
+Tóm tắt (đã che số): Tin báo phạt nguội và đòi nộp tiền qua trang <code>hxxps://dichvucong-vn[.]com/tra-cuu</code>, không phải trang của Nhà nước.

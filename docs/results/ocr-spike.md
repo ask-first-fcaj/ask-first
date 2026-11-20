@@ -440,3 +440,30 @@ Rút ra:
 - **Bộ 16 ảnh độc lập không kiểm được `order_by_columns`:** có cột và không có cột ra y hệt nhau (không ảnh nào là ảnh ghép 2 khung). Quy tắc sắp cột vẫn chỉ được đo trên bộ 50 ảnh đã dùng để chỉnh nó.
 - **Độ trễ trên 2 lõi:** p95 1.63 s (bộ 50) và 1.12 s (bộ 16), dưới mục tiêu 3 s. Đây là **số đo thay thế**, không phải Lambda: CPU runner khác CPU Lambda, chưa có cold start, chưa tính tải model từ S3. p50 5,35 s ở mục 8 là do máy dev lúc chạy, không lặp lại ở đây.
 - **Từ có dấu đọc đúng chỉ 27–37%.** G2 không xét chỉ số này, nhưng nó ảnh hưởng tới đoạn chữ đưa vào Judge. Cần AI1 xem có nên đặt ngưỡng ở AI-26 không.
+
+## 10. Đường production AI-26 và int8 (03/11/2026, viết tay)
+
+Workflow `OCR bench` ở commit `3e0a149` (nhánh `feat/ai-26-ocr`), run https://github.com/ask-first-fcaj/ask-first/actions/runs/41576309622. Cùng cấu hình mục 9 (runner `ubuntu-latest`, khoá 2 lõi, `OCR_THREADS=2`, `rapidocr` 3.10.0, `onnxruntime` 1.31.0). Thêm 2 engine:
+
+- `askfirst`: `askfirst.local_models.ocr.RapidOcr`, đúng code production (sắp cột, `repair_phones` + `repair_urls`, decode QR), model fp32 tải bằng `ai/scripts/fetch_ocr_models.py` và kiểm sha256 theo `ai/config/artifacts.yaml`.
+- `askfirst_int8`: cùng code, model lượng tử hoá động (`quantize_dynamic`, trọng số `QUInt8`) bằng `fetch_ocr_models.py --int8`.
+
+Bước test model thật trong workflow (`OCR_MODELS_DIR` có model): 13 passed.
+
+| Bộ ảnh | Cấu hình | URL nghiêm ngặt | Sau `repair_urls` | CER | p50 / p95 (giây/ảnh) |
+|---|---|---|---|---|---|
+| 50 ảnh phát triển | RapidOCR + cột (mục 9) | 27/32 (84%, CI 68–93%) | 31/32 (97%, CI 84–99%) | 12.9% | 1.40 / 3.00 |
+| 50 ảnh phát triển | **Production fp32** | **31/32 (97%, CI 84–99%)** | 31/32 | 12.8% (CI 10.5–15.6%) | 1.43 / 3.15 |
+| 50 ảnh phát triển | Production int8 động | 15/32 (47%, CI 31–64%) | 15/32 | 15.6% (CI 13.1–18.6%) | 1.58 / 3.32 |
+| 16 ảnh độc lập | RapidOCR + cột (mục 9) | 15/18 (83%, CI 61–94%) | 17/18 (94%, CI 74–99%) | 7.2% | 1.78 / 2.27 |
+| 16 ảnh độc lập | **Production fp32** | **17/18 (94%, CI 74–99%)** | 17/18 | 7.1% (CI 5.9–8.6%) | 1.84 / 2.32 |
+| 16 ảnh độc lập | Production int8 động | 9/18 (50%, CI 29–71%) | 9/18 | 7.7% (CI 6.2–9.5%) | 1.95 / 2.75 |
+
+"URL nghiêm ngặt" của production đã gồm `repair_urls` (pipeline sửa trước khi trả chữ), nên hai cột bằng nhau. SĐT: fp32 16/16 và 20/20; int8 15/16 và 20/20. RAM đỉnh (`/usr/bin/time -v`, một tiến trình chạy lần lượt cả 3 cấu hình): 849 MB (bộ 50), 657 MB (bộ 16).
+
+Rút ra:
+
+- **Code production ra đúng số của spike:** URL sau sửa 31/32 và 17/18, CER chênh 0,1 điểm. Tiêu chí AI-26 "URL ≥ 90% trên 50 ảnh" đạt (97%, cận dưới CI 84%).
+- **Bỏ int8, giữ fp32.** Int8 động làm số URL đúng giảm còn một nửa (47% và 50%), CER tăng, và còn chậm hơn fp32 trên runner này. Chưa thử int8 tĩnh (cần bộ ảnh hiệu chỉnh); chỉ làm lại nếu Lambda cần nhỏ hơn hoặc nhanh hơn.
+- **Độ trễ lượt này cao hơn mục 9** (p95 3.00 s so với 1.63 s của cùng cấu hình RapidOCR + cột), nên chênh là do runner, không phải do code: fp32 production chỉ chậm hơn RapidOCR + cột khoảng 0,03 s ở p50. p95 3.15 s trên bộ 50 vượt 3 s, nhưng đây vẫn là số đo thay thế, không phải Lambda. Đo p95 trên Lambda 3–4 GB (điều kiện 2 của ADR-003) vẫn mở, cần AWS.
+- Cột "nạp model" của `askfirst` trong báo cáo ra 0.0 s nên không dùng; thời gian nạp model và tải từ S3 đo cùng cold start trên Lambda.

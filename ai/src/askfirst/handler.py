@@ -29,6 +29,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from askfirst.domain import models as m
+from askfirst.media.telegram import TOTAL_S, MediaDownloadError
 from askfirst.pipeline import build_pipeline
 from askfirst.pipeline.stub import bundle_from_items
 
@@ -37,12 +38,11 @@ log.setLevel(logging.INFO)
 
 OPS = ("analyze", "render_guardian_alerts", "render")
 CACHE_TTL_S = 24 * 3600
+# Chừa cho pipeline sau khi tải media: judge (8 s × 2 lần + backoff) + backup 12 s theo models.yaml + 5 s lề của deadline_s.
+PIPELINE_RESERVE_S = 35
 
-BundleBuilder = Callable[[list[m.InboundMessage], m.SessionContext | None, m.Flags], m.Bundle]
-
-
-class MediaDownloadError(Exception):
-    """`media/telegram.py` (AI2) raise lỗi này khi getFile/tải file lỗi. Message KHÔNG được chứa URL hay token."""
+# (items, session, flags, budget_s): budget_s = tổng số giây được dùng để tải media.
+BundleBuilder = Callable[[list[m.InboundMessage], m.SessionContext | None, m.Flags, float], m.Bundle]
 
 
 class _Fail(Exception):
@@ -71,7 +71,7 @@ class _NoKV:
         pass
 
 
-def _stub_bundle(items: list[m.InboundMessage], session: m.SessionContext | None, flags: m.Flags) -> m.Bundle:
+def _stub_bundle(items: list[m.InboundMessage], session: m.SessionContext | None, flags: m.Flags, budget_s: float) -> m.Bundle:
     return bundle_from_items(items, session)   # stub không tải media (plan §3.5)
 
 
@@ -81,8 +81,9 @@ def init_runtime(env: Mapping[str, str] = os.environ) -> Runtime:
     config_dir = pathlib.Path(env.get("CONFIG_DIR", "/var/task/config"))
     if impl == "stub":
         return Runtime(build_pipeline("stub", config_dir, _NoArtifacts(), _NoKV()), _stub_bundle, None)
-    # INT-01: RealPipeline cần media/telegram.build_bundle + S3ArtifactStore (AI2) và bảng DynamoDB (BE-03):
-    # build_pipeline("real", config_dir, S3ArtifactStore(...), DynamoKV(table, "URL#", "INTEL")),
+    # INT-01: RealPipeline cần bảng DynamoDB (BE-03):
+    # build_pipeline("real", config_dir, S3ArtifactStore(env["ARTIFACT_BUCKET"], config_dir / "artifacts.yaml"),
+    #                DynamoKV(table, "URL#", "INTEL")), TelegramMedia(ssm_token(env["BOT_TOKEN_PARAM"])).build_bundle,
     # cache=DynamoKV(table, "CACHE#", "VERDICT").
     return Runtime(build_pipeline(impl, config_dir, _NoArtifacts(), _NoKV()), _stub_bundle, None)
 
@@ -119,8 +120,10 @@ def _cache_get(cache: m.KVCache, key: str) -> m.Verdict | None:
 
 def _analyze(event: dict, rt: Runtime, info: dict) -> m.AiResponse:
     req: m.AnalyzeRequest = _validate(m.AnalyzeRequest, event)
+    started = time.monotonic()
+    budget_s = max(0.0, min(TOTAL_S, req.ctx.deadline_s - PIPELINE_RESERVE_S))
     try:
-        bundle = rt.build_bundle(req.items, req.session, req.ctx.flags)
+        bundle = rt.build_bundle(req.items, req.session, req.ctx.flags, budget_s)
     except MediaDownloadError:
         raise _Fail("retryable", "telegram_download") from None
 
@@ -136,7 +139,9 @@ def _analyze(event: dict, rt: Runtime, info: dict) -> m.AiResponse:
             return m.AiResponse(op="analyze", analyze=m.AnalyzeResult(verdict=hit.model_copy(update={"path": "cache"}), cache_hit=True))
 
     try:
-        verdict = rt.pipeline.analyze(bundle, req.ctx)
+        # deadline_s tính từ lúc BE gửi: trừ thời gian đã tải media để pipeline không tưởng còn nguyên hạn.
+        ctx = req.ctx.model_copy(update={"deadline_s": req.ctx.deadline_s - (time.monotonic() - started)})
+        verdict = rt.pipeline.analyze(bundle, ctx)
     except Exception as e:  # noqa: BLE001
         if getattr(e, "retryable", False):
             raise _Fail("retryable", "llm_throttled", type(e).__name__) from None

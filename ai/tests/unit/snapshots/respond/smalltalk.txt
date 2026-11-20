@@ -1,0 +1,2 @@
+--- message 0 (silent=False) 
+Dạ. Bác nhận được tin nào lạ thì chuyển tiếp hoặc dán vào đây, Bot xem giúp ngay ạ.

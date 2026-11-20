@@ -1,0 +1,19 @@
+--- message 0 (silent=False) [checklist: 📋 Việc cần làm ngay] [call_guardian: 📞 Gọi cho con] | [report_wrong: 👎 Bot báo sai]
+🔴 <b>RẤT GIỐNG LỪA ĐẢO</b> – Giả công an, Viện kiểm sát hoặc tòa án, khống chế tâm lý và bắt nạn nhân cô lập
+Tin dặn giữ bí mật, không kể với người nhà. Đây là dấu hiệu lừa đảo rất thường gặp.
+👉 Bác ĐỪNG chuyển tiền, ĐỪNG giữ bí mật, hãy kể với người nhà.
+✅ Cháu Nam đã được báo.
+
+ℹ️ Bot là công cụ hỗ trợ của nhóm sinh viên, có thể sai. Bot không bao giờ xin OTP, mật khẩu hay tiền.
+--- message 1 (silent=False) 
+<b>Vì sao Bot nghi ngờ:</b>
+• "không được nói với ai" → Tin dặn giữ bí mật, không kể với người nhà. Đây là dấu hiệu lừa đảo rất thường gặp.
+• Tin đòi chuyển khoản hoặc nạp tiền.
+• "Tôi là cán bộ công an quận" → Người nhắn xưng là công an, viện kiểm sát hoặc tòa án. Các cơ quan này không làm việc qua điện thoại hay tin nhắn.
+
+<b>Bác nên làm:</b>
+• Không làm theo yêu cầu cô lập hoặc giữ bí mật
+• Liên hệ gia đình và báo công an gần nhất ngay khi nghi ngờ
+
+<b>Cảnh báo liên quan:</b>
+• <a href="https://bocongan.gov.vn/bai-viet/canh-giac-1791168262">Bộ Công an</a> (10/2026)

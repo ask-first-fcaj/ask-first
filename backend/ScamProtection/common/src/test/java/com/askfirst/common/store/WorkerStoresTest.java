@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.askfirst.common.ai.AiContract.Flags;
 import com.askfirst.common.channel.model.InboundMessage;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -14,6 +17,8 @@ import java.util.TreeSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,6 +31,8 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
+import software.amazon.awssdk.services.dynamodb.model.BatchWriteItemRequest;
+import software.amazon.awssdk.services.dynamodb.model.BatchWriteItemResponse;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 
 /**
@@ -49,6 +56,7 @@ class WorkerStoresTest {
     private DynamoBufferStore buffer;
     private DynamoFlagsStore flags;
     private DynamoCheckStore checks;
+    private DynamoSessionStore sessions;
     private DynamoAlertStore alerts;
     private DynamoAlertLockStore locks;
     private String chat;
@@ -64,6 +72,7 @@ class WorkerStoresTest {
         buffer = new DynamoBufferStore(client, TABLE);
         flags = new DynamoFlagsStore(client, TABLE);
         checks = new DynamoCheckStore(client, TABLE);
+        sessions = new DynamoSessionStore(client, TABLE);
         alerts = new DynamoAlertStore(client, TABLE);
         locks = new DynamoAlertLockStore(client, TABLE);
         chat = "chat-" + System.nanoTime();   // mỗi test một chat riêng vì bảng dùng chung (-sharedDb)
@@ -170,18 +179,68 @@ class WorkerStoresTest {
     // ---------- CHECK# ----------
 
     @Test
-    @DisplayName("CheckStore: exists, put một lần, ghi lại không đè")
+    @DisplayName("CheckStore: exists, put một lần, ghi lại không đè, updateFeedback và get bản ghi")
     void checkStore() {
         String uid = "tg:" + chat;
         assertThat(checks.exists(uid, "C1")).isFalse();
 
         checks.put(new CheckRecord("C1", uid, "verdict", "DANGEROUS", 90, "N1", "N1.4", "fast",
-                List.of("R_OTP_REQUEST"), List.of("share_otp"), List.of("text"), true, NOW.toString(), ttl()));
+                List.of("R_OTP_REQUEST"), List.of("share_otp"), List.of("text"), true, null, NOW.toString(), ttl()));
         checks.put(new CheckRecord("C1", uid, "degraded", "UNSURE", 0, "OTHER", "OTHER", "none",
-                List.of(), List.of(), List.of(), false, NOW.toString(), ttl()));
+                List.of(), List.of(), List.of(), false, null, NOW.toString(), ttl()));
 
         assertThat(checks.exists(uid, "C1")).isTrue();
         assertThat(checks.exists(uid, "C2")).isFalse();
+
+        // get bản ghi và kiểm tra feedback ban đầu null
+        assertThat(checks.get(uid, "C1")).hasValueSatisfying(r -> {
+            assertThat(r.score()).isEqualTo(90);
+            assertThat(r.feedback()).isNull();
+        });
+
+        // update feedback thành wrong
+        checks.updateFeedback(uid, "C1", "wrong");
+        assertThat(checks.get(uid, "C1")).hasValueSatisfying(r -> {
+            assertThat(r.feedback()).isEqualTo("wrong");
+        });
+    }
+
+    @Test
+    @DisplayName("CheckStore: feedback không tạo bản ghi ma, và tryMarkFeedback chỉ thắng đúng một lần")
+    void checkStoreFeedbackIsConditional() {
+        String uid = "tg:" + chat;
+
+        // check không tồn tại: không được tạo item chỉ có feedback
+        checks.updateFeedback(uid, "GHOST", "wrong");
+        assertThat(checks.exists(uid, "GHOST")).isFalse();
+        assertThat(checks.tryMarkFeedback(uid, "GHOST", "wrong")).isFalse();
+        assertThat(checks.exists(uid, "GHOST")).isFalse();
+
+        checks.put(new CheckRecord("C9", uid, "verdict", "DANGEROUS", 90, "N1", "N1.4", "fast",
+                List.of(), List.of(), List.of("text"), false, null, NOW.toString(), ttl()));
+        assertThat(checks.tryMarkFeedback(uid, "C9", "wrong")).isTrue();
+        assertThat(checks.tryMarkFeedback(uid, "C9", "wrong")).isFalse();   // bấm đôi: bên thua nhận false
+        assertThat(checks.get(uid, "C9")).hasValueSatisfying(r -> assertThat(r.feedback()).isEqualTo("wrong"));
+    }
+
+    // ---------- SESSION# ----------
+
+    @Test
+    @DisplayName("SessionStore: put, get và delete ngữ cảnh phiên SESSION#{chat_id}")
+    void sessionStoreOperations() {
+        SessionRecord rec = new SessionRecord(chat, "CHK-100", "tg:" + chat, "masked text sample", "cau hoi phu", 1, ttl());
+        sessions.put(rec);
+
+        assertThat(sessions.get(chat)).hasValueSatisfying(s -> {
+            assertThat(s.chatId()).isEqualTo(chat);
+            assertThat(s.checkId()).isEqualTo("CHK-100");
+            assertThat(s.maskedText()).isEqualTo("masked text sample");
+            assertThat(s.followupQuestion()).isEqualTo("cau hoi phu");
+            assertThat(s.turn()).isEqualTo(1);
+        });
+
+        sessions.delete(chat);
+        assertThat(sessions.get(chat)).isEmpty();
     }
 
     // ---------- ALERT# ----------
@@ -246,5 +305,77 @@ class WorkerStoresTest {
         assertThat(locks.acquire(uid, "N2.1", "CHECK-B", now, now + 1800)).isTrue();    // kịch bản khác
 
         assertThat(locks.acquire(uid, "N1.4", "CHECK-B", now + 1801, now + 3600)).isTrue();   // A đã hết hạn
+    }
+
+    /** Client thật, nhưng {@code failures} lần batchWriteItem đầu trả hết item vào UnprocessedItems (giả lập throttle). */
+    private DynamoDbClient throttledBatchClient(int failures) {
+        AtomicInteger remaining = new AtomicInteger(failures);
+        return (DynamoDbClient) Proxy.newProxyInstance(
+                DynamoDbClient.class.getClassLoader(),
+                new Class<?>[] {DynamoDbClient.class},
+                (proxy, method, args) -> {
+                    if (method.getName().equals("batchWriteItem")
+                            && args != null && args[0] instanceof BatchWriteItemRequest req
+                            && remaining.getAndDecrement() > 0) {
+                        return BatchWriteItemResponse.builder().unprocessedItems(req.requestItems()).build();
+                    }
+                    try {
+                        return method.invoke(client, args);
+                    } catch (InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
+    }
+
+    @Test
+    @DisplayName("BufferStore: batch xóa bị throttle mãi -> giữ META, seq không reset, tin cũ không lẫn vào cụm mới")
+    void bufferFinishKeepsMetaWhenDeleteIncomplete() {
+        buffer.append(chat, message(chat, 1), ttl());
+        buffer.append(chat, message(chat, 2), ttl());
+        buffer.append(chat, message(chat, 3), ttl());
+
+        DynamoBufferStore throttled = new DynamoBufferStore(throttledBatchClient(Integer.MAX_VALUE), TABLE);
+        assertThat(throttled.finish(chat, 3)).isTrue();          // không có tin mới nên không cần xử lý lại
+
+        assertThat(buffer.state(chat)).hasValueSatisfying(s -> {  // META còn, done_seq đã tiến
+            assertThat(s.maxSeq()).isEqualTo(3);
+            assertThat(s.doneSeq()).isEqualTo(3);
+        });
+
+        assertThat(buffer.append(chat, message(chat, 9), ttl())).isEqualTo(4);   // KHÔNG đếm lại từ 1
+        assertThat(buffer.itemsAfter(chat, 3, 4)).extracting(InboundMessage::messageId).containsExactly("m9");
+
+        // lần finish kế tiếp (client bình thường) dọn nốt phần sót, không chờ TTL
+        assertThat(buffer.finish(chat, 4)).isTrue();
+        assertThat(buffer.state(chat)).isEmpty();
+        assertThat(buffer.itemsAfter(chat, 0, 4)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("BufferStore: batch xóa bị throttle 1 lần rồi thành công -> retry xong thì xóa META bình thường")
+    void bufferFinishRetriesUnprocessedItems() {
+        buffer.append(chat, message(chat, 1), ttl());
+        buffer.append(chat, message(chat, 2), ttl());
+
+        DynamoBufferStore throttledOnce = new DynamoBufferStore(throttledBatchClient(1), TABLE);
+        assertThat(throttledOnce.finish(chat, 2)).isTrue();
+
+        assertThat(buffer.state(chat)).isEmpty();
+        assertThat(buffer.itemsAfter(chat, 0, 2)).isEmpty();
+        assertThat(buffer.append(chat, message(chat, 9), ttl())).isEqualTo(1);   // đã xóa sạch nên bắt đầu lại từ 1 là đúng
+    }
+
+    @Test
+    @DisplayName("BufferStore: delete xóa hết META và MSG#, chat chưa có buffer thì không lỗi")
+    void bufferDelete() {
+        buffer.delete(chat);
+        buffer.append(chat, message(chat, 1), ttl());
+        buffer.append(chat, message(chat, 2), ttl());
+
+        buffer.delete(chat);
+
+        assertThat(buffer.state(chat)).isEmpty();
+        assertThat(buffer.itemsAfter(chat, 0, 2)).isEmpty();
+        assertThat(buffer.append(chat, message(chat, 9), ttl())).isEqualTo(1);
     }
 }

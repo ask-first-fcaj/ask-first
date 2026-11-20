@@ -1,0 +1,27 @@
+{#- Phần giải thích (ARCH §6.8): "Vì sao Bot nghi ngờ", việc nên làm theo thẻ kịch bản, nguồn cảnh báo.
+    Ngắn thì Respond gộp vào tin kết luận, dài thì gửi thành tin sau. Bản nháp, câu chữ chốt theo SH-08.
+    `reasons[].quote`, `note` đã qua filter `untrusted`; `sources[].link` do respond.py dựng (chỉ tên miền allowlist mới bấm được). -#}
+{% if reasons or note %}
+<b>Vì sao Bot nghi ngờ:</b>
+{% if note %}
+• {{ note }}
+{% endif %}
+{% for r in reasons %}
+• {% if r.quote %}"{{ r.quote }}" → {% endif %}{{ r.text }}
+{% endfor %}
+{% endif %}
+{% if advice %}
+
+<b>{{ XH }} nên làm:</b>
+{% for a in advice %}
+• {{ a }}
+{% endfor %}
+{% endif %}
+{% if sources %}
+
+<b>Cảnh báo liên quan:</b>
+{% for s in sources %}
+• {{ s.link }}{% if s.date %} ({{ s.date }}){% endif %}
+
+{% endfor %}
+{% endif %}

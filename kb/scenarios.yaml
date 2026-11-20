@@ -13,7 +13,8 @@
 #  - `date` trong sources chỉ ghi khi bài hoặc kết quả tìm kiếm hiện ngày; không thấy ngày thì bỏ.
 #  - Nguồn có `tier: media` là báo thương mại dẫn lại cảnh báo của công an, không phải cổng của cơ quan nhà nước. Các nguồn còn lại là cổng của cơ quan nhà nước
 #    (Bộ Công an, công an các tỉnh, cổng tỉnh như dienbien.gov.vn) hoặc báo của ngành công an (cadn.com.vn của Công an TP. Đà Nẵng).
-#  - CHƯA CÓ thẻ cho: N2.2 (thu mẫu giọng nói) và N5.2 (dụ chia sẻ màn hình), do chưa tìm được bài cảnh báo chính thức đúng mã đó.
+#  - Thẻ N2.2 và N5.2 thêm ngày 2026-10-31 (AI1): đã mở và đọc thân bài từng nguồn. N2.2 chưa có nguồn nói tới "khảo sát dài bất thường";
+#    N5.2 không có nguồn .gov.vn nêu tên AnyDesk/TeamViewer, UltraViewer chỉ có qua báo VTV dẫn Cục An toàn thông tin.
 
 - code: N0
   group: N0
@@ -148,7 +149,7 @@
     - Không bấm link hoặc cài ứng dụng theo hướng dẫn của người tự xưng nhà mạng
     - Nghi ngờ thì tự liên hệ điện lực hoặc nhà mạng qua kênh chính thức
   sources:
-    - {url: "https://dienbien.gov.vn/vi/bai-viet/Canh-bao-cuoc-goi-mao-danh-Cong-ty-Dien-luc-bao-khiew65j", publisher: "Cổng thông tin điện tử tỉnh Điện Biên"}
+    - {url: "https://dienbien.gov.vn/vi/bai-viet/Canh-bao-cuoc-goi-mao-danh-Cong-ty-Dien-luc-bao-khiew65j", publisher: "Cổng thông tin điện tử tỉnh Điện Biên", date: "2021-07-27"}
     - {url: "https://thanhnien.vn/cong-an-canh-bao-chieu-lua-chuan-hoa-sim-chinh-chu-185260507160922091.htm", publisher: "Thanh Niên (dẫn cảnh báo của Công an)", tier: media}
   verified_at: 2026-10-30
 
@@ -165,7 +166,7 @@
     - Đòi đóng phí trước (biển số, giấy tờ, vận chuyển)
     - Đòi thêm nhiều lần
   advice:
-    - Không chuyển tiền để nhận thưởng, thưởng thật không bắt đóng phí trước
+    - Không chuyển tiền để nhận thưởng, kể cả các khoản làm biển số, giấy tờ, vận chuyển hay đổi thưởng sang tiền mặt
     - Không bấm link hoặc quét mã QR nhận thưởng
   sources:
     - {url: "https://bocongan.gov.vn/bai-viet/thanh-hoa-triet-xoa-o-nhom-lua-dao-chiem-doat-tai-san-bang-hinh-thuc-mua-hang-boc-tham-trung-thuong-d22-t45630", publisher: "Bộ Công an (Công an tỉnh Thanh Hóa)", date: "2025-06-18"}
@@ -190,6 +191,32 @@
     - {url: "https://hvktcnan.bocongan.gov.vn/TrangChu/tin-tuc/1931-phong-chong-hoat-dong-loi-dung-cong-nghe-deepfake-lua-dao-tren-khong-gian-mang.html", publisher: "Học viện Kỹ thuật và Công nghệ an ninh, Bộ Công an", date: "2026-04-16"}
     - {url: "https://congan.angiang.gov.vn/canh-bao-phuong-thuc-lua-dao-moi-gia-mao-so-dien-thoai-va-su-dung-giong-noi-ai", publisher: "Công an tỉnh An Giang", date: "2026-06-23"}
   verified_at: 2026-10-30
+
+- code: N2.2
+  group: N2
+  title: Cuộc gọi nháy máy hoặc im lặng từ số lạ để dò số và thu giọng nói, rồi giả giọng bằng AI
+  description: >-
+    Số lạ gọi đến chỉ đổ chuông 1–3 giây rồi tắt, lặp lại nhiều lần, hoặc bắt máy thì đầu dây bên kia im lặng; thường hiện đầu số cố định
+    (022..., 024..., 028...), đầu số dịch vụ hoặc đầu số quốc tế. Công an tỉnh Quảng Ngãi xác định đây là thủ đoạn rà soát số thuê bao còn hoạt động:
+    chỉ cần người nghe phát ra âm thanh như “Alo”, hệ thống ghi nhận có người thật; khi người dùng bắt máy hoặc gọi lại, giọng nói có thể bị phân tích
+    hoặc thu âm để “nhân bản” bằng AI, giả mạo người thân hoặc giả danh cơ quan Công an, Tòa án, Viện kiểm sát, nhà mạng, shipper để lừa đảo.
+    Bộ Công an (25 kịch bản lừa đảo năm 2026) cũng nêu một số trường hợp gọi điện thu thập mẫu giọng nói để phục vụ giả mạo về sau.
+  example_phrases: ["nháy máy", "đầu dây bên kia im lặng"]
+  red_flags:
+    - Số lạ đổ chuông 1–3 giây rồi tắt, lặp lại nhiều lần, có khi vào khung giờ cố định hoặc đêm muộn
+    - Bắt máy thì đầu dây bên kia im lặng
+    - Đầu số cố định lạ, đầu số dịch vụ không rõ nguồn gốc hoặc mã quốc gia bắt đầu bằng dấu +
+  advice:
+    - Không gọi lại các số điện thoại lạ
+    - Khi nghi ngờ cuộc gọi thì gác máy ngay, không cần tranh luận hay tiếp tục đối thoại
+    - Không cung cấp thông tin cá nhân, tài khoản ngân hàng hay mã OTP qua điện thoại
+    - Chặn và báo cáo số có dấu hiệu bất thường với nhà mạng
+    - Muốn kiểm tra thì tra cứu số đó hoặc gọi tổng đài chính thức của đơn vị được nhắc đến
+  sources:
+    - {url: "https://congan.quangngai.gov.vn/danh-muc-san-pham/-tin-tuc-su-kien/cong-an-tinh-quang-ngai-canh-bao-thu-doan-lua-dao-qua-nhay-may-tu-so-dien-thoai-la.html", publisher: "Công an tỉnh Quảng Ngãi", date: "2026-09-15"}
+    - {url: "https://congan.quangngai.gov.vn/danh-muc-san-pham/-tin-tuc-su-kien/nhan-dien-cac-cuoc-goi-lua-dao-va-cach-phong-tranh.html", publisher: "Công an tỉnh Quảng Ngãi", date: "2025-10-24"}
+    - {url: "https://www.bocongan.gov.vn/bai-viet/nang-cao-canh-giac-truoc-25-kich-ban-lua-dao-tren-khong-gian-mang-nam-2026-1788865614", publisher: "Bộ Công an", date: "2026-09-08"}
+  verified_at: 2026-10-31
 
 - code: N2.3
   group: N2
@@ -280,7 +307,7 @@
     - Kiểm tra tiền đã về tài khoản thật bằng ứng dụng ngân hàng của mình trước khi giao hàng
     - Không tin ảnh chụp màn hình giao dịch
   sources:
-    - {url: "https://canhsatquanlyhanhchinh.gov.vn/tin-tuc/canh-giac-lua-dao-gia-mao-bien-lai-chuyen-tien-thanh-cong-2649", publisher: "Cục Cảnh sát QLHC về TTXH, Bộ Công an"}
+    - {url: "https://canhsatquanlyhanhchinh.gov.vn/tin-tuc/canh-giac-lua-dao-gia-mao-bien-lai-chuyen-tien-thanh-cong-2649", publisher: "Cục Cảnh sát QLHC về TTXH, Bộ Công an", date: "2024-03-10"}
     - {url: "https://congan.daklak.gov.vn/an-toan-giao-thong/cong-an-xa-quang-phu-bat-giu-doi-tuong-tao-bien-lai-chuyen-khoan-gia-de-lua-dao-13977.html", publisher: "Công an tỉnh Đắk Lắk", date: "2026-09-30"}
   verified_at: 2026-10-30
 
@@ -298,7 +325,7 @@
     - Đặt tour, vé, phòng qua kênh chính thức của hãng hoặc nơi lưu trú
     - Tránh chuyển khoản trước cho tài khoản cá nhân
   sources:
-    - {url: "https://congan.daklak.gov.vn/tin-moi/canh-giac-voi-cac-chieu-tro-lua-dao-dat-tour-phong-nghi-dip-du-lich-he-2026-11749.html", publisher: "Công an tỉnh Đắk Lắk"}
+    - {url: "https://congan.daklak.gov.vn/tin-moi/canh-giac-voi-cac-chieu-tro-lua-dao-dat-tour-phong-nghi-dip-du-lich-he-2026-11749.html", publisher: "Công an tỉnh Đắk Lắk", date: "2026-05-21"}
     - {url: "https://congan.hungyen.gov.vn/canh-giac-voi-chieu-tro-lua-dao-du-lich-dip-nghi-le-304-015-tren-khong-gian-mang-c235094.html", publisher: "Công an tỉnh Hưng Yên", date: "2026-04-15"}
   verified_at: 2026-10-30
 
@@ -318,7 +345,7 @@
   sources:
     - {url: "https://congan.quangngai.gov.vn/danh-muc-san-pham/-tin-tuc-su-kien/canh-bao-thu-doan-gia-danh-nhan-vien-buu-dien-de-lua-chuyen-khoan.html", publisher: "Công an tỉnh Quảng Ngãi", date: "2025-07-23"}
     - {url: "https://congan.ninhbinh.gov.vn/luc-luong-cong-an-canh-bao-thu-doan-gia-danh-shipper-de-lua-dao-chiem-doat-tai-san", publisher: "Công an tỉnh Ninh Bình", date: "2026-06-10"}
-    - {url: "https://congan.khanhhoa.gov.vn/vi/canh-bao-thu-doan-lua-dao-khi-truy-cap-vao-duong-link-do-shipper-gui", publisher: "Công an tỉnh Khánh Hòa"}
+    - {url: "https://congan.khanhhoa.gov.vn/vi/canh-bao-thu-doan-lua-dao-khi-truy-cap-vao-duong-link-do-shipper-gui", publisher: "Công an tỉnh Khánh Hòa", date: "2024-11-14"}
   verified_at: 2026-10-30
 
 - code: N5.1
@@ -338,6 +365,34 @@
   sources:
     - {url: "https://www.bocongan.gov.vn/bai-viet/nang-cao-canh-giac-truoc-25-kich-ban-lua-dao-tren-khong-gian-mang-nam-2026-1788865614", publisher: "Bộ Công an", date: "2026-09-08"}
   verified_at: 2026-10-30
+
+- code: N5.2
+  group: N5
+  title: Dụ chia sẻ màn hình hoặc cài phần mềm điều khiển từ xa để xem mã xác thực, chiếm tài khoản
+  description: >-
+    Kẻ gian giả danh nhân viên ngân hàng hoặc ví điện tử, hướng dẫn nạn nhân thao tác trên ứng dụng thanh toán trực tuyến và yêu cầu chia sẻ màn hình
+    điện thoại với lý do hỗ trợ hoàn tiền nhanh chóng (vụ Công an TP. Đà Nẵng và Công an tỉnh Quảng Ninh cảnh báo: lừa đặt cọc phòng nghỉ qua trang Facebook giả,
+    báo hệ thống gặp sự cố rồi đề nghị hoàn tiền). Qua màn hình được chia sẻ, chúng thu thập thông tin đăng nhập, mã xác thực, chiếm quyền kiểm soát
+    tài khoản ngân hàng và chuyển tiền trái phép; nhiều nạn nhân bị chiếm đoạt tới hàng chục triệu đồng. Biến thể trên máy tính: giả nhân viên kỹ thuật
+    của Windows, hướng dẫn tải phần mềm UltraViewer (phần mềm điều khiển thiết bị từ xa) để “kiểm tra máy tính”, rồi đánh cắp dữ liệu (Cục An toàn thông tin cảnh báo).
+  example_phrases: ["chia sẻ màn hình điện thoại", "hỗ trợ hoàn tiền nhanh chóng", "tải phần mềm UltraViewer"]
+  red_flags:
+    - Người tự xưng nhân viên ngân hàng hoặc ví điện tử đề nghị chia sẻ màn hình điện thoại để hoàn tiền
+    - Được hướng dẫn thao tác trên ứng dụng thanh toán trong lúc người kia xem màn hình
+    - Người gọi tự xưng nhân viên kỹ thuật, yêu cầu tải phần mềm điều khiển thiết bị từ xa như UltraViewer
+    - Lời mời hoàn tiền xuất hiện ngay sau khi vừa chuyển cọc mà bên kia báo sự cố
+  advice:
+    - Không chia sẻ màn hình điện thoại, không cung cấp mã OTP, mật khẩu, thông tin tài khoản ngân hàng cho bất kỳ ai
+    - Không cho người lạ điều khiển điện thoại từ xa
+    - Không cài ứng dụng hay phần mềm theo yêu cầu của người tự xưng nhân viên ngân hàng, ví điện tử, đơn vị dịch vụ hoặc kỹ thuật viên, kể cả phần mềm hợp lệ
+    - Đơn vị uy tín không yêu cầu khách hàng chia sẻ màn hình hoặc cung cấp thông tin bảo mật để nhận tiền hoàn trả
+    - Nghi tài khoản bị xâm nhập thì liên hệ ngân hàng để khóa tài khoản và trình báo công an gần nhất
+  sources:
+    - {url: "https://danang.gov.vn/vi/web/dng/w/canh-bao-thu-doan-lua-dao-hoan-tien-dich-vu-chiem-doat-tai-san-qua-chia-se-man-hinh-dien-thoai", publisher: "Cổng TTĐT TP. Đà Nẵng (Phòng Cảnh sát hình sự Công an TP. Đà Nẵng)", date: "2026-06-04"}
+    - {url: "https://congan.gialai.gov.vn/vi/news/canh-giac-canh-bao/cong-an-xa-krong-canh-bao-thu-doan-lua-dao-goi-dien-gia-danh-can-bo-cong-an-huong-dan-lam-dinh-danh-dien-tu-muc-do-2-14247.html", publisher: "Công an tỉnh Gia Lai (Công an xã Krong)", date: "2026-09-03"}
+    - {url: "https://vtv.vn/canh-giac-chieu-tro-lua-dao-hoan-tien-dich-vu-qua-chia-se-man-hinh-dien-thoai-100260719162838747.htm", publisher: "VTV (dẫn Công an tỉnh Quảng Ninh)", date: "2026-07-19", tier: media}
+    - {url: "https://vtv.vn/cong-nghe/canh-bao-lua-dao-gia-mao-dich-vu-an-ninh-va-bao-mat-cua-windows-20250110073430503.htm", publisher: "VTV (dẫn Cục An toàn thông tin)", date: "2025-01-10", tier: media}
+  verified_at: 2026-10-31
 
 - code: N5.3
   group: N5
@@ -372,7 +427,7 @@
     - Không bấm link lạ, không đọc mã xác thực cho ai
   sources:
     - {url: "https://bocongan.gov.vn/bai-viet/phu-tho-canh-giac-thu-doan-dung-kich-ban-mao-danh-zalo-nguoi-quen-de-lua-dao-1788481818", publisher: "Bộ Công an (Công an tỉnh Phú Thọ)", date: "2026-09-04"}
-    - {url: "https://cafef.vn/cong-an-canh-bao-chieu-chiem-quyen-tai-khoan-zalo-ma-nguoi-dan-can-canh-giac-188260521103656632.chn", publisher: "CafeF (dẫn cảnh báo của Công an)", tier: media}
+    - {url: "https://cafef.vn/cong-an-canh-bao-chieu-chiem-quyen-tai-khoan-zalo-ma-nguoi-dan-can-canh-giac-188260521103656632.chn", publisher: "CafeF (dẫn cảnh báo của Công an)", date: "2026-05-22", tier: media}
   verified_at: 2026-10-30
 
 - code: N6
@@ -390,9 +445,9 @@
     - Trang web hoặc fanpage giả Công an, luật sư
   advice:
     - Không trả phí trước cho bất kỳ ai hứa lấy lại tiền
-    - Chỉ trình báo trực tiếp với cơ quan công an
+    - Đến trực tiếp cơ quan công an gần nhất để trình báo, và báo ngay cho ngân hàng để chặn giao dịch
   sources:
-    - {url: "https://congan.hungyen.gov.vn/canh-bao-thu-doan-lua-dao-ho-tro-lay-lai-tien-bi-lua-dao-tren-khong-gian-mang-c235424.html", publisher: "Công an tỉnh Hưng Yên"}
+    - {url: "https://congan.hungyen.gov.vn/canh-bao-thu-doan-lua-dao-ho-tro-lay-lai-tien-bi-lua-dao-tren-khong-gian-mang-c235424.html", publisher: "Công an tỉnh Hưng Yên", date: "2026-04-23"}
     - {url: "https://congan.khanhhoa.gov.vn/vi/thu-doan-gia-mao-trang-cong-an-luat-su-thu-hoi-tien-lua-dao-de-chiem-doat-tai-san", publisher: "Công an tỉnh Khánh Hòa", date: "2025-09-15"}
-    - {url: "https://bocongan.gov.vn/bai-viet/canh-giac-voi-thu-doan-ho-tro-lay-lai-tien-bi-lua-dao-1758700973", publisher: "Bộ Công an (Công an tỉnh Lâm Đồng)"}
+    - {url: "https://bocongan.gov.vn/bai-viet/canh-giac-voi-thu-doan-ho-tro-lay-lai-tien-bi-lua-dao-1758700973", publisher: "Bộ Công an (Công an tỉnh Lâm Đồng)", date: "2025-09-24"}
   verified_at: 2026-10-30

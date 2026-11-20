@@ -578,7 +578,10 @@ class WebhookHandlerTest {
     }
 
     private WebhookHandler handlerWithBuffer(
-            InMemoryBufferStore buffer, SqsClient sqs, InMemoryAlertStore alerts) {
+            InMemoryBufferStore buffer,
+            SqsClient sqs,
+            InMemoryAlertStore alerts) {
+
         return new WebhookHandler(
                 fakeTelegram,
                 sqs,
@@ -587,10 +590,17 @@ class WebhookHandlerTest {
                 fakeUserRepo,
                 fakeAuditRepo,
                 fakeRateLimitRepo,
+                null,               // GuardianRepo
+                null,               // InviteRepo
                 POLICY_SHA256,
-                null,
-                buffer,
-                alerts);
+                null,               // DynamoStoreService dedup
+                false,              // localDevelopment
+                null,               // botUsername
+                null,               // CheckStore
+                null,               // SessionStore
+                buffer,             // BufferStore
+                null                // DonationStore
+        );
     }
 
     private static String ackCallback(long updateId, long fromId, String alertId) {
@@ -679,6 +689,10 @@ class WebhookHandlerTest {
         @Override
         public boolean finish(String chatId, long seq) {
             return true;
+        }
+
+        @Override
+        public void delete(String chatId) {
         }
     }
 

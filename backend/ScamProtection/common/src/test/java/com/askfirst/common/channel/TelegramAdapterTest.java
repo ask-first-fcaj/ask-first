@@ -353,4 +353,155 @@ class TelegramAdapterTest {
             """;
         assertThat(adapter.parseUpdate(mapper.readTree(forwardFromGroup)).get().forwardOrigin()).isEqualTo("chat");
     }
+
+    @Test
+    @DisplayName("BE-35: Detects .apk file by extension as kind='apk'")
+    void testApkDocumentExtension() throws Exception {
+        String apkUpdate = """
+            {
+              "update_id": 9001,
+              "message": {
+                "message_id": 701,
+                "from": { "id": 111111, "is_bot": false },
+                "chat": { "id": 222222, "type": "private" },
+                "date": 1729000000,
+                "document": {
+                  "file_id": "apk_file_1",
+                  "file_unique_id": "u_apk_1",
+                  "file_name": "DichVuCong_Fake.apk",
+                  "mime_type": "application/octet-stream",
+                  "file_size": 15000000
+                }
+              }
+            }
+            """;
+        InboundMessage msg = adapter.parseUpdate(mapper.readTree(apkUpdate)).orElseThrow();
+        assertThat(msg.kind()).isEqualTo("apk");
+        assertThat(msg.media()).isNotNull();
+        assertThat(msg.media().fileName()).isEqualTo("DichVuCong_Fake.apk");
+
+        // Biến thể bundle Android (.xapk, .aab)
+        String xapkUpdate = apkUpdate.replace("DichVuCong_Fake.apk", "DichVuCong_Fake.XAPK");
+        assertThat(adapter.parseUpdate(mapper.readTree(xapkUpdate)).orElseThrow().kind()).isEqualTo("apk");
+    }
+
+    @Test
+    @DisplayName("BE-35: Detects .apk file by MIME application/vnd.android.package-archive as kind='apk'")
+    void testApkDocumentMime() throws Exception {
+        String apkUpdate = """
+            {
+              "update_id": 9002,
+              "message": {
+                "message_id": 702,
+                "from": { "id": 111111, "is_bot": false },
+                "chat": { "id": 222222, "type": "private" },
+                "date": 1729000000,
+                "document": {
+                  "file_id": "apk_file_2",
+                  "file_unique_id": "u_apk_2",
+                  "file_name": "app_update",
+                  "mime_type": "application/vnd.android.package-archive",
+                  "file_size": 12000000
+                }
+              }
+            }
+            """;
+        InboundMessage msg = adapter.parseUpdate(mapper.readTree(apkUpdate)).orElseThrow();
+        assertThat(msg.kind()).isEqualTo("apk");
+    }
+
+    @Test
+    @DisplayName("BE-35: Document with image MIME or image extension is mapped to kind='photo'")
+    void testImageDocumentMappedToPhoto() throws Exception {
+        String imgMimeDoc = """
+            {
+              "update_id": 9003,
+              "message": {
+                "message_id": 703,
+                "from": { "id": 111111, "is_bot": false },
+                "chat": { "id": 222222, "type": "private" },
+                "date": 1729000000,
+                "document": {
+                  "file_id": "img_doc_1",
+                  "file_unique_id": "u_img_1",
+                  "file_name": "uncompressed_evidence.png",
+                  "mime_type": "image/png",
+                  "file_size": 2500000
+                }
+              }
+            }
+            """;
+        InboundMessage msg1 = adapter.parseUpdate(mapper.readTree(imgMimeDoc)).orElseThrow();
+        assertThat(msg1.kind()).isEqualTo("photo");
+
+        String imgExtDoc = """
+            {
+              "update_id": 9004,
+              "message": {
+                "message_id": 704,
+                "from": { "id": 111111, "is_bot": false },
+                "chat": { "id": 222222, "type": "private" },
+                "date": 1729000000,
+                "document": {
+                  "file_id": "img_doc_2",
+                  "file_unique_id": "u_img_2",
+                  "file_name": "chup_man_hinh.JPG",
+                  "mime_type": "application/octet-stream",
+                  "file_size": 1800000
+                }
+              }
+            }
+            """;
+        InboundMessage msg2 = adapter.parseUpdate(mapper.readTree(imgExtDoc)).orElseThrow();
+        assertThat(msg2.kind()).isEqualTo("photo");
+    }
+
+    @Test
+    @DisplayName("BE-35: Detects video, location, contact, animation as kind='unsupported_media'")
+    void testUnsupportedMediaTypes() throws Exception {
+        String videoUpdate = """
+            {
+              "update_id": 9005,
+              "message": {
+                "message_id": 705,
+                "from": { "id": 111111, "is_bot": false },
+                "chat": { "id": 222222, "type": "private" },
+                "date": 1729000000,
+                "video": { "file_id": "v1", "file_unique_id": "uv1", "duration": 15 }
+              }
+            }
+            """;
+        InboundMessage msg1 = adapter.parseUpdate(mapper.readTree(videoUpdate)).orElseThrow();
+        assertThat(msg1.kind()).isEqualTo("unsupported_media");
+
+        String locUpdate = """
+            {
+              "update_id": 9006,
+              "message": {
+                "message_id": 706,
+                "from": { "id": 111111, "is_bot": false },
+                "chat": { "id": 222222, "type": "private" },
+                "date": 1729000000,
+                "location": { "latitude": 21.0285, "longitude": 105.8542 }
+              }
+            }
+            """;
+        InboundMessage msg2 = adapter.parseUpdate(mapper.readTree(locUpdate)).orElseThrow();
+        assertThat(msg2.kind()).isEqualTo("unsupported_media");
+
+        String contactUpdate = """
+            {
+              "update_id": 9007,
+              "message": {
+                "message_id": 707,
+                "from": { "id": 111111, "is_bot": false },
+                "chat": { "id": 222222, "type": "private" },
+                "date": 1729000000,
+                "contact": { "phone_number": "0912345678", "first_name": "Test" }
+              }
+            }
+            """;
+        InboundMessage msg3 = adapter.parseUpdate(mapper.readTree(contactUpdate)).orElseThrow();
+        assertThat(msg3.kind()).isEqualTo("unsupported_media");
+    }
 }

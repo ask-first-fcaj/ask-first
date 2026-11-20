@@ -23,6 +23,8 @@ import com.askfirst.common.store.AlertStore;
 import com.askfirst.common.store.BufferStore;
 import com.askfirst.common.store.CheckRecord;
 import com.askfirst.common.store.CheckStore;
+import com.askfirst.common.store.SessionRecord;
+import com.askfirst.common.store.SessionStore;
 import com.askfirst.worker.GuardianDirectory.Elder;
 import com.askfirst.worker.GuardianDirectory.Guardian;
 import com.askfirst.worker.TelegramGateway.Btn;
@@ -34,7 +36,9 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -73,11 +77,20 @@ public final class AnalyzeProcessor {
     private final Clock clock;
     private final Supplier<String> idGenerator;
     private final Consumer<String> log;
+    private final SessionStore sessions;
 
     public AnalyzeProcessor(BufferStore buffer, FlagsCache flags, CheckStore checks, AlertStore alerts,
                             AlertLockStore locks, GuardianDirectory directory, AiClient ai,
                             TelegramGateway telegram, JobQueue queue, Clock clock,
                             Supplier<String> idGenerator, Consumer<String> log) {
+        this(buffer, flags, checks, alerts, locks, directory, ai, telegram, queue, clock, idGenerator, log, null);
+    }
+
+    public AnalyzeProcessor(BufferStore buffer, FlagsCache flags, CheckStore checks, AlertStore alerts,
+                            AlertLockStore locks, GuardianDirectory directory, AiClient ai,
+                            TelegramGateway telegram, JobQueue queue, Clock clock,
+                            Supplier<String> idGenerator, Consumer<String> log,
+                            SessionStore sessions) {
         this.buffer = buffer;
         this.flags = flags;
         this.checks = checks;
@@ -90,6 +103,7 @@ public final class AnalyzeProcessor {
         this.clock = clock;
         this.idGenerator = idGenerator;
         this.log = log;
+        this.sessions = sessions;
     }
 
     private record Out(String html, List<List<Btn>> buttons, boolean silent) {
@@ -140,14 +154,14 @@ public final class AnalyzeProcessor {
             if (e.isRetryable()) {
                 throw e;
             }
-            return degrade(job, s, elder, items, e.code());
+            return degrade(job, s, elder, items, e.code(), AlertOutcome.none());
         }
         Verdict verdict = result.verdict();
 
         List<Guardian> active = directory.activeGuardians(uid);
         AlertOutcome alertOutcome = verdict.shouldAlert()
                 ? alertGuardians(job, verdict, elder, active)
-                : AlertOutcome.none();
+                : recoverDeliveredAlerts(checkId, active);
 
         ReplyPlan plan;
         try {
@@ -161,19 +175,28 @@ public final class AnalyzeProcessor {
             if (e.isRetryable()) {
                 throw e;
             }
-            return degrade(job, s, elder, items, e.code());
+            return degrade(job, s, elder, items, e.code(), alertOutcome);
         }
 
         List<Out> messages = new ArrayList<>();
         for (OutMessage m : plan.messages()) {
             messages.add(new Out(m.textHtml(), ButtonMapper.map(m.buttons(), checkId, null), m.silent()));
         }
+        // Ghi session TRƯỚC khi trả lời và ghi CHECK#: lỗi ở đây được SQS retry an toàn. Nếu để sau CHECK#, lần retry
+        // thấy "đã xong" nên bỏ qua và session mất vĩnh viễn (nút đóng góp báo "phiên hết hạn").
+        if (sessions != null && verdict.maskedText() != null && !verdict.maskedText().isBlank()) {
+            sessions.put(new SessionRecord(
+                    chat,
+                    checkId,
+                    uid,
+                    verdict.maskedText(),
+                    verdict.followupQuestion(),
+                    1,
+                    clock.instant().getEpochSecond() + 30 * 60L));
+        }
         deliver(chat, s.placeholderId(), messages);
 
-        if (!alertOutcome.deliveredIds().isEmpty()) {
-            queue.enqueue(FollowupJob.create(idGenerator.get(), chat, uid, checkId,
-                    alertOutcome.deliveredIds(), clock.instant()), FollowupJob.DELAY_SECONDS);
-        }
+        enqueueFollowup(job, alertOutcome.deliveredIds());
         checks.put(new CheckRecord(checkId, uid, verdict.outcome(), verdict.level(), verdict.score(),
                 verdict.group(), verdict.scenario(),
                 verdict.path(),
@@ -192,10 +215,19 @@ public final class AnalyzeProcessor {
     /** SQS đã giao đủ số lần mà vẫn lỗi: báo "bận" để người cao tuổi không phải chờ mãi ở tin "⏳". Best-effort. */
     public void notifyGaveUp(AnalyzeJob job) {
         try {
+            // Đã có CHECK# nghĩa là người cao tuổi đã nhận kết quả thật (job chỉ lỗi ở bước dọn dẹp): không được đè
+            // kết luận cảnh báo lừa đảo bằng tin "đang bận".
+            if (checks.exists(job.userId(), job.jobId())) {
+                buffer.finish(job.chatId(), job.seq());
+                log.accept("analyze job=" + job.jobId() + " give_up_skip=already_done");
+                return;
+            }
             Integer placeholder = buffer.state(job.chatId()).map(BufferStore.State::placeholderId).orElse(null);
             Elder elder = directory.elder(job.userId()).orElse(new Elder("Bác", false));
             Out msg = new Out(WorkerMessages.busy(elder.addressForm()), List.of(), false);
             deliver(job.chatId(), placeholder, List.of(msg));
+            // Đóng cụm tin để tin gửi lại sau đó không bị gộp với nội dung của job đã bỏ cuộc
+            buffer.finish(job.chatId(), job.seq());
         } catch (RuntimeException e) {
             log.accept("analyze job=" + job.jobId() + " give_up_notice_failed");
         }
@@ -203,16 +235,65 @@ public final class AnalyzeProcessor {
 
     // ---------- ai lỗi chắc chắn lặp lại ----------
 
-    private Result degrade(AnalyzeJob job, BufferStore.State s, Elder elder, List<InboundMessage> items, String code) {
+    private Result degrade(AnalyzeJob job, BufferStore.State s, Elder elder, List<InboundMessage> items, String code,
+                           AlertOutcome alerted) {
         deliver(job.chatId(), s.placeholderId(),
                 List.of(new Out(WorkerMessages.degraded(elder.addressForm()), List.of(), false)));
+        // Người thân có thể đã nhận cảnh báo trước khi render lỗi: vẫn phải nhắc lại và ghi alerted=true
+        enqueueFollowup(job, alerted.deliveredIds());
         checks.put(new CheckRecord(job.jobId(), job.userId(), "degraded", "UNSURE", 0, "OTHER", "OTHER",
                 "none", List.of(), List.of(),
                 items.stream().map(InboundMessage::kind).distinct().toList(),
-                false, clock.instant().toString(), clock.instant().getEpochSecond() + RECORD_TTL_SECONDS));
+                !alerted.deliveredIds().isEmpty(), clock.instant().toString(),
+                clock.instant().getEpochSecond() + RECORD_TTL_SECONDS));
         buffer.finish(job.chatId(), job.seq());
         log.accept("analyze job=" + job.jobId() + " degraded code=" + code);
         return Result.DEGRADED;
+    }
+
+    /**
+     * Tạo job nhắc lại sau 15 phút. Nhắc lại chỉ là phụ so với việc người cao tuổi đã nhận kết quả: lỗi SQS ở đây
+     * không được làm cả job lỗi (SQS giao lại sẽ gửi lại kết quả và đè tin ở lần giao thứ 5), nên thử 2 lần rồi ghi log.
+     */
+    private void enqueueFollowup(AnalyzeJob job, List<String> deliveredAlertIds) {
+        if (deliveredAlertIds.isEmpty()) {
+            return;
+        }
+        FollowupJob followup = FollowupJob.create(idGenerator.get(), job.chatId(), job.userId(), job.jobId(),
+                deliveredAlertIds, clock.instant());
+        for (int attempt = 1; ; attempt++) {
+            try {
+                queue.enqueue(followup, FollowupJob.DELAY_SECONDS);
+                return;
+            } catch (RuntimeException e) {
+                if (attempt >= 2) {
+                    log.accept("analyze job=" + job.jobId() + " followup_enqueue_failed");
+                    return;
+                }
+            }
+        }
+    }
+
+    /**
+     * Retry sau khi lần chạy trước ĐÃ báo người thân, nhưng lần phân tích này (LLM không tất định) ra shouldAlert=false:
+     * vẫn phải tính các alert đã gửi để câu trả lời và followup khớp với việc người thân đã nhận cảnh báo.
+     */
+    private AlertOutcome recoverDeliveredAlerts(String checkId, List<Guardian> active) {
+        List<AlertResult> results = new ArrayList<>();
+        List<String> delivered = new ArrayList<>();
+        for (Guardian g : active) {
+            Optional<AlertRecord> rec = alerts.get(alertId(checkId, g.uid()));
+            if (rec.isPresent() && rec.get().delivered()) {
+                results.add(new AlertResult(guardianName(rec.get()), "sent"));
+                delivered.add(rec.get().alertId());
+            }
+        }
+        return delivered.isEmpty() ? AlertOutcome.none() : new AlertOutcome(results, delivered);
+    }
+
+    private static String guardianName(AlertRecord r) {
+        return r.guardianName() == null || r.guardianName().isBlank()
+                ? WorkerMessages.GUARDIAN_FALLBACK_NAME : r.guardianName();
     }
 
     // ---------- báo người thân ----------
@@ -239,6 +320,7 @@ public final class AnalyzeProcessor {
 
         List<AlertRecord> toSend = records.stream().filter(r -> AlertRecord.PENDING.equals(r.status())).toList();
         boolean[] transientFailure = {false};
+        Set<String> deliveredLocally = ConcurrentHashMap.newKeySet();
         if (!toSend.isEmpty()) {
             List<GuardianAlertContext> contexts = new ArrayList<>();
             for (AlertRecord r : toSend) {
@@ -256,7 +338,7 @@ public final class AnalyzeProcessor {
                 toSend.forEach(r -> alerts.markFailed(r.alertId()));
             }
             if (outs != null) {
-                sendAll(toSend, outs, checkId, transientFailure);
+                sendAll(toSend, outs, checkId, transientFailure, deliveredLocally);
             }
         }
         if (transientFailure[0]) {
@@ -267,11 +349,9 @@ public final class AnalyzeProcessor {
         List<String> delivered = new ArrayList<>();
         for (AlertRecord r : records) {
             AlertRecord current = alerts.get(r.alertId()).orElse(r);
-            boolean ok = current.delivered();
-            results.add(new AlertResult(
-                    current.guardianName() == null || current.guardianName().isBlank()
-                            ? WorkerMessages.GUARDIAN_FALLBACK_NAME : current.guardianName(),
-                    ok ? "sent" : "failed"));
+            // Telegram đã trả message_id mà markSent lỗi: tin đã tới người thân nên vẫn tính là đã gửi
+            boolean ok = current.delivered() || deliveredLocally.contains(current.alertId());
+            results.add(new AlertResult(guardianName(current), ok ? "sent" : "failed"));
             if (ok) {
                 delivered.add(current.alertId());
             }
@@ -280,7 +360,8 @@ public final class AnalyzeProcessor {
     }
 
     /** Gửi song song cho các người thân. "sent" chỉ khi Telegram trả message_id. */
-    private void sendAll(List<AlertRecord> toSend, List<OutMessage> outs, String checkId, boolean[] transientFailure) {
+    private void sendAll(List<AlertRecord> toSend, List<OutMessage> outs, String checkId, boolean[] transientFailure,
+                         Set<String> deliveredLocally) {
         try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
             List<CompletableFuture<Void>> futures = new ArrayList<>();
             for (int i = 0; i < toSend.size(); i++) {
@@ -290,7 +371,8 @@ public final class AnalyzeProcessor {
                     try {
                         int messageId = telegram.send(r.guardianChatId(), out.textHtml(),
                                 ButtonMapper.map(out.buttons(), checkId, r.alertId()), out.silent());
-                        alerts.markSent(r.alertId(), messageId);
+                        deliveredLocally.add(r.alertId());
+                        markSentWithRetry(r.alertId(), messageId, checkId);
                     } catch (SendException e) {
                         if (e.permanent()) {
                             alerts.markFailed(r.alertId());
@@ -305,6 +387,24 @@ public final class AnalyzeProcessor {
                 }, pool));
             }
             futures.forEach(CompletableFuture::join);
+        }
+    }
+
+    /**
+     * Tin đã tới người thân rồi, nên lỗi ghi trạng thái không được ném ra: nếu ném, job bị giao lại, alert vẫn
+     * "pending" và người thân nhận cảnh báo lần thứ hai. Thử lại một lần, vẫn lỗi thì chỉ ghi log.
+     */
+    private void markSentWithRetry(String alertId, int messageId, String checkId) {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                alerts.markSent(alertId, messageId);
+                return;
+            } catch (RuntimeException e) {
+                if (attempt >= 2) {
+                    log.accept("analyze job=" + checkId + " alert_mark_sent_failed");
+                    return;
+                }
+            }
         }
     }
 
@@ -353,11 +453,33 @@ public final class AnalyzeProcessor {
         try {
             telegram.send(chat, m.html(), m.buttons(), m.silent());
         } catch (SendException e) {
-            if (e.permanent()) {
-                log.accept("elder_send_permanent status=" + e.status());   // bị chặn bot: retry vô ích
+            if (!e.permanent()) {
+                throw new RetryableFailure("telegram_send");
+            }
+            if (e.status() == 400) {
+                // 400 thường là Telegram không parse được HTML của chính tin này (không phải bị chặn bot). Nếu bỏ qua
+                // thì người cao tuổi không nhận được cảnh báo nào, nên thử lại một lần với bản đã bỏ thẻ HTML.
+                sendPlainToElder(chat, m);
                 return;
             }
-            throw new RetryableFailure("telegram_send");
+            log.accept("elder_send_permanent status=" + e.status());   // bị chặn bot: retry vô ích
         }
+    }
+
+    private void sendPlainToElder(String chat, Out m) {
+        try {
+            telegram.send(chat, stripTags(m.html()), m.buttons(), m.silent());
+            log.accept("elder_send_plain_fallback");
+        } catch (SendException e) {
+            if (!e.permanent()) {
+                throw new RetryableFailure("telegram_send");
+            }
+            log.accept("elder_send_permanent status=" + e.status());
+        }
+    }
+
+    /** Bỏ thẻ HTML, giữ nguyên entity (&lt; &amp;...) vì gửi vẫn dùng parse_mode=HTML nên entity vẫn được giải mã. */
+    static String stripTags(String html) {
+        return html == null ? "" : html.replaceAll("<[^>]*>", "");
     }
 }

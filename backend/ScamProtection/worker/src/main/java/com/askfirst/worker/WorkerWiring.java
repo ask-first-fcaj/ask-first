@@ -7,6 +7,7 @@ import com.askfirst.common.store.DynamoAlertStore;
 import com.askfirst.common.store.DynamoBufferStore;
 import com.askfirst.common.store.DynamoCheckStore;
 import com.askfirst.common.store.DynamoFlagsStore;
+import com.askfirst.common.store.DynamoSessionStore;
 import com.askfirst.common.store.GuardianRepo;
 import com.askfirst.common.store.UserRepo;
 import com.askfirst.common.Ulid;
@@ -53,7 +54,8 @@ final class WorkerWiring {
                 new SqsJobQueue(SqsClient.create(), System.getenv("WEBHOOK_QUEUE_URL")),
                 clock,
                 Ulid::next,
-                log);
+                log,
+                new DynamoSessionStore(dynamo, table));
         FollowupProcessor followup = new FollowupProcessor(alerts, directory, telegram, clock, log);
         return new WorkerRunner(analyze, followup, log);
     }

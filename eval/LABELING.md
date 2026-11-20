@@ -191,7 +191,7 @@ Lý do: báo giao hàng thật, không đòi phí, không link.
 
 Nguồn:
 - `N5.4`: https://cafef.vn/cong-an-canh-bao-chieu-chiem-quyen-tai-khoan-zalo-ma-nguoi-dan-can-canh-giac-188260521103656632.chn (Công an cảnh báo chiếm tài khoản Zalo nhắn tin vay tiền).
-- `N5.2`: research-concept §2.2 (dòng N5.2) và ARCH §6.4 luật `R_SCREEN_SHARE`; mẫu team tự dựng, chưa có bài nguồn đúng câu chữ.
+- `N5.2`: research-concept §2.2 (dòng N5.2) và ARCH §6.4 luật `R_SCREEN_SHARE`; mẫu team tự dựng. Bài nguồn cho thủ đoạn (thẻ `N5.2` trong `kb/scenarios.yaml`): khuyến cáo của Phòng CSHS Công an TP. Đà Nẵng trên danang.gov.vn (04/06/2026), dụ "chia sẻ màn hình điện thoại" để hoàn tiền; UltraViewer chỉ có qua báo VTV dẫn Cục An toàn thông tin. Mẫu có yêu cầu chia sẻ màn hình hoặc cài phần mềm điều khiển từ xa thì gán `N5.2`, kể cả khi mở đầu bằng chuyện đặt cọc hay hoàn tiền.
 
 **Dễ nhầm → `N1.4` (không phải `N5.1`)**
 > `BHXH Viet Nam: So BHXH cua ong/ba chua dong bo voi CCCD gan chip. Tai ung dung VssID ban cap nhat tai bhxh-capnhat[.]top de tiep tuc huong che do.`
@@ -254,7 +254,7 @@ Checklist SH-02:
 - [x] Mã kịch bản thống nhất với research-concept §2.2, plan §3.8 và KB (AI-25).
 - [x] Giải thích cách gán `min_level`/`max_level`, `risky_actions`, `must_signals`, `provenance` (mục 10).
 - [x] AI1 duyệt 3 mã mới (`N1.6`, `N2.3`, `N5.4`), phần nới `N3.3` và `N1.6` (30/10/2026).
-- [ ] Bổ sung bài nguồn riêng cho mẫu minh họa N4, `N5.2`, N6 và phần hoàn tiền/bồi thường của `N1.6` (AI-25).
+- [ ] Bổ sung bài nguồn riêng cho mẫu minh họa N4, N6 và phần hoàn tiền/bồi thường của `N1.6` (AI-25). `N5.2` đã có bài nguồn cho thủ đoạn (31/10/2026), câu mẫu vẫn do team dựng.
 
 ---
 

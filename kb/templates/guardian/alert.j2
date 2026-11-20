@@ -1,0 +1,16 @@
+{#- Cảnh báo người thân (ARCH §5.5), nội dung theo share_level 1/2/3. Bản nháp, câu chữ chốt theo SH-08.
+    Không gửi ảnh, voice, số điện thoại hay số tài khoản đầy đủ. `elder`, `summary` đã qua filter `untrusted`. -#}
+⚠️ <b>{{ elder }}</b> vừa hỏi Bot về một tin có nguy cơ lừa đảo (mức <b>{{ level_vn }}</b>) lúc {{ at }}. Hãy gọi cho {{ elder }} ngay.
+{% if share_level >= 2 and (scenario_title or signals) %}
+
+{% if scenario_title %}
+Kịch bản: {{ scenario_title }}.
+{% endif %}
+{% for s in signals %}
+• {{ s }}
+{% endfor %}
+{% endif %}
+{% if share_level >= 3 and summary %}
+
+Tóm tắt (đã che số): {{ summary }}
+{% endif %}

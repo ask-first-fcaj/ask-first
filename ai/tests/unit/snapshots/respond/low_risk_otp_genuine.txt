@@ -1,0 +1,5 @@
+--- message 0 (silent=False) [report_wrong: 👎 Bot báo sai]
+⚪ <b>TIN OTP THẬT</b>
+Đây là tin OTP thật từ ngân hàng. Mã này <b>chỉ để bác tự nhập</b>. Ai hỏi mã này, kể cả người xưng là nhân viên ngân hàng, đều là lừa đảo.
+
+ℹ️ Bot là công cụ hỗ trợ của nhóm sinh viên, có thể sai. Bot không bao giờ xin OTP, mật khẩu hay tiền.

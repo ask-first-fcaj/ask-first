@@ -121,6 +121,13 @@ final class Fakes {
         synchronized boolean exists(String chatId) {
             return meta.containsKey(chatId);
         }
+
+        @Override
+        public synchronized void delete(String chatId) {
+            meta.remove(chatId);
+            placeholder.remove(chatId);
+            msgs.remove(chatId);
+        }
     }
 
     static final class MemFlags implements FlagsStore {
@@ -145,6 +152,15 @@ final class Fakes {
         @Override
         public void put(CheckRecord record) {
             records.putIfAbsent(record.userId() + "/" + record.checkId(), record);
+        }
+
+        @Override
+        public void updateFeedback(String userId, String checkId, String feedback) {
+            records.computeIfPresent(userId + "/" + checkId, (k, old) -> new CheckRecord(
+                    old.checkId(), old.userId(), old.outcome(), old.level(), old.score(),
+                    old.group(), old.scenario(), old.path(), old.signalCodes(),
+                    old.riskyActions(), old.inputKinds(), old.alerted(), feedback,
+                    old.createdAt(), old.ttlEpochSeconds()));
         }
 
         CheckRecord get(String userId, String checkId) {

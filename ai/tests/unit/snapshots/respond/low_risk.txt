@@ -1,0 +1,5 @@
+--- message 0 (silent=False) [report_wrong: 👎 Bot báo sai]
+⚪ <b>CHƯA THẤY DẤU HIỆU LỪA ĐẢO RÕ RÀNG</b>
+Bot chưa thấy dấu hiệu lừa đảo rõ ràng. Nhưng nếu ai bảo chuyển tiền, đọc OTP hay giữ bí mật thì chú hãy dừng lại.
+
+ℹ️ Bot là công cụ hỗ trợ của nhóm sinh viên, có thể sai. Bot không bao giờ xin OTP, mật khẩu hay tiền.

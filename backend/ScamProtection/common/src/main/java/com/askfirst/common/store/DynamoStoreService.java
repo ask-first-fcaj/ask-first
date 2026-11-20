@@ -8,9 +8,11 @@ import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.enhanced.dynamodb.model.PutItemEnhancedRequest;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeDefinition;
+import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.BillingMode;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
 import software.amazon.awssdk.services.dynamodb.model.CreateTableRequest;
+import software.amazon.awssdk.services.dynamodb.model.DeleteItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.DescribeTableRequest;
 import software.amazon.awssdk.services.dynamodb.model.DescribeTimeToLiveRequest;
 import software.amazon.awssdk.services.dynamodb.model.GlobalSecondaryIndex;
@@ -18,6 +20,8 @@ import software.amazon.awssdk.services.dynamodb.model.KeySchemaElement;
 import software.amazon.awssdk.services.dynamodb.model.KeyType;
 import software.amazon.awssdk.services.dynamodb.model.Projection;
 import software.amazon.awssdk.services.dynamodb.model.ProjectionType;
+import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
+import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
 import software.amazon.awssdk.services.dynamodb.model.ResourceInUseException;
 import software.amazon.awssdk.services.dynamodb.model.ResourceNotFoundException;
 import software.amazon.awssdk.services.dynamodb.model.ScalarAttributeType;
@@ -26,19 +30,24 @@ import software.amazon.awssdk.services.dynamodb.model.TimeToLiveStatus;
 import software.amazon.awssdk.services.dynamodb.model.UpdateTimeToLiveRequest;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 
 /**
- * Service demonstrating DynamoDB Enhanced Client operations for single-table design (BE-14, ARCH §7).
+ * Service demonstrating DynamoDB Enhanced Client operations for single-table
+ * design (BE-14, ARCH §7).
  * Implements atomic conditional write for deduplication (BE-22).
  *
- * Schema khớp infra/template.yaml: PK/SK (hoa), GSI1 (GSI1PK/GSI1SK), TTL trên attr "ttl".
+ * Schema khớp infra/template.yaml: PK/SK (hoa), GSI1 (GSI1PK/GSI1SK), TTL trên
+ * attr "ttl".
  */
 public class DynamoStoreService {
 
     /**
-     * Chỉ dùng cho local/test. Môi trường chạy thật (Lambda) phải truyền tên bảng từ biến môi trường
-     * DYNAMODB_TABLE_NAME (xem WebhookHandler). Giá trị theo quy ước askfirst-&lt;stage&gt; của template.
+     * Chỉ dùng cho local/test. Môi trường chạy thật (Lambda) phải truyền tên bảng
+     * từ biến môi trường
+     * DYNAMODB_TABLE_NAME (xem WebhookHandler). Giá trị theo quy ước
+     * askfirst-&lt;stage&gt; của template.
      */
     public static final String DEFAULT_TABLE_NAME = "askfirst-dev";
 
@@ -60,8 +69,11 @@ public class DynamoStoreService {
         this.enhancedClient = enhancedClient;
         this.standardClient = standardClient;
         this.tableName = (tableName != null && !tableName.isBlank()) ? tableName : DEFAULT_TABLE_NAME;
-        // enhancedClient == null chỉ xảy ra trong test (bản giả ghi đè tryAcquireDedup/deleteDedup)
+
+        // enhancedClient == null chỉ xảy ra trong test (bản giả ghi đè
+        // tryAcquireDedup/deleteDedup)
         this.dedupTable = enhancedClient != null ? enhancedClient.table(this.tableName, DEDUP_SCHEMA) : null;
+
     }
 
     public static DynamoStoreService create(DynamoDbClient client, String tableName) {
@@ -80,10 +92,12 @@ public class DynamoStoreService {
     }
 
     /**
-     * Creates the single-table DynamoDB table if it does not already exist, then makes sure TTL is enabled.
+     * Creates the single-table DynamoDB table if it does not already exist, then
+     * makes sure TTL is enabled.
      * Schema (ARCH §7, BE-24):
      * - PK (String, HASH), SK (String, RANGE)
-     * - GSI1: GSI1PK (HASH), GSI1SK (RANGE), projection ALL (vd. WARD_OF#&lt;guardian&gt; -> USER#&lt;elder&gt;)
+     * - GSI1: GSI1PK (HASH), GSI1SK (RANGE), projection ALL (vd.
+     * WARD_OF#&lt;guardian&gt; -> USER#&lt;elder&gt;)
      * - TTL attribute: ttl
      * - BillingMode: PAY_PER_REQUEST
      */
@@ -98,22 +112,18 @@ public class DynamoStoreService {
                             attributeDefinition(ATTR_PK),
                             attributeDefinition(ATTR_SK),
                             attributeDefinition(ATTR_GSI1_PK),
-                            attributeDefinition(ATTR_GSI1_SK)
-                    )
+                            attributeDefinition(ATTR_GSI1_SK))
                     .keySchema(
                             keySchemaElement(ATTR_PK, KeyType.HASH),
-                            keySchemaElement(ATTR_SK, KeyType.RANGE)
-                    )
+                            keySchemaElement(ATTR_SK, KeyType.RANGE))
                     .globalSecondaryIndexes(
                             GlobalSecondaryIndex.builder()
                                     .indexName(GSI1_NAME)
                                     .keySchema(
                                             keySchemaElement(ATTR_GSI1_PK, KeyType.HASH),
-                                            keySchemaElement(ATTR_GSI1_SK, KeyType.RANGE)
-                                    )
+                                            keySchemaElement(ATTR_GSI1_SK, KeyType.RANGE))
                                     .projection(Projection.builder().projectionType(ProjectionType.ALL).build())
-                                    .build()
-                    )
+                                    .build())
                     .build();
 
             try {
@@ -163,17 +173,17 @@ public class DynamoStoreService {
      * Atomically tries to acquire a dedup lock using conditional write.
      * Condition: attribute_not_exists(PK).
      *
-     * @param updateId Telegram update_id
+     * @param updateId        Telegram update_id
      * @param ttlEpochSeconds TTL epoch seconds (e.g. now + 86400 for 24h)
-     * @return true if write succeeded (first time seen), false if already exists (duplicate!)
+     * @return true if write succeeded (first time seen), false if already exists
+     *         (duplicate!)
      */
     public boolean tryAcquireDedup(String updateId, long ttlEpochSeconds) {
         DedupRecord record = new DedupRecord(
                 updateId,
                 ttlEpochSeconds,
                 Instant.now().toString(),
-                "PROCESSED"
-        );
+                "PROCESSED");
 
         // Tên attribute phân biệt hoa/thường: phải là PK (không phải pk)
         Expression condition = Expression.builder()
@@ -217,5 +227,88 @@ public class DynamoStoreService {
                 .build();
 
         dedupTable.deleteItem(key);
+    }
+
+    /**
+     * BE-31: Quét và xoá sạch toàn bộ dữ liệu DynamoDB liên quan đến người dùng:
+     * - Mọi item có PK=USER#<uid> (USER#, GUARDIAN#, CHECK#, ALERT#, v.v.)
+     * - Phiên chat SESSION#<chatId>
+     * - Bộ đệm BUFFER#<chatId>
+     */
+    public void purgeUserData(String userId, String chatId) {
+        if (standardClient == null || userId == null || userId.isBlank()) {
+            return;
+        }
+        String pk = userId.startsWith("USER#") ? userId : "USER#" + userId;
+
+        // 1. Quét và xoá mọi item dưới PK=USER#<uid>
+        try {
+            Map<String, AttributeValue> startKey = null;
+            do {
+                QueryRequest.Builder qb = QueryRequest.builder()
+                        .tableName(tableName)
+                        .keyConditionExpression(ATTR_PK + " = :pk")
+                        .expressionAttributeValues(Map.of(":pk", AttributeValue.builder().s(pk).build()))
+                        .projectionExpression(ATTR_PK + ", " + ATTR_SK);
+                if (startKey != null) {
+                    qb.exclusiveStartKey(startKey);
+                }
+                QueryResponse res = standardClient.query(qb.build());
+                for (Map<String, AttributeValue> item : res.items()) {
+                    standardClient.deleteItem(DeleteItemRequest.builder()
+                            .tableName(tableName)
+                            .key(Map.of(
+                                    ATTR_PK, item.get(ATTR_PK),
+                                    ATTR_SK, item.get(ATTR_SK)))
+                            .build());
+                }
+                startKey = res.hasLastEvaluatedKey() && !res.lastEvaluatedKey().isEmpty() ? res.lastEvaluatedKey() : null;
+            } while (startKey != null);
+        } catch (Exception e) {
+            throw new RuntimeException("Lỗi xoá dữ liệu USER# trong DynamoDB: " + e.getMessage(), e);
+        }
+
+        // 2. Xoá SESSION#<chatId>
+        if (chatId != null && !chatId.isBlank()) {
+            String sessionPk = chatId.startsWith("SESSION#") ? chatId : "SESSION#" + chatId;
+            try {
+                standardClient.deleteItem(DeleteItemRequest.builder()
+                        .tableName(tableName)
+                        .key(Map.of(
+                                ATTR_PK, AttributeValue.builder().s(sessionPk).build(),
+                                ATTR_SK, AttributeValue.builder().s("META").build()))
+                        .build());
+            } catch (Exception e) {
+                throw new RuntimeException("Lỗi xoá SESSION# trong DynamoDB: " + e.getMessage(), e);
+            }
+
+            // 3. Xoá BUFFER#<chatId>
+            String bufferPk = chatId.startsWith("BUFFER#") ? chatId : "BUFFER#" + chatId;
+            try {
+                Map<String, AttributeValue> startKey = null;
+                do {
+                    QueryRequest.Builder qb = QueryRequest.builder()
+                            .tableName(tableName)
+                            .keyConditionExpression(ATTR_PK + " = :pk")
+                            .expressionAttributeValues(Map.of(":pk", AttributeValue.builder().s(bufferPk).build()))
+                            .projectionExpression(ATTR_PK + ", " + ATTR_SK);
+                    if (startKey != null) {
+                        qb.exclusiveStartKey(startKey);
+                    }
+                    QueryResponse res = standardClient.query(qb.build());
+                    for (Map<String, AttributeValue> item : res.items()) {
+                        standardClient.deleteItem(DeleteItemRequest.builder()
+                                .tableName(tableName)
+                                .key(Map.of(
+                                        ATTR_PK, item.get(ATTR_PK),
+                                        ATTR_SK, item.get(ATTR_SK)))
+                                .build());
+                    }
+                    startKey = res.hasLastEvaluatedKey() && !res.lastEvaluatedKey().isEmpty() ? res.lastEvaluatedKey() : null;
+                } while (startKey != null);
+            } catch (Exception e) {
+                throw new RuntimeException("Lỗi xoá BUFFER# trong DynamoDB: " + e.getMessage(), e);
+            }
+        }
     }
 }

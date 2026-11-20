@@ -107,7 +107,7 @@ Mỗi mục gồm: người dùng làm gì, bot phải làm gì, xong khi nào (
 | [AI-20 #17](https://github.com/ask-first-fcaj/ask-first/issues/17) | Spike OCR: so sánh RapidOCR / VietOCR / Tesseract trên 50 ảnh thật (gate G2) | AI2 + AI1 (cùng chốt G2) | W1–W2 | P0 | — |
 | [BE-22 #43](https://github.com/ask-first-fcaj/ask-first/issues/43) | Webhook handler (Java): secret constant-time, dedup, đường nhanh/chậm | BE1 (pair BE2) | W2 | P0 | [BE-03](https://github.com/ask-first-fcaj/ask-first/issues/1), [BE-21](https://github.com/ask-first-fcaj/ask-first/issues/14) |
 | [BE-23 #59](https://github.com/ask-first-fcaj/ask-first/issues/59) | Gom tin (debounce) và album | BE1 (pair BE2) | W3 | P1 | [BE-27](https://github.com/ask-first-fcaj/ask-first/issues/46) |
-| [AI-26 #61](https://github.com/ask-first-fcaj/ask-first/issues/61) | OCR production: ONNX int8, sửa URL, decode QR | AI1 (AI2 phụ: MODELS.md, QR, regex URL) | W4 | P0 | [AI-20](https://github.com/ask-first-fcaj/ask-first/issues/17) |
+| [AI-26 #61](https://github.com/ask-first-fcaj/ask-first/issues/61) | OCR production: ONNX fp32 (int8 đã thử và bỏ, ADR-003), sửa URL, decode QR | AI1 (AI2 phụ: MODELS.md, QR, regex URL) | W4 | P0 | [AI-20](https://github.com/ask-first-fcaj/ask-first/issues/17) |
 | [INT-02 #66](https://github.com/ask-first-fcaj/ask-first/issues/66) | Ghép image ai đầy đủ + OCR local (M2) | BE1 + AI1 (AI2 phụ) | W4 | P0 | [BE-06](https://github.com/ask-first-fcaj/ask-first/issues/62), [AI-26](https://github.com/ask-first-fcaj/ask-first/issues/61) |
 
 ### FR2. Nhận voice note và file ghi âm (⏸ hoãn)

@@ -1,8 +1,8 @@
 """Kiểm tra schema và điều kiện của kb/*.yaml (AI-25, SH-05).
 
 Chạy (cần PyYAML):
-    uv run --with pyyaml scripts/validate_kb.py            # kiểm cả 5 file
-    uv run --with pyyaml scripts/validate_kb.py hotlines   # chỉ một file (scenarios|allowlist|brands|hotlines|checklist)
+    uv run --with pyyaml scripts/validate_kb.py            # kiểm cả 6 file
+    uv run --with pyyaml scripts/validate_kb.py hotlines   # chỉ một file (scenarios|allowlist|brands|hotlines|checklist|alerts)
     uv run --with pyyaml scripts/validate_kb.py --skip-age # bỏ kiểm hạn 30 ngày của hotline (CI của PR dùng cờ này)
 
 Thoát mã 1 nếu có lỗi. Quy tắc nằm ở plan §3.10: mỗi mục có nguồn có `source_url`/`sources` và `verified_at` (YYYY-MM-DD);
@@ -10,10 +10,12 @@ mục trong hotlines có verified_at cũ hơn 30 ngày hoặc để trống bị
 
 Script KIỂM: cấu trúc, mã kịch bản (lấy từ eval/validate.py), ID trùng, `official_domains` có trong allowlist,
 `kind` và `value` của hotline, host của `source_url` hotline thuộc allowlist hoặc .gov.vn, số điện thoại lọt vào
-advice/checklist, `hotline_ref` trỏ đúng, nguồn `docs/...` có tồn tại, `verified_at` có mặt và đúng định dạng.
+advice/checklist, `hotline_ref` trỏ đúng, nguồn `docs/...` có tồn tại, `verified_at` có mặt và đúng định dạng;
+`alerts` (corpus RAG): mã lừa đảo hợp lệ, id/url không trùng, có ngày đăng, nguồn không phải .gov.vn/allowlist thì phải
+ghi `tier: media`, tóm tắt không có số điện thoại.
 Hạn 30 ngày của `verified_at` hotline chỉ kiểm khi KHÔNG có cờ --skip-age (job định kỳ kb-freshness.yml chạy như vậy).
 Script KHÔNG kiểm (không gọi mạng): link còn mở được không, số hotline có đúng trên trang nguồn không,
-`example_phrases` có nằm trong nguồn không. Những việc này người xác minh làm tay và ghi `verified_at`.
+`example_phrases` có nằm trong nguồn không, tóm tắt cảnh báo có đúng bài không. Những việc này người xác minh làm tay và ghi `verified_at`.
 """
 from __future__ import annotations
 
@@ -224,6 +226,39 @@ def v_hotlines(data, allow=None, max_age: int | None = 30):
     return e
 
 
+def v_alerts(data, allow):
+    """Corpus cảnh báo cho RAG (AI-29, ARCH §6.5): mỗi mục là một bài cảnh báo thật, tóm tắt do team viết."""
+    e, ids, urls = [], set(), set()
+    if not isinstance(data, list) or not data:
+        return ["File rỗng hoặc không phải danh sách"]
+    for a in only_dicts(data, "alerts", e):
+        lab = f"alerts[{a.get('id', '?')}]"
+        for k in ("id", "scenario", "title", "summary", "url", "publisher", "date"):
+            if not a.get(k):
+                e.append(f"{lab}: thiếu '{k}'")
+        if a.get("id") in ids:
+            e.append(f"{lab}: trùng id")
+        ids.add(a.get("id"))
+        if a.get("scenario") not in SCENARIOS or a.get("scenario") in ("N0", "OTHER"):
+            e.append(f"{lab}: scenario {a.get('scenario')!r} phải là một mã lừa đảo trong bảng mã (không phải N0/OTHER)")
+        url = str(a.get("url") or "")
+        if url in urls:
+            e.append(f"{lab}: trùng url {url}")
+        urls.add(url)
+        if a.get("tier") not in (None, "media"):
+            e.append(f"{lab}: tier chỉ được là 'media'")
+        elif url.startswith("https://") and a.get("tier") is None and not host_allowed(url, allow):
+            e.append(f"{lab}: {url} không thuộc allowlist.yaml hoặc .gov.vn, báo chí thì ghi tier: media")
+        check_sources(lab, [{"url": url, "publisher": a.get("publisher"), "date": a.get("date")}], e)
+        d = to_date(a.get("date"))
+        if d and d > TODAY:
+            e.append(f"{lab}: 'date' ở tương lai ({a['date']})")
+        if has_phone(str(a.get("summary", ""))):
+            e.append(f"{lab}: 'summary' không được ghi số điện thoại")
+        check_verified(lab, a.get("verified_at"), e)
+    return e
+
+
 def v_checklist(data, hotline_ids):
     e = []
     if not isinstance(data, list) or not data:
@@ -258,12 +293,13 @@ def main() -> int:
         sys.stdout.reconfigure(encoding="utf-8")
     args = sys.argv[1:]
     skip_age = "--skip-age" in args  # PR thường bỏ kiểm hạn 30 ngày; job định kỳ kb-freshness.yml mới kiểm
-    want = [a for a in args if a != "--skip-age"] or ["scenarios", "allowlist", "brands", "hotlines", "checklist"]
-    bad = [w for w in want if w not in ("scenarios", "allowlist", "brands", "hotlines", "checklist")]
+    names = ("scenarios", "allowlist", "brands", "hotlines", "checklist", "alerts")
+    want = [a for a in args if a != "--skip-age"] or list(names)
+    bad = [w for w in want if w not in names]
     if bad:
         sys.exit(f"Tên không hợp lệ: {bad}")
     data, load_err = {}, {}
-    for n in ("scenarios", "allowlist", "brands", "hotlines", "checklist"):
+    for n in names:
         data[n], load_err[n] = load(n)
     hotline_ids = {h.get("id") for h in (data["hotlines"] or []) if isinstance(h, dict)}
     runners = {
@@ -272,10 +308,11 @@ def main() -> int:
         "brands": lambda: v_brands(data["brands"], data["allowlist"]),
         "hotlines": lambda: v_hotlines(data["hotlines"], data["allowlist"], None if skip_age else 30),
         "checklist": lambda: v_checklist(data["checklist"], hotline_ids),
+        "alerts": lambda: v_alerts(data["alerts"], data["allowlist"]),
     }
     failed = 0
     for n in want:
-        deps = {"brands": ["allowlist"], "hotlines": ["allowlist"], "checklist": ["hotlines"]}.get(n, [])
+        deps = {"brands": ["allowlist"], "hotlines": ["allowlist"], "checklist": ["hotlines"], "alerts": ["allowlist"]}.get(n, [])
         dep_errs = [f"không đọc được kb/{d}.yaml nên không kiểm chéo được" for d in deps if load_err[d] or data[d] is None]
         errs = load_err[n] or dep_errs or runners[n]()
         count = len(data[n].get("domains", [])) if isinstance(data[n], dict) else len(data[n] or [])

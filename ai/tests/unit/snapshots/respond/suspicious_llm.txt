@@ -1,0 +1,14 @@
+--- message 0 (silent=False) [alert_guardian: 📣 Báo cho con] | [report_wrong: 👎 Bot báo sai]
+🟠 <b>NGHI NGỜ</b> – Giả dịch vụ công (phạt nguội, VNeID, trợ cấp), dụ vào web giả hoặc cài app giả
+Tin báo phạt nguội và đòi nộp tiền qua trang <code>hxxps://dichvucong-vn[.]com/tra-cuu</code>, không phải trang của Nhà nước.
+👉 Bác khoan làm theo tin này: ĐỪNG chuyển tiền, ĐỪNG bấm link. Hỏi người nhà hoặc gọi ngân hàng trước.
+
+ℹ️ Bot là công cụ hỗ trợ của nhóm sinh viên, có thể sai. Bot không bao giờ xin OTP, mật khẩu hay tiền.
+--- message 1 (silent=False) 
+<b>Vì sao Bot nghi ngờ:</b>
+• "phạt nguội" → Tin báo phạt nguội kèm link. Phạt nguội thật không gửi link nộp tiền qua tin nhắn.
+
+<b>Bác nên làm:</b>
+• Không bấm link trong tin nhắn, không làm theo yêu cầu qua điện thoại của người tự xưng cán bộ
+• Công an không yêu cầu nộp phạt hay đưa tài khoản, mật khẩu, mã OTP qua đường link trong tin nhắn
+• Muốn tra cứu vi phạm thì vào csgt.vn hoặc ứng dụng VNeTraffic; cần cập nhật thông tin thì ra trực tiếp Công an xã hoặc phường

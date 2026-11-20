@@ -146,6 +146,21 @@ jobs:
         if: steps.has.outputs.found == 'true'
         working-directory: ai
         run: uv run pytest tests/contract
+      # G0 (plan §4): phía Java phải có test đọc contracts/fixtures/ và round-trip qua record Java (ADR-000b).
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Test contract phía Java
+        working-directory: backend/ScamProtection
+        shell: bash
+        run: |
+          ./mvnw -B test -pl common -am -Dtest='AiContractTest' -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true
+          if ! find . -path '*/surefire-reports/TEST-*AiContractTest.xml' | grep -q .; then
+            echo "::error::Không thấy kết quả AiContractTest, G0 chưa đạt"
+            exit 1
+          fi
 
   # Check bắt buộc duy nhất của branch protection: gom kết quả mọi job ở trên.
   ci-ok:

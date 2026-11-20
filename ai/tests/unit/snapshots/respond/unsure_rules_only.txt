@@ -1,0 +1,11 @@
+--- message 0 (silent=False) [call_guardian: 📞 Gọi cho con] | [report_wrong: 👎 Bot báo sai]
+🟡 <b>BOT CHƯA CHẮC CHẮN</b>
+Bot chưa chắc chắn, cô hỏi con hoặc gọi ngân hàng trước khi làm gì.
+🛠 Bot đang bảo trì, chỉ kiểm được dấu hiệu cơ bản.
+
+<b>Vì sao Bot nghi ngờ:</b>
+• "trong hôm nay" → Tin hối thúc làm ngay, dọa khóa tài khoản hoặc phạt.
+
+ℹ️ Bot là công cụ hỗ trợ của nhóm sinh viên, có thể sai. Bot không bao giờ xin OTP, mật khẩu hay tiền.
+--- message 1 (silent=False) [answer_yes: Có] [answer_no: Không] [answer_unknown: Không nhớ]
+❓ Người gọi có bảo bác chuyển tiền hoặc giữ bí mật không ạ?
