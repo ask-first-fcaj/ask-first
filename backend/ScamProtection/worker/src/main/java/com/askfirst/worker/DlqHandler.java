@@ -63,7 +63,7 @@ public class DlqHandler implements RequestHandler<SQSEvent, Void> {
         for (SQSEvent.SQSMessage message : event.getRecords()) {
             // KHÔNG log body: đó là InboundMessage có text của người dùng.
             int attempt = receiveCount(message);
-            context.getLogger().log("DLQ job sqsMessageId=" + message.getMessageId() + " attempt=" + attempt);
+            log("DLQ job sqsMessageId=" + message.getMessageId() + " attempt=" + attempt);
 
             JsonNode job;
             long chatId;
@@ -71,29 +71,29 @@ public class DlqHandler implements RequestHandler<SQSEvent, Void> {
                 job = MAPPER.readTree(message.getBody());
                 chatId = job.has("chat_id") ? job.path("chat_id").asLong() : job.path("chatId").asLong();
             } catch (Exception e) {
-                context.getLogger().log("Job DLQ không đọc được, bỏ qua: " + e.getClass().getSimpleName());
+                log("Job DLQ không đọc được, bỏ qua: " + e.getClass().getSimpleName());
                 continue;
             }
             if (chatId == 0) {
-                context.getLogger().log("Job DLQ không có chat_id, bỏ qua");
+                log("Job DLQ không có chat_id, bỏ qua");
                 continue;
             }
             // Chỉ AnalyzeJob có tin "⏳" và câu "chưa kiểm tra được tin này". FollowupJob (nhắc lại) không có seq nên
             // không thể biết tin "⏳" hiện có của chat có phải của nó không: không được báo hay sửa gì.
             if (!AnalyzeJob.TYPE.equals(job.path("type").asText())) {
-                context.getLogger().log("Job DLQ không phải analyze, bỏ qua type=" + job.path("type").asText("?"));
+                log("Job DLQ không phải analyze, bỏ qua type=" + job.path("type").asText("?"));
                 continue;
             }
 
             try {
                 String outcome = notifyBusy(chatId, job);
-                context.getLogger().log("DLQ job xử lý xong: " + outcome);
+                log("DLQ job xử lý xong: " + outcome);
             } catch (Exception e) {
                 if (attempt >= MAX_ATTEMPTS) {
-                    context.getLogger().log("Bỏ job sau " + attempt + " lần: " + e.getClass().getSimpleName());
+                    log("Bỏ job sau " + attempt + " lần: " + e.getClass().getSimpleName());
                     continue;
                 }
-                context.getLogger().log("Lỗi tạm thời, để SQS giao lại: " + e.getClass().getSimpleName());
+                log("Lỗi tạm thời, để SQS giao lại: " + e.getClass().getSimpleName());
                 throw new RuntimeException(e);   // batch size 1 nên chỉ giao lại đúng tin này
             }
         }
@@ -162,6 +162,11 @@ public class DlqHandler implements RequestHandler<SQSEvent, Void> {
         } catch (RuntimeException e) {
             return "Bác";
         }
+    }
+
+    /** stdout của Lambda đi thẳng vào CloudWatch (cùng cách WorkerWiring ghi log); LambdaLogger của Context không được LocalStack ghi lại. */
+    private static void log(String line) {
+        System.out.println(line);
     }
 
     private static int receiveCount(SQSEvent.SQSMessage message) {

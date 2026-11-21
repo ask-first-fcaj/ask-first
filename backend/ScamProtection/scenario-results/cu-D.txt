@@ -1,0 +1,4 @@
+
+===== D. Gọi trực tiếp worker-dlq (đọc log từ response) =====
+Cần có BUFFER# đang tồn tại: nhắn bot 1-2 tin rồi chạy NGAY (trong ~80 giây, khi worker còn đang retry).
+Không thấy BUFFER# nào trong askfirst-dev: webhook chưa nhận/ghi tin (hoặc đang chạy bản webhook cũ). Có thể đặt CHAT=<id> rồi chạy lại.

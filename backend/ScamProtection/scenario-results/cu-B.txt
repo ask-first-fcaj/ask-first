@@ -8,27 +8,15 @@ Bấm Enter SAU KHI đã nhắn tin ...Chat id: 8452021339  user_id: tg:84520213
   t= 20s  webhookQueue=1  webhookDLQ=0
   t= 30s  webhookQueue=1  webhookDLQ=0
   t= 40s  webhookQueue=1  webhookDLQ=0
-  t= 50s  webhookQueue=1  webhookDLQ=0
-  t= 60s  webhookQueue=1  webhookDLQ=0
-  t= 70s  webhookQueue=0  webhookDLQ=0
+  t= 50s  webhookQueue=0  webhookDLQ=1
+  t= 60s  webhookQueue=0  webhookDLQ=0
 
 ===== Log worker =====
-2026-11-21T14:31:28 job_failed type=AnalyzeJob job=01M7Z89RAEN7AFKVDW2SM867GE error=AiException:invoke receive=1
-2026-11-21T14:31:49 job_failed type=AnalyzeJob job=01M7Z89RAEN7AFKVDW2SM867GE error=AiException:invoke receive=2
-2026-11-21T14:32:11 job_failed type=AnalyzeJob job=01M7Z89RAEN7AFKVDW2SM867GE error=AiException:invoke receive=3
-2026-11-21T14:32:33 job_failed type=AnalyzeJob job=01M7Z89RAEN7AFKVDW2SM867GE error=AiException:invoke receive=4
-2026-11-21T14:32:56 job_failed type=AnalyzeJob job=01M7Z89RAEN7AFKVDW2SM867GE error=AiException:invoke receive=5
-2026-11-21T14:35:55 job_failed type=AnalyzeJob job=01M7Z8HSG5145DT6RNFVQX4VXH error=AiException:invoke receive=1
-2026-11-21T14:36:18 job_failed type=AnalyzeJob job=01M7Z8HSG5145DT6RNFVQX4VXH error=AiException:invoke receive=2
-2026-11-21T14:36:40 job_failed type=AnalyzeJob job=01M7Z8HSG5145DT6RNFVQX4VXH error=AiException:invoke receive=3
-2026-11-21T14:37:01 job_failed type=AnalyzeJob job=01M7Z8HSG5145DT6RNFVQX4VXH error=AiException:invoke receive=4
-2026-11-21T14:37:26 job_failed type=AnalyzeJob job=01M7Z8HSG5145DT6RNFVQX4VXH error=AiException:invoke receive=5
-2026-11-21T14:41:55 job_failed type=AnalyzeJob job=01M7Z8WX0G5QW12T8DFS442BKT error=AiException:invoke receive=1
-2026-11-21T14:42:16 job_failed type=AnalyzeJob job=01M7Z8WX0G5QW12T8DFS442BKT error=AiException:invoke receive=2
-2026-11-21T14:42:38 job_failed type=AnalyzeJob job=01M7Z8WX0G5QW12T8DFS442BKT error=AiException:invoke receive=3
-2026-11-21T14:43:02 job_failed type=AnalyzeJob job=01M7Z8WX0G5QW12T8DFS442BKT error=AiException:invoke receive=4
-2026-11-21T14:43:32 job_failed type=AnalyzeJob job=01M7Z8WX0G5QW12T8DFS442BKT error=AiException:invoke receive=5
-2026-11-21T14:43:32 analyze job=01M7Z8WX0G5QW12T8DFS442BKT give_up_notice_failed
+2026-11-21T16:38:19 job_failed type=AnalyzeJob job=01M7ZFHH8ZJ18Y1HPGMW1W1ZXP error=AiException:invoke receive=1
+2026-11-21T16:38:26 job_failed type=AnalyzeJob job=01M7ZFHH8ZJ18Y1HPGMW1W1ZXP error=AiException:invoke receive=2
+2026-11-21T16:38:48 job_failed type=AnalyzeJob job=01M7ZFHH8ZJ18Y1HPGMW1W1ZXP error=AiException:invoke receive=3
+2026-11-21T16:39:09 job_failed type=AnalyzeJob job=01M7ZFHH8ZJ18Y1HPGMW1W1ZXP error=AiException:invoke receive=4
+2026-11-21T16:39:33 job_failed type=AnalyzeJob job=01M7ZFHH8ZJ18Y1HPGMW1W1ZXP error=AiException:invoke receive=5
 
 ===== Log worker-dlq =====
 (không có dòng khớp 'DLQ job' trong log worker-dlq sau 45 giây)
@@ -38,6 +26,9 @@ META: (không còn)
 CHECK# (SK, outcome):
 CHECK#01M7Z89RAEN7AFKVDW2SM867GE	gave_up
 CHECK#01M7Z8HSG5145DT6RNFVQX4VXH	gave_up
+CHECK#01M7Z943Q1SP2BBYRQEC3QJPVG	gave_up
+CHECK#01M7ZAPVCMGSRAR8EV3DH1Y37E	gave_up
+CHECK#01M7ZFHH8ZJ18Y1HPGMW1W1ZXP	gave_up
 webhookQueue : còn 0 message
 webhookDLQ : còn 0 message
 

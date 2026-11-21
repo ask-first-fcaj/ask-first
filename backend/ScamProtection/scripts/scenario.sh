@@ -13,6 +13,7 @@
 #   A  job sai contract            (không cần Telegram)
 #   B  lỗi 1: báo "bận" hai lần    (cần nhắn bot thật 1 tin)
 #   C  lỗi 2: DLQ sửa nhầm "⏳"    (cần nhắn bot thật 2 tin liên tiếp)
+#   D  gọi thẳng worker-dlq, đọc log từ response (khi log CloudWatch của LocalStack trống)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -105,6 +106,16 @@ logs_wait() {  # $1 = tên Lambda, $2 = regex, $3 = số giây chờ tối đa (
 }
 awslogs() { awsl logs tail "/aws/lambda/$1" --since "${LOGSINCE:-15m}" --format short 2>/dev/null || true; }
 
+dlq_diag() {  # in khi không thấy log worker-dlq: để phân biệt "handler không chạy" với "log LocalStack không có"
+  hr "Chẩn đoán worker-dlq"
+  echo "Log group khớp dlq:"
+  awsl logs describe-log-groups --query 'logGroups[].logGroupName' --output text 2>/dev/null | tr '\t' '\n' | grep -i dlq || echo "  (không có log group nào: Lambda chưa từng được gọi)"
+  echo "Trigger worker-dlq (state, kết quả lần xử lý gần nhất):"
+  awsl lambda list-event-source-mappings --function-name worker-dlq \
+    --query 'EventSourceMappings[].[State,LastProcessingResult]' --output text 2>/dev/null || true
+  queue_counts
+}
+
 meta() {
   local r
   r=$(awsl dynamodb get-item --table-name "$TABLE" --consistent-read \
@@ -192,6 +203,7 @@ EOT
     wait_drain 30 $((5 * VIS + 90))
     hr "Log worker"; logs worker 'job_failed|give_up|receive='
     hr "Log worker-dlq"; LOGSINCE=2m logs_wait worker-dlq 'DLQ job' 45   # cửa sổ ngắn để không dính log của lần chạy trước
+    [ -z "$(LOGSINCE=2m awslogs worker-dlq)" ] && dlq_diag
     hr "Dữ liệu"; meta; check_rows; queue_counts
     echo
     echo ">>> Đếm trên Telegram: có bao nhiêu tin 'bận'? (cũ: 2 tin, mới: 1 tin sửa từ ⏳)"
@@ -213,9 +225,34 @@ EOT
     echo "Đã bơm job seq=1 vào $DLQ. Chờ worker-dlq chạy ..."
     hr "Log worker-dlq (kết quả xử lý job seq=1)"
     LOGSINCE=1m logs_wait worker-dlq 'DLQ job xử lý xong|Lỗi tạm thời|Bỏ job' 45
+    [ -z "$(LOGSINCE=1m awslogs worker-dlq)" ] && dlq_diag
     hr "META sau khi DLQ xử lý"; meta
     echo
     echo ">>> Nhìn Telegram: '⏳' của cụm có bị đổi thành 'bận' ngay lúc này không? (cũ: có, mới: không)"
+    ;;
+
+  D)
+    # Gọi trực tiếp worker-dlq với một SQS event giả và đọc log từ chính response (--log-type Tail),
+    # không phụ thuộc CloudWatch Logs của LocalStack. Dùng SEQ=<n> để chọn seq của job giả (mặc định 1).
+    hr "D. Gọi trực tiếp worker-dlq (đọc log từ response)"
+    need_queues
+    echo "Cần có BUFFER# đang tồn tại: nhắn bot 1-2 tin rồi chạy NGAY (trong ~80 giây, khi worker còn đang retry)."
+    detect_chat
+    meta
+    SEQ="${SEQ:-1}"
+    JOB="01DIRECT${SEQ}00000000000000000"; JOB=${JOB:0:26}
+    BODY="{\\\"v\\\":1,\\\"type\\\":\\\"analyze\\\",\\\"job_id\\\":\\\"$JOB\\\",\\\"chat_id\\\":\\\"$CHAT\\\",\\\"user_id\\\":\\\"$USER_ID\\\",\\\"seq\\\":$SEQ,\\\"enqueued_at\\\":\\\"$(now_iso)\\\"}"
+    printf '{"Records":[{"messageId":"direct-1","body":"%s","attributes":{"ApproximateReceiveCount":"1"}}]}' "$BODY" > .scenario-payload.json
+    out=$(awsl lambda invoke --function-name worker-dlq --cli-binary-format raw-in-base64-out \
+            --payload file://.scenario-payload.json --log-type Tail \
+            --query '[StatusCode,FunctionError]' --output text .scenario-response.json 2>&1 || true)
+    echo "StatusCode/FunctionError: $out"
+    awsl lambda invoke --function-name worker-dlq --cli-binary-format raw-in-base64-out \
+      --payload file://.scenario-payload.json --log-type Tail --query LogResult --output text \
+      .scenario-response.json 2>/dev/null | base64 -d 2>/dev/null | grep -E "DLQ job|Lỗi|Bỏ job|Exception|ERROR" || echo "(không có log trong response)"
+    rm -f .scenario-payload.json .scenario-response.json
+    hr "META sau"; meta
+    echo ">>> Kết quả mong đợi: seq nhỏ hơn max_seq -> 'superseded'; seq = max_seq -> 'edited' (chỉ khi chưa có CHECK# cho job này)."
     ;;
 
   reset)
@@ -226,5 +263,5 @@ EOT
     ;;
 
   *)
-    echo "Usage: $0 {check|prep|A|B|C|reset} [nhãn]"; exit 1 ;;
+    echo "Usage: $0 {check|prep|A|B|C|D|reset} [nhãn]"; exit 1 ;;
 esac

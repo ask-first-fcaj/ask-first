@@ -6,13 +6,21 @@ Việc cần làm (thủ công):
 Bấm Enter SAU KHI đã nhắn 2 tin ...Chat id: 8452021339  user_id: tg:8452021339
 
 ===== META trước khi bơm job cũ =====
-META (max_seq, done_seq, placeholder_id): 2	0	51
+META (max_seq, done_seq, placeholder_id): 2	0	58
 Đã bơm job seq=1 vào webhookDLQ. Chờ worker-dlq chạy ...
 
 ===== Log worker-dlq (kết quả xử lý job seq=1) =====
 (không có dòng khớp 'DLQ job xử lý xong|Lỗi tạm thời|Bỏ job' trong log worker-dlq sau 45 giây)
 
+===== Chẩn đoán worker-dlq =====
+Log group khớp dlq:
+/aws/lambda/worker-dlq
+Trigger worker-dlq (state, kết quả lần xử lý gần nhất):
+Enabled	None
+webhookQueue : còn 1 message
+webhookDLQ : còn 0 message
+
 ===== META sau khi DLQ xử lý =====
-META (max_seq, done_seq, placeholder_id): 2	0	51
+META (max_seq, done_seq, placeholder_id): 2	0	58
 
 >>> Nhìn Telegram: '⏳' của cụm có bị đổi thành 'bận' ngay lúc này không? (cũ: có, mới: không)
