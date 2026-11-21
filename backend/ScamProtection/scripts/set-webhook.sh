@@ -22,10 +22,11 @@ if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_WEBHOOK_SECRET" ]; then
   echo "Thiếu TELEGRAM_BOT_TOKEN hoặc TELEGRAM_WEBHOOK_SECRET trong .env"; exit 1
 fi
 # Telegram chỉ chấp nhận secret_token gồm A-Z a-z 0-9 _ - (1-256 ký tự)
-if ! [[ "$TELEGRAM_WEBHOOK_SECRET" =~ ^[A-Za-z0-9_-]{1,256}$ ]]; then
-  echo "TELEGRAM_WEBHOOK_SECRET không hợp lệ: chỉ dùng A-Z a-z 0-9 _ - (tối đa 256 ký tự)"; exit 1
+# Telegram secret_token: 1-256 ký tự
+if [ "${#TELEGRAM_WEBHOOK_SECRET}" -lt 1 ] || [ "${#TELEGRAM_WEBHOOK_SECRET}" -gt 256 ]; then
+  echo "TELEGRAM_WEBHOOK_SECRET không hợp lệ: độ dài phải từ 1 đến 256 ký tự"
+  exit 1
 fi
-
 # URL công khai từ ngrok (ngrok phải đang chạy)
 NGROK_URL=$(curl -s http://127.0.0.1:4040/api/tunnels \
   | grep -oE '"public_url" *: *"https://[^"]+"' | head -n1 | cut -d'"' -f4 || true)
@@ -43,7 +44,7 @@ if [ -z "$API_ID" ] || [ "$API_ID" = "None" ]; then
   echo "Không tìm thấy API Gateway. Đã chạy setup-localstack.sh chưa?"; exit 1
 fi
 
-WEBHOOK_URL="$NGROK_URL/restapis/$API_ID/dev/_user_request_/webhook"
+WEBHOOK_URL="${NGROK_URL}/_aws/execute-api/${API_ID}/dev/webhook"
 echo "Đăng ký webhook: $WEBHOOK_URL (drop_pending_updates=$DROP_PENDING)"
 
 # --ssl-no-revoke chỉ có ý nghĩa với curl dùng Schannel (Windows, Git Bash);

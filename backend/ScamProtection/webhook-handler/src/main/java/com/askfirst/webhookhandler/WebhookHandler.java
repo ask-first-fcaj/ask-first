@@ -2310,11 +2310,34 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 return sendSimulatedCheckResult(chatId, userId, inbound.text());
             }
 
-            // 7. Không có BufferStore thì không tạo được AnalyzeJob hợp lệ (worker đọc tin từ BUFFER#). Đường cũ từng
-            // đẩy nguyên InboundMessage vào SQS: worker luôn từ chối (invalid_field:v) và người dùng kẹt ở "⏳".
-            // Từ chối rõ ràng để lỗi cấu hình lộ ra ngay thay vì mất job im lặng.
-            log(context, "Thiếu BufferStore: không thể tạo AnalyzeJob");
-            return response(500, "BUFFER_UNAVAILABLE");
+            // 7. Đường cũ (bufferStore == null): gửi placeholder rồi enqueue nguyên InboundMessage
+            if (telegram != null) {
+                try {
+                    telegram.sendText(
+                            chatId,
+                            "⏳ Cháu đang kiểm tra, " + addressForm.toLowerCase() + " chờ cháu vài giây nhé...");
+                } catch (Exception e) {
+                    // Tin chờ chỉ là phụ: lỗi ở đây không được làm Telegram retry (gây xử lý/đếm
+                    // đôi), vẫn đưa job vào hàng đợi
+                    log(context, "Không gửi được tin nhắn chờ: " + e);
+                }
+            }
+
+            if (queueReady) {
+                try {
+                    String payload = MAPPER.writeValueAsString(inbound);
+                    sqs.sendMessage(
+                            SendMessageRequest.builder()
+                                    .queueUrl(queueUrl)
+                                    .messageBody(payload)
+                                    .build());
+                } catch (Exception e) {
+                    log(context, "Lỗi gửi message vào SQS: " + e);
+                    return response(500, "SQS_FAILED");
+                }
+            }
+
+            return response(200, "OK");
         } catch (Exception e) {
             log(context, "Lỗi không mong muốn trong handleContentInspection cho user " + userId + ": " + e);
             if (telegram != null) {

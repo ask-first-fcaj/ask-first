@@ -245,7 +245,8 @@ public final class AnalyzeProcessor {
             // Đóng cụm tin để tin gửi lại sau đó không bị gộp với nội dung của job đã bỏ cuộc
             buffer.finish(job.chatId(), job.seq());
         } catch (RuntimeException e) {
-            log.accept("analyze job=" + job.jobId() + " give_up_notice_failed");
+            // Chỉ log tên lớp lỗi (không log message: có thể chứa dữ liệu người dùng) để biết bước nào hỏng
+            log.accept("analyze job=" + job.jobId() + " give_up_notice_failed error=" + e.getClass().getSimpleName());
         }
     }
 
@@ -256,7 +257,7 @@ public final class AnalyzeProcessor {
                     "none", List.of(), List.of(), List.of(), false, clock.instant().toString(),
                     clock.instant().getEpochSecond() + RECORD_TTL_SECONDS));
         } catch (RuntimeException e) {
-            log.accept("analyze job=" + job.jobId() + " give_up_mark_failed");
+            log.accept("analyze job=" + job.jobId() + " give_up_mark_failed error=" + e.getClass().getSimpleName());
         }
     }
 
