@@ -10,10 +10,15 @@ import com.askfirst.common.Ulid;
 import com.askfirst.common.channel.TelegramAdapter;
 import com.askfirst.common.channel.model.InboundMessage;
 import com.askfirst.common.channel.model.TelegramCallbackQuery;
+import com.askfirst.common.job.AnalyzeJob;
+import com.askfirst.common.job.JobCodec;
+import com.askfirst.common.store.AlertRecord;
+import com.askfirst.common.store.AlertStore;
 import com.askfirst.common.store.AuditRecord;
 import com.askfirst.common.store.AuditRepo;
 import com.askfirst.common.store.BufferStore;
 import com.askfirst.common.store.DonationStore;
+import com.askfirst.common.store.DynamoAlertStore;
 import com.askfirst.common.store.DynamoStoreService;
 import com.askfirst.common.store.GuardianRecord;
 import com.askfirst.common.store.GuardianRepo;
@@ -86,6 +91,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
      */
     private static final long DEDUP_TTL_SECONDS = 24 * 3600L;
 
+    /** Tin trong BUFFER# chỉ tồn tại tạm thời (plan: tối đa 10 phút), worker xóa ngay khi xử lý xong. */
+    private static final long BUFFER_TTL_SECONDS = 10 * 60L;
+
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule());
 
@@ -105,6 +113,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     private final SessionStore sessionStore;
     private final BufferStore bufferStore;
     private final DonationStore donationStore;
+
+    /** Tra cảnh báo người thân để ghi nhận nút "Tôi đã liên hệ". Null = bỏ qua callback ack. */
+    private final AlertStore alertStore;
 
     /**
      * Chống xử lý trùng cùng một update_id (Telegram retry). Null = không dedup
@@ -178,6 +189,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
         }
         this.donationStore = dStore;
+        this.alertStore = new DynamoAlertStore(ddb, tableName);
         this.dedup = DynamoStoreService.create(ddb, tableName);
     }
 
@@ -280,7 +292,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String botUsername) {
         this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
                 guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
-                null, null, null, null);
+                null, null, null, null, null);
     }
 
     public WebhookHandler(
@@ -299,7 +311,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String policySha256) {
         this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
                 guardianRepo, inviteRepo, policySha256, null, false, null,
-                null, sessionStore, bufferStore, donationStore);
+                null, sessionStore, bufferStore, donationStore, null);
     }
 
     public WebhookHandler(
@@ -321,7 +333,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String botUsername) {
         this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
                 guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
-                null, sessionStore, bufferStore, donationStore);
+                null, sessionStore, bufferStore, donationStore, null);
     }
 
     /**
@@ -346,13 +358,14 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             DonationStore donationStore) {
         this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
                 guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
-                checkStore, sessionStore, null, donationStore);
+                checkStore, sessionStore, null, donationStore, null);
     }
 
     /**
-     * Constructor đầy đủ 17 tham số. Tất cả các constructor khác delegate vào đây.
+     * Constructor đầy đủ 18 tham số. Tất cả các constructor khác delegate vào đây.
      *
      * @param botUsername username của bot (ví dụ "AskFirstBot"), dùng để tạo deep link.
+     * @param alertStore  kho cảnh báo người thân (null = bỏ qua callback ack:).
      */
     public WebhookHandler(
             TelegramClient telegram,
@@ -371,7 +384,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             CheckStore checkStore,
             SessionStore sessionStore,
             BufferStore bufferStore,
-            DonationStore donationStore) {
+            DonationStore donationStore,
+            AlertStore alertStore) {
         this.telegram = telegram;
         this.sqs = sqs;
         this.queueUrl = queueUrl;
@@ -390,6 +404,23 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.sessionStore = sessionStore;
         this.bufferStore = bufferStore;
         this.donationStore = donationStore;
+        this.alertStore = alertStore;
+    }
+
+    /**
+     * Constructor tiện cho test BE-29: inject BufferStore + AlertStore (các repo khác null).
+     */
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            BufferStore bufferStore,
+            AlertStore alertStore) {
+        this(telegram, sqs, queueUrl, secret,
+                null, null, null, null, null,
+                DEFAULT_POLICY_SHA256, null, false, null,
+                null, null, bufferStore, null, alertStore);
     }
 
     public WebhookHandler(
@@ -405,7 +436,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String policySha256) {
         this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, null,
                 null, null, policySha256, null, false, null,
-                checkStore, sessionStore, null, donationStore);
+                checkStore, sessionStore, null, donationStore, null);
     }
 
     public CheckStore getCheckStore() {
@@ -464,7 +495,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 createInMemoryCheckRepo(), // checkStore
                 createInMemorySessionStore(),
                 null,                       // bufferStore
-                createInMemoryDonationStore()
+                createInMemoryDonationStore(),
+                null
+                // alertStore - THÊM MỚI
         );
     }
 
@@ -1062,7 +1095,37 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return response(200, "DATA_DELETION_CANCELLED");
         }
 
+        // Người thân bấm "Tôi đã liên hệ" trên cảnh báo
+        if (data != null && data.startsWith("ack:")) {
+            return handleGuardianAck(cb, data.substring("ack:".length()));
+        }
+
         return response(200, "UNKNOWN_CALLBACK");
+    }
+
+    /** Người thân bấm "Tôi đã liên hệ". Chỉ đúng người thân của cảnh báo đó mới ghi nhận được. */
+    private APIGatewayProxyResponseEvent handleGuardianAck(TelegramCallbackQuery cb, String alertId) {
+        if (alertStore == null) {
+            return response(200, "UNKNOWN_CALLBACK");
+        }
+        Optional<AlertRecord> alert = alertStore.get(alertId);
+        boolean allowed = alert.isPresent()
+                && stripUserPrefix(cb.userId()).equals(stripUserPrefix(alert.get().guardianUid()));
+        if (!allowed) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Cảnh báo này không còn hiệu lực.");
+            }
+            return response(200, "CALLBACK_HANDLED");
+        }
+        alertStore.markAcked(alertId, Instant.now());
+        if (telegram != null) {
+            telegram.answerCallbackQuery(cb.queryId(), "Cảm ơn bạn, đã ghi nhận.");
+        }
+        return response(200, "CALLBACK_HANDLED");
+    }
+
+    private static String stripUserPrefix(String uid) {
+        return uid != null && uid.startsWith("USER#") ? uid.substring("USER#".length()) : String.valueOf(uid);
     }
 
     private APIGatewayProxyResponseEvent handleGuardianCallback(
@@ -1137,7 +1200,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                     List<List<Map<String, String>>> rows = new ArrayList<>();
                     rows.add(List.of(
                             TelegramClient.urlButtonMap(
-                                     new TelegramClient.UrlButton("📤 Gửi lời mời cho con/cháu", shareUrl))));
+                                    new TelegramClient.UrlButton("📤 Gửi lời mời cho con/cháu", shareUrl))));
                     telegram.sendText(chatId, msg, TelegramClient.inlineKeyboardRaw(rows));
                 } else {
                     telegram.sendText(chatId, msg);
@@ -2237,7 +2300,17 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 }
             }
 
-            // 5. Bước tin nhắn chờ ("⏳")
+            // 5. Đường chính (Lambda): gom tin vào BUFFER# rồi enqueue AnalyzeJob trễ (debounce)
+            if (bufferStore != null && queueReady) {
+                return bufferAndEnqueue(inbound, chatId, userId, addressForm, context);
+            }
+
+            // 6. Chế độ Local Development (không có SQS/Worker): tự động trả kết quả kèm nút [Bot báo sai]
+            if (localDevelopment && !queueReady) {
+                return sendSimulatedCheckResult(chatId, userId, inbound.text());
+            }
+
+            // 7. Đường cũ (bufferStore == null): gửi placeholder rồi enqueue nguyên InboundMessage
             if (telegram != null) {
                 try {
                     telegram.sendText(
@@ -2250,12 +2323,6 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 }
             }
 
-            // 6. Chế độ Local Development (không có SQS/Worker): tự động trả kết quả kèm nút [Bot báo sai]
-            if (localDevelopment && !queueReady) {
-                return sendSimulatedCheckResult(chatId, userId, inbound.text());
-            }
-
-            // 7. Enqueue vào SQS (môi trường Cloud/Production)
             if (queueReady) {
                 try {
                     String payload = MAPPER.writeValueAsString(inbound);
@@ -2284,6 +2351,48 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
             return response(200, "CONTENT_INSPECTION_FAILED");
         }
+    }
+
+    /**
+     * Đường chính: gom tin vào BUFFER# rồi enqueue AnalyzeJob trễ 3 giây (debounce, plan §3.4).
+     * Lỗi ghi buffer xảy ra TRƯỚC mọi tác dụng phụ nên trả 500 để Telegram gửi lại update.
+     */
+    private APIGatewayProxyResponseEvent bufferAndEnqueue(
+            InboundMessage inbound, long chatId, String userId, String addressForm, Context context) {
+        final long seq;
+        try {
+            seq = bufferStore.append(inbound.chatId(), inbound, Instant.now().getEpochSecond() + BUFFER_TTL_SECONDS);
+        } catch (Exception e) {
+            log(context, "Lỗi ghi BUFFER#: " + e.getClass().getSimpleName());
+            return response(500, "BUFFER_FAILED");
+        }
+
+        // "⏳" chỉ cho tin đầu cụm (seq == 1); message_id được lưu để worker sửa thành kết quả.
+        if (seq == 1 && telegram != null) {
+            try {
+                int placeholderId = telegram.sendText(
+                        chatId,
+                        "⏳ Cháu đang kiểm tra, " + addressForm.toLowerCase() + " chờ cháu vài giây nhé...");
+                bufferStore.setPlaceholder(inbound.chatId(), placeholderId);
+            } catch (Exception e) {
+                // Tin chờ chỉ là phụ: worker sẽ gửi kết quả thành tin mới nếu không có placeholder
+                log(context, "Không gửi/lưu được tin nhắn chờ: " + e.getClass().getSimpleName());
+            }
+        }
+
+        try {
+            AnalyzeJob job = AnalyzeJob.create(Ulid.next(), inbound.chatId(), userId, seq, Instant.now());
+            sqs.sendMessage(
+                    SendMessageRequest.builder()
+                            .queueUrl(queueUrl)
+                            .messageBody(JobCodec.toJson(job))
+                            .delaySeconds(AnalyzeJob.DELAY_SECONDS)
+                            .build());
+        } catch (Exception e) {
+            log(context, "Lỗi gửi AnalyzeJob vào SQS: " + e.getClass().getSimpleName());
+            return response(500, "SQS_FAILED");
+        }
+        return response(200, "OK");
     }
 
     private APIGatewayProxyResponseEvent handleApkBlocked(

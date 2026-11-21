@@ -26,13 +26,25 @@ class WorkerRunnerTest {
     }
 
     @Test
-    void invalidBody_isRejected_andNothingRuns() {
+    void invalidBody_isDropped_notRetried_andNothingRuns() {
         WorkerRunner runner = env.runner();
 
-        assertThrows(InvalidJobException.class, () -> runner.handle("{\"chatId\":100}", 1, 120_000));
+        runner.handle("{\"chatId\":100}", 1, 120_000);   // không ném: handler không báo batchItemFailure, SQS xoá message
 
         assertTrue(env.ai.analyzeRequests.isEmpty());
         assertTrue(env.logs.get(0).startsWith("invalid_job code=invalid_field"));
+        assertTrue(env.logs.stream().anyMatch(l -> l.startsWith("invalid_job_dropped code=invalid_field")));
+    }
+
+    @Test
+    void unsupportedVersion_isRethrown_soVersionSkewDuringDeployCanRecover() {
+        String body = "{\"v\":2,\"type\":\"analyze\",\"job_id\":\"" + JOB + "\",\"chat_id\":\"100\","
+                + "\"user_id\":\"tg:100\",\"seq\":1,\"enqueued_at\":\"" + Fakes.T0 + "\"}";
+
+        InvalidJobException e = assertThrows(InvalidJobException.class, () -> env.runner().handle(body, 1, 120_000));
+
+        assertEquals(InvalidJobException.UNSUPPORTED_VERSION, e.code());
+        assertTrue(env.logs.stream().noneMatch(l -> l.startsWith("invalid_job_dropped")));
     }
 
     @Test

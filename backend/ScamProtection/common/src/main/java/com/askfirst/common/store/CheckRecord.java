@@ -4,7 +4,8 @@ import java.util.List;
 
 /**
  * Siêu dữ liệu của một lần kiểm tra, KHÔNG chứa nội dung tin nhắn, explanation hay evidence.
- * {@code outcome} là verdict | smalltalk | unreadable | degraded (AI lỗi, đã trả câu suy giảm).
+ * {@code outcome} là verdict | smalltalk | unreadable | degraded (AI lỗi, đã trả câu suy giảm) |
+ * gave_up (job hết số lần retry, đã báo "bận") | superseded (job bị cụm tin mới hơn thay thế, không báo gì).
  * {@code feedback} là phản hồi của người dùng (ví dụ: "wrong" khi bấm [Bot báo sai]).
  */
 public record CheckRecord(

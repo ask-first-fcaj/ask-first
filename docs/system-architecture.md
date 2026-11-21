@@ -375,12 +375,12 @@ sequenceDiagram
   W->>W: verify secret (constant-time)
   W->>D: PutItem DEDUP#update_id (cond. not exists)
   W->>D: Get PROFILE (đã consent?)
-  W->>D: UpdateItem BUFFER#chat: append msg_ref, ADD max_seq 1 → seq (TTL 10')
+  W->>D: UpdateItem BUFFER#chat/META: ADD max_seq 1 → seq; Put BUFFER#chat/MSG#seq (InboundMessage JSON, TTL 10')
   opt seq == 1 (tin đầu tiên của cụm)
     W->>T: sendMessage "⏳ Bác chờ chút, đang kiểm tra…"
     W->>D: lưu placeholder_id vào BUFFER#chat
   end
-  W->>Q: SendMessage {chat_id, seq} delay=3s
+  W->>Q: SendMessage job analyze {v, type, job_id, chat_id, user_id, seq, enqueued_at} delay=3s
   W-->>T: 200 OK
   Q->>K: job
   K->>D: Read BUFFER#chat (seq < max_seq thì bỏ job này) + FLAGS
@@ -422,10 +422,10 @@ sequenceDiagram
 
 ### 5.2 Gom tin (debounce): giải quyết việc người dùng gửi nhiều tin liên tiếp
 
-1. Mỗi tin đến: webhook dùng **một lệnh `UpdateItem` nguyên tử** để append tham chiếu tin vào `BUFFER#chat_id` và `ADD max_seq 1`, nhận lại `seq` của tin này (TTL 10 phút). Sau đó gửi một SQS job `{chat_id, seq}` với `DelaySeconds=3`.
+1. Mỗi tin đến: webhook dùng **một lệnh `UpdateItem` nguyên tử** (`ADD max_seq 1` trên `BUFFER#chat_id/META`) để nhận `seq` của tin này, rồi ghi tin thành một item riêng `BUFFER#chat_id/MSG#<seq>` (TTL 10 phút). Tách item như vậy để hai webhook chạy song song không ghi đè nhau (một list trong cùng item thì không làm được). Sau đó webhook gửi một SQS job `analyze` (envelope §3.4: `v`, `type`, `job_id`, `chat_id`, `user_id`, `seq`, `enqueued_at`) với `DelaySeconds=3`.
 2. **Chỉ khi `seq == 1`** (tin đầu của cụm) webhook mới gửi tin "⏳" và lưu `placeholder_id` vào buffer. Các tin sau trong cùng cụm không gửi thêm "⏳", để chat không bị rác.
 3. Worker nhận job và đọc buffer. Nếu `seq` của job **nhỏ hơn** `max_seq`, tức là còn tin mới hơn, worker bỏ job này (job của tin cuối sẽ xử lý cả cụm). Job xử lý thì sửa đúng tin `placeholder_id`.
-4. Xử lý xong, worker **xoá buffer có điều kiện** `max_seq == seq`. Nếu điều kiện sai (có tin mới đến trong lúc đang xử lý) thì **không xoá** mà ghi `done_seq = seq` và bỏ `placeholder_id`: job của tin mới chỉ xử lý các tin có `seq > done_seq` và gửi kết quả thành một tin mới. Tin đến muộn không bị mất, kết quả cũ không bị ghi đè. Không chờ TTL vì TTL của DynamoDB có thể trễ.
+4. Xử lý xong, worker **xoá buffer có điều kiện** `max_seq == seq`. Nếu điều kiện sai (có tin mới đến trong lúc đang xử lý) thì **không xoá** mà ghi `done_seq = seq` và bỏ `placeholder_id`: job của tin mới chỉ xử lý các tin có `seq > done_seq` và gửi kết quả thành một tin mới. Tin đến muộn không bị mất, kết quả cũ không bị ghi đè. Không chờ TTL vì TTL của DynamoDB có thể trễ. Thứ tự dọn là xóa các `MSG#` có `seq <= seq` của job trước, rồi mới xóa hoặc cập nhật `META`, nên tin mới đến giữa chừng không bị xóa nhầm. Cài đặt và idempotency khi SQS giao lại: `docs/decisions/ADR-009-worker-orchestration.md`.
 5. Album ảnh (cùng `media_group_id`) được gom tự nhiên theo cơ chế trên.
 6. **Test bắt buộc:** gửi 3 tin trong 2 giây thì chỉ có 1 tin "⏳" và 1 kết quả; gửi tin thứ 4 đúng lúc worker đang xử lý tin thứ 3 thì tin 4 vẫn được trả lời.
 

@@ -40,7 +40,16 @@ else
   echo "Queue: $QUEUE_URL"
   awsl sqs get-queue-attributes --queue-url "$QUEUE_URL" --attribute-names All \
     --query 'Attributes.{cho:ApproximateNumberOfMessages,dangXuLy:ApproximateNumberOfMessagesNotVisible,hoan:ApproximateNumberOfMessagesDelayed}'
-  echo "Trigger SQS -> worker:"
+  DLQ_URL=$(awsl sqs get-queue-url --queue-name webhookDLQ --query QueueUrl --output text 2>/dev/null)
+if [ -n "$DLQ_URL" ] && [ "$DLQ_URL" != "None" ]; then
+  echo "DLQ webhookDLQ:"
+  awsl sqs get-queue-attributes --queue-url "$DLQ_URL" --attribute-names All \
+    --query 'Attributes.{cho:ApproximateNumberOfMessages,dangXuLy:ApproximateNumberOfMessagesNotVisible}'
+fi
+echo "Redrive webhookQueue:"
+awsl sqs get-queue-attributes --queue-url "$QUEUE_URL" --attribute-names RedrivePolicy VisibilityTimeout \
+  --query Attributes --output text
+echo "Trigger SQS -> worker:"
   awsl lambda list-event-source-mappings --function-name worker \
     --query 'EventSourceMappings[].{state:State,ketQua:LastProcessingResult}' 2>/dev/null \
     || echo "(chưa có trigger cho worker)"
@@ -54,3 +63,7 @@ docker logs localstack --since "$SINCE" 2>&1 \
 echo
 echo "===== worker (${SINCE} gần nhất) ====="
 show_lambda_logs worker
+
+echo
+echo "===== worker-dlq (${SINCE} gần nhất) ====="
+show_lambda_logs worker-dlq
