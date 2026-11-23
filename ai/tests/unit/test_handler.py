@@ -207,6 +207,24 @@ def test_transient_init_error_is_retryable(monkeypatch: pytest.MonkeyPatch) -> N
     assert err(h.lambda_handler(req)) == ("retryable", "init")
 
 
+def test_warm_failure_does_not_break_init(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nạp trước RAG/OCR lỗi (artifact thiếu, sai checksum) không làm hỏng khởi tạo: request vẫn chạy, mỗi model chỉ thử một lần."""
+    class Broken:
+        calls = 0
+
+        def _boom(self, _):
+            Broken.calls += 1
+            raise RuntimeError("s3")
+        search = read = _boom
+    pipe = Pipe()
+    pipe.retriever, pipe.ocr = Broken(), Broken()
+    monkeypatch.setattr(h, "_RUNTIME", None)
+    monkeypatch.setattr(h, "init_runtime", lambda env=None: rt(pipe))
+    req, _ = fixture("analyze", "default")
+    assert h.lambda_handler(req).get("error") is None and h.lambda_handler(req).get("error") is None
+    assert Broken.calls == 2 and pipe.calls == 2
+
+
 # ---------- CACHE# ----------
 
 def test_cache_miss_then_hit() -> None:
