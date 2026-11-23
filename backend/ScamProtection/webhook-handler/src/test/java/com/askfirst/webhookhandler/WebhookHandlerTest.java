@@ -521,6 +521,47 @@ class WebhookHandlerTest {
         assertThat(res.getBody()).isEqualTo("CALLBACK_HANDLED");
         assertThat(alerts.acked.get()).isTrue();
         assertThat(fakeTelegram.lastCallbackAnswer).contains("đã ghi nhận");
+        // Nút trên chính tin vừa bấm (message_id=50, chat 201) được đổi thành nút trạng thái "✅ Đã liên hệ"
+        assertThat(fakeTelegram.markupEdits).hasSize(1);
+        FakeTelegramClient.MarkupEdit edit = fakeTelegram.markupEdits.get(0);
+        assertThat(edit.chatId()).isEqualTo(201L);
+        assertThat(edit.messageId()).isEqualTo(50);
+        assertThat(edit.markup().toString()).contains("✅ Đã liên hệ").contains("ack_done");
+    }
+
+    @Test
+    @DisplayName("BE-29: sửa nút thất bại → vẫn markAcked và trả lời callback bình thường")
+    void testAckStillRecordedWhenButtonEditFails() {
+        InMemoryAlertStore alerts = new InMemoryAlertStore();
+        alerts.seed(pendingAlert("A-4", "tg:201"));
+        WebhookHandler h = handlerWithBuffer(null, fakeSqs, alerts);
+        fakeTelegram.failMarkupEdit = true;
+
+        APIGatewayProxyResponseEvent res = h.handleRequest(
+                createRequest(ackCallback(606, 201, "A-4")), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(res.getBody()).isEqualTo("CALLBACK_HANDLED");
+        assertThat(alerts.acked.get()).isTrue();
+        assertThat(fakeTelegram.lastCallbackAnswer).contains("đã ghi nhận");
+        assertThat(fakeTelegram.markupEdits).hasSize(1);   // đã thử sửa, lỗi chỉ ghi log
+    }
+
+    @Test
+    @DisplayName("BE-29: bấm nút trạng thái ack_done → chỉ answer, không markAcked, không sửa nút")
+    void testAckDoneCallbackOnlyAnswers() {
+        InMemoryAlertStore alerts = new InMemoryAlertStore();
+        alerts.seed(pendingAlert("A-5", "tg:201"));
+        WebhookHandler h = handlerWithBuffer(null, fakeSqs, alerts);
+
+        APIGatewayProxyResponseEvent res = h.handleRequest(
+                createRequest(callbackWithData(607, 201, "ack_done")), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(res.getBody()).isEqualTo("CALLBACK_HANDLED");
+        assertThat(alerts.acked.get()).isFalse();
+        assertThat(fakeTelegram.lastCallbackAnswer).contains("đã xác nhận");
+        assertThat(fakeTelegram.markupEdits).isEmpty();
     }
 
     @Test
@@ -536,6 +577,7 @@ class WebhookHandlerTest {
         assertThat(res.getStatusCode()).isEqualTo(200);
         assertThat(alerts.acked.get()).isFalse();
         assertThat(fakeTelegram.lastCallbackAnswer).contains("không còn hiệu lực");
+        assertThat(fakeTelegram.markupEdits).isEmpty();   // không được sửa nút của cảnh báo không hợp lệ
     }
 
     @Test
@@ -550,6 +592,7 @@ class WebhookHandlerTest {
         assertThat(res.getStatusCode()).isEqualTo(200);
         assertThat(alerts.acked.get()).isFalse();
         assertThat(fakeTelegram.lastCallbackAnswer).contains("không còn hiệu lực");
+        assertThat(fakeTelegram.markupEdits).isEmpty();   // không được sửa nút của cảnh báo không hợp lệ
     }
 
     @Test
@@ -605,10 +648,15 @@ class WebhookHandlerTest {
     }
 
     private static String ackCallback(long updateId, long fromId, String alertId) {
+        return callbackWithData(updateId, fromId, "ack:" + alertId);
+    }
+
+    /** Callback từ tin có message_id=50 trong chat riêng của người bấm. */
+    private static String callbackWithData(long updateId, long fromId, String data) {
         return "{\"update_id\": " + updateId + ", \"callback_query\": {\"id\": \"cb_" + updateId + "\", "
                 + "\"from\": {\"id\": " + fromId + ", \"is_bot\": false}, \"message\": {\"message_id\": 50, "
                 + "\"chat\": {\"id\": " + fromId + ", \"type\": \"private\"}, \"date\": 1729000000}, "
-                + "\"data\": \"ack:" + alertId + "\"}}";
+                + "\"data\": \"" + data + "\"}}";
     }
 
     private static com.askfirst.common.store.AlertRecord pendingAlert(String alertId, String guardianUid) {
@@ -677,7 +725,7 @@ class WebhookHandlerTest {
         }
 
         @Override
-        public Optional<com.askfirst.common.store.BufferStore.State> state(String chatId) {
+        public Optional<State> state(String chatId) {
             return Optional.empty();
         }
 
@@ -770,6 +818,11 @@ class WebhookHandlerTest {
         String lastText;
         Map<String, Object> lastMarkup;
         String lastCallbackAnswer;
+        final List<MarkupEdit> markupEdits = new ArrayList<>();
+        boolean failMarkupEdit;
+
+        record MarkupEdit(long chatId, int messageId, Map<String, Object> markup) {
+        }
 
         public FakeTelegramClient() {
             super("fake-token");
@@ -786,6 +839,14 @@ class WebhookHandlerTest {
         @Override
         public void answerCallbackQuery(String callbackQueryId, String text) {
             this.lastCallbackAnswer = text;
+        }
+
+        @Override
+        public void editReplyMarkup(long chatId, int messageId, Map<String, Object> replyMarkup) {
+            markupEdits.add(new MarkupEdit(chatId, messageId, replyMarkup));
+            if (failMarkupEdit) {
+                throw new RuntimeException("Telegram tạm thời không khả dụng");
+            }
         }
     }
 

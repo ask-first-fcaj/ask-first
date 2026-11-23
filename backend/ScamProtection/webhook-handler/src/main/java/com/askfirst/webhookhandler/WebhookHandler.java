@@ -66,7 +66,6 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * Lambda Webhook Handler cho AskFirst Bot (BE-22, BE-25, BE-26, BE-28, ARCH
  * §4.3).
- *
  * Luồng:
  * 1. Xác thực secret Telegram fail-closed (§8.2).
  * 2. Dedup theo update_id (chống duplicate khi Telegram retry).
@@ -185,7 +184,6 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             try {
                 dStore = new S3DonationStore(S3Client.create(), bucketName.trim());
             } catch (Exception ignored) {
-                dStore = null;
             }
         }
         this.donationStore = dStore;
@@ -439,22 +437,6 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 checkStore, sessionStore, null, donationStore, null);
     }
 
-    public CheckStore getCheckStore() {
-        return checkStore;
-    }
-
-    public SessionStore getSessionStore() {
-        return sessionStore;
-    }
-
-    public BufferStore getBufferStore() {
-        return bufferStore;
-    }
-
-    public DonationStore getDonationStore() {
-        return donationStore;
-    }
-
     /**
      * Handler cho LocalBotRunner (long polling, không có webhook nên không có
      * header secret, không có SQS).
@@ -496,8 +478,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 createInMemorySessionStore(),
                 null,                       // bufferStore
                 createInMemoryDonationStore(),
-                null
-                // alertStore - THÊM MỚI
+                 null
+                 // alertStore - THÊM MỚI
         );
     }
 
@@ -878,7 +860,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             // Đã có tác dụng phụ một phần -> giữ khóa dedup, trả 200 để Telegram không
             // retry gây xử lý đôi
             log(context, "Lỗi không mong đợi khi xử lý update " + updateId + ": " + e);
-            if (telegram != null && root != null) {
+            if (telegram != null) {
                 try {
                     long errChatId = root.path("message").path("chat").path("id").asLong();
                     long errFromId = root.path("message").path("from").path("id").asLong();
@@ -946,8 +928,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         // 3. Fast path: Các lệnh điều khiển (/start, /caidat, /huongdan, /bilua,
         // /nguoithan, /ketnoi)
         if (TelegramAdapter.isCommand(inbound)) {
-            String firstName = root.path("message").path("from").path("first_name").asText("").trim();
-            String username = root.path("message").path("from").path("username").asText("").trim();
+            String firstName = root.path("message").path("from").path("first_name").asText().trim();
+            String username = root.path("message").path("from").path("username").asText().trim();
             return handleCommand(chatId, userId, inbound.text().trim(), firstName, username, context);
         }
 
@@ -1023,12 +1005,14 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             if (telegram != null) {
                 telegram.answerCallbackQuery(cb.queryId(), "Đã lưu đồng ý!");
                 telegram.sendText(chatId,
-                        "✅ <b>Cảm ơn Bác đã đồng ý điều khoản!</b>\n\n" +
-                                "Từ bây giờ Bác có thể gửi tin nhắn, đường link hoặc ảnh chụp màn hình bất cứ lúc nào để cháu kiểm tra nhé.\n\n"
-                                +
-                                "• Bác muốn đổi cách xưng hô thân mật? Gõ /caidat\n" +
-                                "• Xem cách gửi tin kiểm tra: Gõ /huongdan\n" +
-                                "• Khi lỡ dính bẫy lừa cần làm gì gấp: Gõ /bilua");
+                        """
+                                ✅ <b>Cảm ơn Bác đã đồng ý điều khoản!</b>
+                                
+                                Từ bây giờ Bác có thể gửi tin nhắn, đường link hoặc ảnh chụp màn hình bất cứ lúc nào để cháu kiểm tra nhé.
+                                
+                                • Bác muốn đổi cách xưng hô thân mật? Gõ /caidat
+                                • Xem cách gửi tin kiểm tra: Gõ /huongdan
+                                • Khi lỡ dính bẫy lừa cần làm gì gấp: Gõ /bilua""");
             }
             return response(200, "CALLBACK_HANDLED");
 
@@ -1044,10 +1028,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             if (telegram != null) {
                 telegram.answerCallbackQuery(cb.queryId(), "Đã ghi nhận");
                 telegram.sendText(chatId,
-                        "Dạ cháu đã ghi nhận ạ. Theo quy định bảo vệ dữ liệu cá nhân (Nghị định 356), cháu xin phép " +
-                                "<b>không thu thập hoặc phân tích</b> bất kỳ nội dung nào khi chưa có sự đồng ý của Bác.\n\n"
-                                +
-                                "Khi nào cần sử dụng, Bác chỉ cần gõ /start để xem lại và đồng ý nhé!");
+                        """
+                                Dạ cháu đã ghi nhận ạ. Theo quy định bảo vệ dữ liệu cá nhân (Nghị định 356), cháu xin phép \
+                                <b>không thu thập hoặc phân tích</b> bất kỳ nội dung nào khi chưa có sự đồng ý của Bác.
+                                
+                                Khi nào cần sử dụng, Bác chỉ cần gõ /start để xem lại và đồng ý nhé!""");
             }
             return response(200, "CALLBACK_HANDLED");
 
@@ -1095,16 +1080,28 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return response(200, "DATA_DELETION_CANCELLED");
         }
 
+        // Nút "✅ Đã liên hệ" chỉ để hiện trạng thái (thay cho nút "Tôi đã liên hệ" sau khi đã ghi nhận):
+        // phải answer, nếu không Telegram sẽ quay vòng chờ trên nút vài giây.
+        if ("ack_done".equals(data)) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Bạn đã xác nhận rồi");
+            }
+            return response(200, "CALLBACK_HANDLED");
+        }
+
         // Người thân bấm "Tôi đã liên hệ" trên cảnh báo
         if (data != null && data.startsWith("ack:")) {
-            return handleGuardianAck(cb, data.substring("ack:".length()));
+            return handleGuardianAck(cb, data.substring("ack:".length()), context);
         }
 
         return response(200, "UNKNOWN_CALLBACK");
     }
 
-    /** Người thân bấm "Tôi đã liên hệ". Chỉ đúng người thân của cảnh báo đó mới ghi nhận được. */
-    private APIGatewayProxyResponseEvent handleGuardianAck(TelegramCallbackQuery cb, String alertId) {
+    /**
+     * Người thân bấm "Tôi đã liên hệ". Chỉ đúng người thân của cảnh báo đó mới ghi nhận được. Ghi nhận xong thì đổi
+     * nút trên chính tin vừa bấm thành "✅ Đã liên hệ" để người thân biết mình đã bấm và không bấm lại.
+     */
+    private APIGatewayProxyResponseEvent handleGuardianAck(TelegramCallbackQuery cb, String alertId, Context context) {
         if (alertStore == null) {
             return response(200, "UNKNOWN_CALLBACK");
         }
@@ -1120,8 +1117,26 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         alertStore.markAcked(alertId, Instant.now());
         if (telegram != null) {
             telegram.answerCallbackQuery(cb.queryId(), "Cảm ơn bạn, đã ghi nhận.");
+            markGuardianAckDone(cb, context);
         }
         return response(200, "CALLBACK_HANDLED");
+    }
+
+    /**
+     * Sửa bàn phím của tin cảnh báo (hoặc tin nhắc 15 phút) vừa được bấm thành nút trạng thái "✅ Đã liên hệ".
+     * Chỉ ghi log khi lỗi: markAcked đã xong nên việc sửa nút không được làm hỏng ack.
+     */
+    private void markGuardianAckDone(TelegramCallbackQuery cb, Context context) {
+        Integer msgId = parseMessageId(cb.messageId());
+        if (msgId == null) {
+            return;
+        }
+        try {
+            telegram.editReplyMarkup(Long.parseLong(cb.chatId()), msgId, TelegramClient.inlineKeyboard(List.of(
+                    List.of(new InlineButton("✅ Đã liên hệ", "ack_done")))));
+        } catch (Exception e) {
+            log(context, "Không sửa được nút ack: " + e.getClass().getSimpleName());
+        }
     }
 
     private static String stripUserPrefix(String uid) {
@@ -1734,14 +1749,17 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
             if (!hasConsent) {
                 // Gửi màn hình chào mừng & đồng ý điều khoản (Onboarding - BE-25)
-                String welcomeMsg = "<b>Chào mừng Bác đến với AskFirst!</b> 🛡️\n\n" +
-                        "Cháu là trợ lý bảo vệ và kiểm tra tin nhắn lừa đảo dành cho người cao tuổi và gia đình.\n\n" +
-                        "<b>Chính sách bảo vệ dữ liệu cá nhân (Nghị định 356):</b>\n" +
-                        "• Bot <b>KHÔNG BAO GIỜ</b> hỏi mã OTP, mật khẩu hay yêu cầu nạp tiền.\n" +
-                        "• Mọi thông tin gửi vào chỉ dùng để phân tích dấu hiệu lừa đảo, không chia sẻ trái phép cho bên thứ ba.\n"
-                        +
-                        "• Bác có quyền rút đồng ý hoặc yêu cầu xóa dữ liệu bất kỳ lúc nào.\n\n" +
-                        "Bác vui lòng bấm <b>Tôi đồng ý</b> bên dưới để bắt đầu sử dụng nhé!";
+                String welcomeMsg = """
+                        <b>Chào mừng Bác đến với AskFirst!</b> 🛡️
+                        
+                        Cháu là trợ lý bảo vệ và kiểm tra tin nhắn lừa đảo dành cho người cao tuổi và gia đình.
+                        
+                        <b>Chính sách bảo vệ dữ liệu cá nhân (Nghị định 356):</b>
+                        • Bot <b>KHÔNG BAO GIỜ</b> hỏi mã OTP, mật khẩu hay yêu cầu nạp tiền.
+                        • Mọi thông tin gửi vào chỉ dùng để phân tích dấu hiệu lừa đảo, không chia sẻ trái phép cho bên thứ ba.
+                        • Bác có quyền rút đồng ý hoặc yêu cầu xóa dữ liệu bất kỳ lúc nào.
+                        
+                        Bác vui lòng bấm <b>Tôi đồng ý</b> bên dưới để bắt đầu sử dụng nhé!""";
 
                 Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
                         List.of(
@@ -1775,14 +1793,14 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return response(200, "COMMAND_HANDLED");
 
         } else if (cmd.startsWith("/huongdan")) {
-            String guideMsg = "<b>Hướng dẫn sử dụng AskFirst:</b> 📖\n\n" +
-                    "1. <b>Chụp ảnh màn hình:</b> Chụp lại tin nhắn đáng ngờ, cuộc gọi hoặc hóa đơn rồi gửi thẳng vào đây cho cháu.\n"
-                    +
-                    "2. <b>Chép văn bản / chuyển tiếp:</b> Copy nội dung tin nhắn hoặc bấm chuyển tiếp (Forward) tin nhắn từ người lạ sang.\n"
-                    +
-                    "3. <b>Chờ kết quả:</b> Trong vài giây, hệ thống AI sẽ phân tích các dấu hiệu lừa đảo và cảnh báo ngay cho Bác.\n\n"
-                    +
-                    "<i>💡 Mẹo: Bác có thể ghim đoạn chat này lên đầu danh sách Telegram để dễ tìm kiếm khi cần kiểm tra gấp!</i>";
+            String guideMsg = """
+                    <b>Hướng dẫn sử dụng AskFirst:</b> 📖
+                    
+                    1. <b>Chụp ảnh màn hình:</b> Chụp lại tin nhắn đáng ngờ, cuộc gọi hoặc hóa đơn rồi gửi thẳng vào đây cho cháu.
+                    2. <b>Chép văn bản / chuyển tiếp:</b> Copy nội dung tin nhắn hoặc bấm chuyển tiếp (Forward) tin nhắn từ người lạ sang.
+                    3. <b>Chờ kết quả:</b> Trong vài giây, hệ thống AI sẽ phân tích các dấu hiệu lừa đảo và cảnh báo ngay cho Bác.
+                    
+                    <i>💡 Mẹo: Bác có thể ghim đoạn chat này lên đầu danh sách Telegram để dễ tìm kiếm khi cần kiểm tra gấp!</i>""";
 
             if (telegram != null) {
                 telegram.sendText(chatId, guideMsg);
@@ -1790,21 +1808,23 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return response(200, "COMMAND_HANDLED");
 
         } else if (cmd.startsWith("/bilua")) {
-            String emergencyMsg = "🚨 <b>CÁC VIỆC CẦN LÀM NGAY (30 PHÚT ĐẦU KHI NGHI BỊ LỪA)</b>\n\n" +
-                    "1. <b>Khóa thẻ / tài khoản ngân hàng ngay lập tức (0 - 5 phút):</b>\n" +
-                    "Gọi ngay tổng đài ngân hàng của Bác, nói rõ nghi bị lừa, yêu cầu khóa thẻ và tạm dừng mọi giao dịch. Đừng chần chừ chờ xác minh!\n\n"
-                    +
-                    "2. <b>Tắt nguồn / Ngắt mạng điện thoại (0 - 5 phút):</b>\n" +
-                    "Nếu Bác đã lỡ bấm vào đường link lạ hoặc cài app lạ, hãy tắt nguồn hoặc tắt Wi-Fi/4G ngay lập tức để kẻ gian không chiếm quyền điều khiển và không lấy được mã OTP.\n\n"
-                    +
-                    "3. <b>Đổi mật khẩu từ thiết bị khác (5 - 15 phút):</b>\n" +
-                    "Dùng điện thoại hoặc máy tính an toàn khác để đổi mật khẩu ngân hàng, ví điện tử, Facebook, Zalo. Gỡ ngay ứng dụng lạ vừa cài.\n\n"
-                    +
-                    "4. <b>Trình báo Công an gần nhất (15 - 30 phút):</b>\n" +
-                    "Đến Công an phường/xã gần nhất hoặc gọi đường dây nóng <b>113</b> để trình báo. Mang theo ảnh chụp tin nhắn, số điện thoại kẻ lừa đảo và biên lai chuyển tiền.\n\n"
-                    +
-                    "5. <b>Thông báo cho người thân tin cậy:</b>\n" +
-                    "Báo ngay cho con cháu trong nhà để cùng hỗ trợ xử lý và cảnh giác nếu kẻ gian tiếp tục liên hệ lừa thêm.";
+            String emergencyMsg = """
+                    🚨 <b>CÁC VIỆC CẦN LÀM NGAY (30 PHÚT ĐẦU KHI NGHI BỊ LỪA)</b>
+                    
+                    1. <b>Khóa thẻ / tài khoản ngân hàng ngay lập tức (0 - 5 phút):</b>
+                    Gọi ngay tổng đài ngân hàng của Bác, nói rõ nghi bị lừa, yêu cầu khóa thẻ và tạm dừng mọi giao dịch. Đừng chần chừ chờ xác minh!
+                    
+                    2. <b>Tắt nguồn / Ngắt mạng điện thoại (0 - 5 phút):</b>
+                    Nếu Bác đã lỡ bấm vào đường link lạ hoặc cài app lạ, hãy tắt nguồn hoặc tắt Wi-Fi/4G ngay lập tức để kẻ gian không chiếm quyền điều khiển và không lấy được mã OTP.
+                    
+                    3. <b>Đổi mật khẩu từ thiết bị khác (5 - 15 phút):</b>
+                    Dùng điện thoại hoặc máy tính an toàn khác để đổi mật khẩu ngân hàng, ví điện tử, Facebook, Zalo. Gỡ ngay ứng dụng lạ vừa cài.
+                    
+                    4. <b>Trình báo Công an gần nhất (15 - 30 phút):</b>
+                    Đến Công an phường/xã gần nhất hoặc gọi đường dây nóng <b>113</b> để trình báo. Mang theo ảnh chụp tin nhắn, số điện thoại kẻ lừa đảo và biên lai chuyển tiền.
+                    
+                    5. <b>Thông báo cho người thân tin cậy:</b>
+                    Báo ngay cho con cháu trong nhà để cùng hỗ trợ xử lý và cảnh giác nếu kẻ gian tiếp tục liên hệ lừa thêm.""";
 
             if (telegram != null) {
                 telegram.sendText(chatId, emergencyMsg);
@@ -1822,9 +1842,12 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                     : List.of();
 
             if (guardians.isEmpty()) {
-                String msg = "👨‍👩‍👦 <b>Danh sách người thân</b>\n\n"
-                        + "Bác chưa kết nối với người thân nào.\n\n"
-                        + "Bấm nút bên dưới để tạo mã kết nối và gửi cho con/cháu:";
+                String msg = """
+                        👨‍👩‍👦 <b>Danh sách người thân</b>
+                        
+                        Bác chưa kết nối với người thân nào.
+                        
+                        Bấm nút bên dưới để tạo mã kết nối và gửi cho con/cháu:""";
                 Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
                         List.of(new InlineButton("➕ Tạo mã kết nối người thân", "guardian:create_invite"))));
                 if (telegram != null) {
@@ -2040,8 +2063,10 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                         telegram.answerCallbackQuery(queryId, "Bác đã rút đồng ý trước đó");
                     }
                     telegram.sendText(chatId,
-                            "Dạ, Bác đã rút đồng ý trước đó rồi ạ.\n\n"
-                                    + "Khi nào Bác cần sử dụng lại, chỉ cần gõ /start để xem và đồng ý lại nhé!");
+                            """
+                                    Dạ, Bác đã rút đồng ý trước đó rồi ạ.
+                                    
+                                    Khi nào Bác cần sử dụng lại, chỉ cần gõ /start để xem và đồng ý lại nhé!""");
                 }
                 return response(200, "CONSENT_ALREADY_REVOKED");
             }
@@ -2069,8 +2094,10 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 telegram.answerCallbackQuery(queryId, "Đã rút đồng ý");
             }
             telegram.sendText(chatId,
-                    "Dạ cháu đã ghi nhận rút đồng ý của Bác. Mọi liên kết người thân đã được huỷ bỏ và cháu sẽ ngừng hỗ trợ kiểm tra tin nhắn lừa đảo.\n\n"
-                            + "Khi nào Bác cần sử dụng lại, chỉ cần gõ /start để xem và đồng ý lại nhé!");
+                    """
+                            Dạ cháu đã ghi nhận rút đồng ý của Bác. Mọi liên kết người thân đã được huỷ bỏ và cháu sẽ ngừng hỗ trợ kiểm tra tin nhắn lừa đảo.
+                            
+                            Khi nào Bác cần sử dụng lại, chỉ cần gõ /start để xem và đồng ý lại nhé!""");
         }
 
         return response(200, "CONSENT_REVOKED");
@@ -2125,8 +2152,10 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                         telegram.answerCallbackQuery(queryId, "Dữ liệu đã được xoá trước đó");
                     }
                     telegram.sendText(chatId,
-                            "Dạ, toàn bộ dữ liệu của Bác trên hệ thống đã được xoá sạch trước đó rồi ạ!\n\n"
-                                    + "Nếu cần sử dụng lại, Bác chỉ cần gõ /start nhé.");
+                            """
+                                    Dạ, toàn bộ dữ liệu của Bác trên hệ thống đã được xoá sạch trước đó rồi ạ!
+                                    
+                                    Nếu cần sử dụng lại, Bác chỉ cần gõ /start nhé.""");
                 }
                 return response(200, "DATA_ALREADY_DELETED");
             }
@@ -2178,8 +2207,10 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                     telegram.answerCallbackQuery(queryId, "Đã xoá dữ liệu");
                 }
                 telegram.sendText(chatId,
-                        "Cháu đã xoá sạch toàn bộ dữ liệu của Bác trên hệ thống rồi ạ!\n\n"
-                                + "💡 Để bảo vệ quyền riêng tư tuyệt đối, Bác vui lòng tự xóa cuộc trò chuyện này trên ứng dụng Telegram giúp cháu nhé.");
+                        """
+                                Cháu đã xoá sạch toàn bộ dữ liệu của Bác trên hệ thống rồi ạ!
+                                
+                                💡 Để bảo vệ quyền riêng tư tuyệt đối, Bác vui lòng tự xóa cuộc trò chuyện này trên ứng dụng Telegram giúp cháu nhé.""");
             }
 
             return response(200, "DATA_DELETED");
@@ -2323,18 +2354,16 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 }
             }
 
-            if (queueReady) {
-                try {
-                    String payload = MAPPER.writeValueAsString(inbound);
-                    sqs.sendMessage(
-                            SendMessageRequest.builder()
-                                    .queueUrl(queueUrl)
-                                    .messageBody(payload)
-                                    .build());
-                } catch (Exception e) {
-                    log(context, "Lỗi gửi message vào SQS: " + e);
-                    return response(500, "SQS_FAILED");
-                }
+            try {
+                String payload = MAPPER.writeValueAsString(inbound);
+                sqs.sendMessage(
+                        SendMessageRequest.builder()
+                                .queueUrl(queueUrl)
+                                .messageBody(payload)
+                                .build());
+            } catch (Exception e) {
+                log(context, "Lỗi gửi message vào SQS: " + e);
+                return response(500, "SQS_FAILED");
             }
 
             return response(200, "OK");
@@ -2427,9 +2456,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 String elderDisplayName = "";
                 if (root != null && root.has("message") && root.path("message").has("from")) {
                     JsonNode fromNode = root.path("message").path("from");
-                    String firstName = fromNode.path("first_name").asText("").trim();
-                    String lastName = fromNode.path("last_name").asText("").trim();
-                    String username = fromNode.path("username").asText("").trim();
+                    String firstName = fromNode.path("first_name").asText().trim();
+                    String lastName = fromNode.path("last_name").asText().trim();
+                    String username = fromNode.path("username").asText().trim();
 
                     String fullName = (firstName + (lastName.isBlank() ? "" : " " + lastName)).trim();
                     String safeName = TelegramClient.escapeHtml(fullName);
