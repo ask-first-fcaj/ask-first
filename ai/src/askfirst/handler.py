@@ -118,14 +118,18 @@ def _blank_jpeg() -> bytes:
 
 
 def _warm(pipeline: m.Pipeline) -> None:
-    """Nạp trước model RAG và OCR (chỉ RealPipeline có `retriever`, `ocr`), mỗi cái chạy thử một lần.
-    Lỗi thì bỏ qua: model nạp lười nên lần dùng thật sẽ thử lại."""
+    """Nạp trước model RAG, OCR và VietOCR đọc lại (chỉ RealPipeline có `retriever`, `ocr`), mỗi cái chạy thử một lần.
+    Lỗi thì bỏ qua: RAG, OCR nạp lười nên lần dùng thật sẽ thử lại; VietOCR nạp lỗi thì tắt tới hết container."""
     retriever = getattr(pipeline, "retriever", None)
     if retriever is not None:
         _timed("rag_warm", lambda: retriever.search("kiểm tra"))
     ocr = getattr(pipeline, "ocr", None)
     if ocr is not None:
         _timed("ocr_warm", lambda: ocr.read(_blank_jpeg()))
+    reread = getattr(ocr, "reread", None)
+    if reread is not None:   # ảnh trắng không có dòng chữ nên ocr_warm không chạm tới VietOCR
+        from PIL import Image
+        _timed("vietocr_warm", lambda: reread.predict([Image.new("RGB", (64, 32), "white")]))
 
 
 def _runtime() -> Runtime:
