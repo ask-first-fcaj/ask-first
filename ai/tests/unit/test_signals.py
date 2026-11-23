@@ -224,15 +224,15 @@ long = "Ngân hàng thông báo giao dịch bất thường, vui lòng liên h�
 texts = [mask(normalize(t)).text for t in [*(r["input"]["text"] for r in rows), long]]
 for t in texts[:5]:
     engine(t, [])
-worst = 0.0
-for t in texts:
-    runs = []
-    for _ in range(3):
+# Đo xen kẽ nhiều vòng qua cả bộ rồi lấy min mỗi tin: runner CI dùng chung có lúc chậm cả loạt (macOS đo 14 ms cho
+# tin máy dev chạy 2,2 ms), lặp liên tiếp 3 lần trên một tin rơi trọn vào đợt chậm đó.
+best = [float("inf")] * len(texts)
+for _ in range(7):
+    for i, t in enumerate(texts):
         start = time.perf_counter()
         engine(t, [])
-        runs.append(time.perf_counter() - start)
-    worst = max(worst, min(runs))
-print(worst)
+        best[i] = min(best[i], time.perf_counter() - start)
+print(max(best))
 """
 
 
