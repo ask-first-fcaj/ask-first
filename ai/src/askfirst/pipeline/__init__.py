@@ -18,7 +18,7 @@ def build_pipeline(impl: str, config_dir: pathlib.Path, artifacts: ArtifactStore
 
     `artifacts` feeds the OCR model (AI-26, loaded lazily on the first image) and the RAG embedder + index (INT-03, loaded
     lazily on the first search; no RAG while `embedder` or `kb_index` is still empty in artifacts.yaml);
-    `url_cache` (AI-24b, network URL intel) is not used yet."""
+    `url_cache` keeps short-link expansions (AI-24b, `URL#`); None = no cache."""
     if impl == "stub":
         return StubPipeline()
     if impl == "real":
@@ -32,6 +32,7 @@ def build_pipeline(impl: str, config_dir: pathlib.Path, artifacts: ArtifactStore
         from askfirst.pipeline.respond import KB_DIR, url_intel
         from askfirst.pipeline.retrieve import LazyRetriever, Retriever
         from askfirst.pipeline.signals import RuleEngine
+        from askfirst.pipeline.url_net import UrlNet, expanding
         manifest = config_dir / "artifacts.yaml"
         ocr = RapidOcr(artifacts, version=artifact_version(manifest, "ocr"))
         rules = RuleEngine.from_file(KB_DIR / "rules.yaml")
@@ -40,6 +41,6 @@ def build_pipeline(impl: str, config_dir: pathlib.Path, artifacts: ArtifactStore
             embedder = E5Embedder(artifacts, version=artifact_version(manifest, "embedder"))
             retriever = LazyRetriever(lambda: Retriever.from_dir(embedder, artifacts.path("kb_index")))
         return RealPipeline(BedrockClient.from_file(config_dir / "models.yaml"), load_system_prompt(),
-                            rules=rules, rules_version=rules.version, url_intel=url_intel(), ocr=ocr,
+                            rules=rules, rules_version=rules.version, url_intel=expanding(url_intel(), UrlNet(url_cache)), ocr=ocr,
                             guard=BedrockGuardrail.from_file(config_dir / "models.yaml"), retriever=retriever)
     raise ValueError(f"unknown PIPELINE_IMPL: {impl!r}")
