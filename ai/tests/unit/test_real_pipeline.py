@@ -354,7 +354,8 @@ def test_factory_wires_lazy_ocr_from_artifacts():
             raise AssertionError(name)
 
     p = build_pipeline("real", CONFIG_DIR, Store(), None)
-    assert p.ocr.version == "ppocrv6-small-rapidocr3.10.0" and p.ocr._engine is None
+    assert p.ocr.version == "ppocrv6-small-rapidocr3.10.0+vgg-seq2seq-0.3.13-fp32" and p.ocr._engine is None
+    assert p.ocr.reread is not None and p.ocr.reread._s is None   # VietOCR cũng nạp lười, ở dòng đầu cần đọc lại
     assert p.retriever is not None and p.retriever.version == ""   # RAG cũng nạp lười, ở lần tìm đầu
 
 

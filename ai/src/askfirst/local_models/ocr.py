@@ -5,11 +5,14 @@ không tải model từ S3. Hậu xử lý (`order_by_columns`, `repair_urls`, `
 `eval/ocr_benchmark.py` import lại từ đây nên số đo trên CI là số của code production.
 
 `rapidocr`, `cv2` chỉ import trong hàm: module này import được ở môi trường không cài OCR (vd benchmark chỉ chấm lại).
+Có `reread` (`local_models/vietocr.py`) thì dòng tiếng Việt có dấu được VietOCR đọc lại; lỗi ở bước này thì giữ bản RapidOCR.
 """
 
 from __future__ import annotations
 
 import io
+import json
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -17,6 +20,8 @@ from typing import Any
 import numpy as np
 
 from askfirst.domain.models import ArtifactStore
+
+log = logging.getLogger(__name__)
 
 # Tên file trong artifact `ocr` (config/artifacts.yaml), giữ đúng tên upstream để đối chiếu sha256 với RapidOCR.
 # Ảnh cuộn dài 1080×20000 ≈ 21,6 MP vẫn qua; ảnh lớn hơn (thường là ảnh "bom giải nén") bị từ chối trước khi giải mã.
@@ -27,8 +32,8 @@ MODEL_FILES = {"det": "PP-OCRv6_det_small.onnx", "rec": "PP-OCRv6_rec_small.onnx
 @dataclass(frozen=True)
 class ExtractedText:
     """Kết quả OCR một ảnh (ARCH §6.3). Chứa chữ trong ảnh của người dùng: KHÔNG log."""
-    raw_text: str                # dòng theo thứ tự engine (đã sắp cột), trước khi sửa bằng regex
-    text: str                    # sau repair_phones + repair_urls; pipeline lấy URL từ cả hai bản
+    raw_text: str                # dòng RapidOCR theo thứ tự engine (đã sắp cột), trước khi đọc lại và sửa bằng regex
+    text: str                    # sau VietOCR đọc lại (nếu bật) + repair_phones + repair_urls; pipeline lấy URL từ cả hai bản
     mean_conf: float = 0.0       # điểm nhận dạng trung bình của các dòng giữ lại; 0.0 khi không đọc được gì
     qr: list[str] = field(default_factory=list)   # nội dung các mã QR giải được
 
@@ -103,10 +108,12 @@ def decode_qr(img: np.ndarray) -> list[str]:
 
 
 class RapidOcr:
-    """`read(bytes) -> ExtractedText`. Model lấy từ `artifacts.path(name)` ở lần đọc đầu; ``threads=None`` để onnxruntime tự chọn."""
+    """`read(bytes) -> ExtractedText`. Model lấy từ `artifacts.path(name)` ở lần đọc đầu; ``threads=None`` để onnxruntime tự chọn.
+    ``reread`` (vd `VietOcr`) đọc lại các dòng RapidOCR thiếu chữ có dấu."""
 
-    def __init__(self, artifacts: ArtifactStore, *, name: str = "ocr", version: str = "", threads: int | None = None) -> None:
-        self.artifacts, self.name, self.version, self.threads = artifacts, name, version, threads
+    def __init__(self, artifacts: ArtifactStore, *, name: str = "ocr", version: str = "", threads: int | None = None,
+                 reread: Any = None) -> None:
+        self.artifacts, self.name, self.version, self.threads, self.reread = artifacts, name, version, threads, reread
         self._engine: Any = None
 
     def _load(self) -> Any:
@@ -133,5 +140,11 @@ class RapidOcr:
         res = self._engine(img)
         txts = list(res.txts or ())
         raw = order_by_columns(txts, res.boxes)
+        text = raw
+        if self.reread is not None and txts:
+            try:
+                text = order_by_columns(self.reread.reread(img, txts, res.boxes), res.boxes)
+            except Exception as e:   # model đọc lại hỏng/thiếu: vẫn trả bản RapidOCR, không làm mất cả ảnh
+                log.warning(json.dumps({"event": "ocr_reread_failed", "error": type(e).__name__}))
         conf = float(np.mean(res.scores)) if txts else 0.0
-        return ExtractedText(raw_text=raw, text=repair_urls(repair_phones(raw)), mean_conf=round(conf, 4), qr=decode_qr(img))
+        return ExtractedText(raw_text=raw, text=repair_urls(repair_phones(text)), mean_conf=round(conf, 4), qr=decode_qr(img))
