@@ -63,11 +63,17 @@ def order_by_columns(txts: list[str], boxes, min_gap_px: int = 12, min_boxes_per
     return "\n".join(txts[i] for i in sorted(left, key=key) + sorted(right, key=key))
 
 
+# Dòng sau là phần còn lại của tên miền (có đuôi chữ như `.com`, `.club`): "dichvucong-⏎vn.com", "vietcombank.vn-⏎yys.club".
+_WRAPPED_AT_HYPHEN = re.compile(r"(?<=[A-Za-z0-9])-[ \t]*\n[ \t]*(?=[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b)")
+
+
 def repair_urls(text: str) -> str:
-    """Sửa 3 lỗi ở URL thấy ở RapidOCR/Paddle: mất chữ `h` (`ttps://`), thừa dấu chấm sau `://`, và URL bị xuống dòng ngay sau `://`."""
+    """Sửa 4 lỗi ở URL thấy ở RapidOCR/Paddle: mất chữ `h` (`ttps://`), thừa dấu chấm sau `://`, URL bị xuống dòng ngay sau `://`,
+    và tên miền bị xuống dòng ngay sau dấu `-` (ảnh chat hẹp ngắt dòng ở `-`)."""
     text = re.sub(r"(?<![A-Za-z])ttp(s?):", r"http\1:", text)
     text = re.sub(r"(https?:\s*/\s*/)\s*\.+", r"\1", text)
-    return re.sub(r"(https?://)\s+(?=[A-Za-z0-9])", r"\1", text)
+    text = re.sub(r"(https?://)\s+(?=[A-Za-z0-9])", r"\1", text)
+    return _WRAPPED_AT_HYPHEN.sub("-", text)
 
 
 _PHONE_LIKE = re.compile(r"(?<![\w.])(\+?84|0|O)[\dOIl .\-]{8,13}(?!\w)")
