@@ -74,6 +74,45 @@ public class GuardianRepo {
         update(elderUid, guardianUid, g -> g.setShareLevel(shareLevel));
     }
 
+    /**
+     * Trả danh sách các elder (ward) mà guardianUid đang bảo vệ.
+     * Query trên GSI1 với GSI1PK = "WARD_OF#<guardianUid>".
+     */
+    public List<GuardianRecord> listWards(String guardianUid) {
+        if (table == null) {
+            return List.of();
+        }
+        String rawUid = guardianUid.startsWith("USER#") ? guardianUid.substring(5) : guardianUid;
+        rawUid = rawUid.startsWith("GUARDIAN#") ? rawUid.substring(9) : rawUid;
+        String gsi1Pk = "WARD_OF#" + rawUid;
+
+        QueryConditional queryConditional = QueryConditional.keyEqualTo(
+                Key.builder().partitionValue(gsi1Pk).build());
+
+        List<GuardianRecord> results = new ArrayList<>();
+        table.index("GSI1")
+                .query(QueryEnhancedRequest.builder().queryConditional(queryConditional).build())
+                .stream()
+                .flatMap(page -> page.items().stream())
+                .forEach(results::add);
+        return results;
+    }
+
+    /**
+     * Chuyển đổi trạng thái: active → paused hoặc paused → active.
+     * Dùng optimistic update pattern của {@link #update(String, String, Consumer)}.
+     */
+    public void toggleStatus(String elderUid, String guardianUid) {
+        update(elderUid, guardianUid, g -> {
+            String current = g.getStatus();
+            if ("active".equals(current)) {
+                g.setStatus("paused");
+            } else if ("paused".equals(current)) {
+                g.setStatus("active");
+            }
+        });
+    }
+
     public void delete(String elderUid, String guardianUid) {
         if (table == null || elderUid == null || guardianUid == null) {
             return;
@@ -205,6 +244,15 @@ public class GuardianRepo {
      * Đọc-sửa-ghi có khóa lạc quan; chưa có liên kết thì bỏ qua như trước đây.
      */
     private void update(String elderUid, String guardianUid, Consumer<GuardianRecord> change) {
+        if (table == null) {
+            Optional<GuardianRecord> current = getGuardian(elderUid, guardianUid);
+            if (current.isPresent()) {
+                GuardianRecord guardian = current.get();
+                change.accept(guardian);
+                save(guardian);
+            }
+            return;
+        }
         for (int attempt = 1;; attempt++) {
             Optional<GuardianRecord> current = getGuardian(elderUid, guardianUid);
             if (current.isEmpty()) {

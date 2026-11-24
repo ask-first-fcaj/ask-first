@@ -323,3 +323,15 @@ Trong lần triển khai đầu tiên, người dùng IAM hoặc Role deploy th�
 ### 3. Trạng thái kiểm nghiệm SnapStart (Java 21):
 - `not verified: hành vi SAM + Java 21 SnapStart trên cả 3 OS dev (Windows, macOS, Linux)`
   - *Giải thích:* Theo implementation plan, SnapStart cho Java 21 trên Lambda (Singapore `ap-southeast-1`) được lên kế hoạch đo lường và khảo sát chuyên sâu tại spike **BE-14** (W1) và hoàn thiện đường ống tại **BE-07** (W2–W3). Bản hello-world Webhook hiện tại tập trung thông suốt luồng build/deploy/Function URL công khai không bật SnapStart để giữ độ đơn giản tối đa và đảm bảo tương thích đa hệ điều hành dev.
+
+### 4. Bedrock ở account khác (Lambda `ai`)
+Account team chạy Lambda nhưng Bedrock (model + guardrail trong `ai/config/models.yaml`) nằm ở account khác. Lambda `ai` có env `BEDROCK_ROLE_ARN` thì assume role đó trước khi gọi Bedrock (`ai/src/askfirst/llm/bedrock.py`, `runtime_client`); không có env thì gọi Bedrock trong chính account đang chạy.
+
+```bash
+# Account có Bedrock: role cho role của Lambda ai assume
+aws iam create-role --role-name askfirst-bedrock-from-team --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::<TEAM_ACCOUNT>:role/<AI_LAMBDA_ROLE>"},"Action":"sts:AssumeRole"}]}'
+aws iam put-role-policy --role-name askfirst-bedrock-from-team --policy-name bedrock --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["bedrock:InvokeModel","bedrock:ApplyGuardrail"],"Resource":"*"}]}'
+# Account team: cho role của Lambda ai assume role trên
+aws iam put-role-policy --role-name <AI_LAMBDA_ROLE> --policy-name assume-bedrock --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"sts:AssumeRole","Resource":"arn:aws:iam::<BEDROCK_ACCOUNT>:role/askfirst-bedrock-from-team"}]}'
+```
+Rồi đặt env `BEDROCK_ROLE_ARN=arn:aws:iam::<BEDROCK_ACCOUNT>:role/askfirst-bedrock-from-team` cho function `ai`.
