@@ -76,30 +76,73 @@ def _stub_bundle(items: list[m.InboundMessage], session: m.SessionContext | None
 
 
 def init_runtime(env: Mapping[str, str] = os.environ) -> Runtime:
-    """Gọi MỘT lần mỗi cold start. Stub không cache vì `fingerprint` của stub là hằng số."""
+    """Gọi MỘT lần mỗi cold start. Stub không cache vì `fingerprint` của stub là hằng số.
+
+    Bản khác stub đọc `ARTIFACT_BUCKET`, `TABLE_NAME`, `BOT_TOKEN_PARAM` (plan §3.5); thiếu biến → `KeyError` → `fatal/init`.
+    Không gọi mạng ở đây: model tải lười từ S3, bot token đọc lười từ SSM, DynamoDB chỉ gọi khi đọc/ghi cache."""
     impl = env.get("PIPELINE_IMPL", "stub")
     config_dir = pathlib.Path(env.get("CONFIG_DIR", "/var/task/config"))
     if impl == "stub":
         return Runtime(build_pipeline("stub", config_dir, _NoArtifacts(), _NoKV()), _stub_bundle, None)
-    # INT-01: RealPipeline cần bảng DynamoDB (BE-03):
-    # build_pipeline("real", config_dir, S3ArtifactStore(env["ARTIFACT_BUCKET"], config_dir / "artifacts.yaml"),
-    #                DynamoKV(table, "URL#", "INTEL")), TelegramMedia(ssm_token(env["BOT_TOKEN_PARAM"])).build_bundle,
-    # cache=DynamoKV(table, "CACHE#", "VERDICT").
-    return Runtime(build_pipeline(impl, config_dir, _NoArtifacts(), _NoKV()), _stub_bundle, None)
+    if impl != "real":   # kiểm trước khi dựng S3/DynamoDB để impl sai luôn là `fatal/init`, không lẫn với lỗi đọc file cấu hình
+        raise ValueError(f"unknown PIPELINE_IMPL: {impl!r}")
+    import boto3  # import lười: image stub và test không cần boto3
+
+    from askfirst.artifacts.s3 import S3ArtifactStore
+    from askfirst.cache.dynamo import DynamoKV
+    from askfirst.media.telegram import TelegramMedia, ssm_token
+    artifacts = S3ArtifactStore(env["ARTIFACT_BUCKET"], config_dir / "artifacts.yaml")
+    table = boto3.resource("dynamodb").Table(env["TABLE_NAME"])
+    media = TelegramMedia(ssm_token(env["BOT_TOKEN_PARAM"]))
+    return Runtime(build_pipeline(impl, config_dir, artifacts, DynamoKV(table, "URL#", "INTEL")), media.build_bundle,
+                   DynamoKV(table, "CACHE#", "VERDICT"))
 
 
 _RUNTIME: Runtime | None = None
+
+
+def _timed(event: str, fn: Callable[[], Any]) -> None:
+    started = time.perf_counter()
+    try:
+        fn()
+        info: dict[str, Any] = {"event": event, "result": "ok"}
+    except Exception as e:  # noqa: BLE001 — artifact thiếu/sai checksum: chạy tiếp, lần dùng thật sẽ nạp lại
+        info = {"event": event, "result": "failed", "error": type(e).__name__}
+    log.info(json.dumps(info | {"ms": round((time.perf_counter() - started) * 1000)}))
+
+
+def _blank_jpeg() -> bytes:
+    import cv2
+    import numpy as np
+    return cv2.imencode(".jpg", np.full((64, 64, 3), 255, np.uint8))[1].tobytes()
+
+
+def _warm(pipeline: m.Pipeline) -> None:
+    """Nạp trước model RAG, OCR và VietOCR đọc lại (chỉ RealPipeline có `retriever`, `ocr`), mỗi cái chạy thử một lần.
+    Lỗi thì bỏ qua: RAG, OCR nạp lười nên lần dùng thật sẽ thử lại; VietOCR nạp lỗi thì tắt tới hết container."""
+    retriever = getattr(pipeline, "retriever", None)
+    if retriever is not None:
+        _timed("rag_warm", lambda: retriever.search("kiểm tra"))
+    ocr = getattr(pipeline, "ocr", None)
+    if ocr is not None:
+        _timed("ocr_warm", lambda: ocr.read(_blank_jpeg()))
+    reread = getattr(ocr, "reread", None)
+    if reread is not None:   # ảnh trắng không có dòng chữ nên ocr_warm không chạm tới VietOCR
+        from PIL import Image
+        _timed("vietocr_warm", lambda: reread.predict([Image.new("RGB", (64, 32), "white")]))
 
 
 def _runtime() -> Runtime:
     global _RUNTIME
     if _RUNTIME is None:
         try:
-            _RUNTIME = init_runtime()
+            rt = init_runtime()
         except (NotImplementedError, ValueError, KeyError) as e:
             raise _Fail("fatal", "init", type(e).__name__) from None
         except Exception as e:  # noqa: BLE001
             raise _Fail("retryable", "init", type(e).__name__) from None
+        _warm(rt.pipeline)
+        _RUNTIME = rt
     return _RUNTIME
 
 
@@ -209,3 +252,12 @@ def lambda_handler(event: Any, context: Any = None, runtime: Runtime | None = No
     info["ms"] = round((time.perf_counter() - started) * 1000)
     log.info(json.dumps(info))
     return resp.model_dump(mode="json")
+
+
+# Lambda chạy phần import trong pha INIT (tối đa 10 s, trước request đầu). Dựng runtime và nạp RAG ở đây để tin đầu
+# sau cold start không phải chờ tải + nạp model. Lỗi thì để request đầu thử lại và trả đúng mã lỗi `init`.
+if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+    try:
+        _runtime()
+    except _Fail:
+        pass

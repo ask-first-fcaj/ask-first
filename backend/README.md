@@ -56,9 +56,10 @@ Chế độ Long Polling cho phép dev lập trình và test bot ngay trên máy
 2. Chạy lệnh:
    ```bash
    # Tại thư mục backend/ScamProtection
-   ./mvnw exec:java@local-bot
+   # Trên Linux/macOS
+   ./mvnw -pl webhook-handler exec:java
    # Trên Windows PowerShell
-   .\mvnw.cmd exec:java@local-bot
+   .\mvnw.cmd -pl webhook-handler exec:java
    ```
 3. Mở Telegram, nhắn `/start` hoặc `/huongdan` vào bot để thấy log hiển thị ngay lập tức trên màn hình console.
 
