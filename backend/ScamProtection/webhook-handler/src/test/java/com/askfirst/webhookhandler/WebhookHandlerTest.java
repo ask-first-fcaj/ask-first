@@ -494,6 +494,80 @@ class WebhookHandlerTest {
     }
 
     @Test
+    @DisplayName("BE-23: SQS lỗi sau khi ghi buffer, Telegram gửi lại cùng update → không ghi lần hai, chỉ enqueue lại")
+    void testRetryAfterSqsFailureDoesNotAppendTwice() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        InMemoryBufferStore buffer = new InMemoryBufferStore();
+        WebhookHandler h = handlerWithBuffer(buffer, fakeSqs, null);
+
+        fakeSqs.fail = true;
+        APIGatewayProxyResponseEvent failed = h.handleRequest(createRequest(textUpdate(530, "kiểm tra")), mockContext);
+        assertThat(failed.getBody()).isEqualTo("SQS_FAILED");
+        assertThat(buffer.appendCount.get()).isEqualTo(1);
+
+        fakeSqs.fail = false;
+        APIGatewayProxyResponseEvent retry = h.handleRequest(createRequest(textUpdate(530, "kiểm tra")), mockContext);
+
+        assertThat(retry.getStatusCode()).isEqualTo(200);
+        assertThat(retry.getBody()).isEqualTo("OK");
+        assertThat(buffer.appendCount.get()).isEqualTo(1);          // không append lần hai (không có seq mới)
+        assertThat(buffer.placeholderSetCount.get()).isEqualTo(1);   // không gửi thêm "⏳"
+        assertThat(fakeSqs.sentCount.get()).isEqualTo(1);            // job được enqueue lại
+        assertThat(fakeRateLimitRepo.count("tg:111")).isEqualTo(1);  // rate limit chỉ đếm một lần
+    }
+
+    @Test
+    @DisplayName("BE-23: hai update khác nhau vẫn được ghi thành hai seq riêng")
+    void testDifferentUpdatesAreStillAppendedSeparately() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        InMemoryBufferStore buffer = new InMemoryBufferStore();
+        WebhookHandler h = handlerWithBuffer(buffer, fakeSqs, null);
+
+        h.handleRequest(createRequest(textUpdate(531, "a")), mockContext);
+        h.handleRequest(createRequest(textUpdate(532, "b")), mockContext);
+
+        assertThat(buffer.appendCount.get()).isEqualTo(2);
+        assertThat(fakeSqs.sentCount.get()).isEqualTo(2);
+        assertThat(fakeRateLimitRepo.count("tg:111")).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("BE-29: lưu tên Telegram của người cao tuổi một lần, tên không đổi thì không ghi lại")
+    void testDisplayNameIsRememberedOnce() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        WebhookHandler h = handlerWithBuffer(new InMemoryBufferStore(), fakeSqs, null);
+
+        h.handleRequest(createRequest(textUpdateFrom(540, "a", "Nguyễn", "Văn An")), mockContext);
+        h.handleRequest(createRequest(textUpdateFrom(541, "b", "Nguyễn", "Văn An")), mockContext);
+
+        assertThat(fakeUserRepo.getUser("tg:111").orElseThrow().getDisplayName()).isEqualTo("Nguyễn Văn An");
+        assertThat(fakeUserRepo.displayNameWrites.get()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("BE-29: tin không có tên Telegram thì không ghi đè tên đã lưu")
+    void testMissingTelegramNameDoesNotTouchStoredName() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        WebhookHandler h = handlerWithBuffer(new InMemoryBufferStore(), fakeSqs, null);
+
+        h.handleRequest(createRequest(textUpdate(542, "a")), mockContext);   // from chỉ có id
+
+        assertThat(fakeUserRepo.displayNameWrites.get()).isZero();
+        assertThat(fakeUserRepo.getUser("tg:111").orElseThrow().getDisplayName()).isNull();
+    }
+
+    @Test
+    @DisplayName("BE-29: tên hiển thị bỏ ký tự điều khiển và cắt tối đa 60 ký tự")
+    void testDisplayNameIsSanitized() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        assertThat(WebhookHandler.displayNameOf(mapper.readTree("{\"first_name\":\"An\\n\",\"last_name\":\"  Văn \"}")))
+                .isEqualTo("An Văn");
+        assertThat(WebhookHandler.displayNameOf(mapper.readTree("{\"first_name\":\"" + "a".repeat(100) + "\"}")))
+                .hasSize(60);
+        assertThat(WebhookHandler.displayNameOf(mapper.readTree("{\"id\":1}"))).isEmpty();
+    }
+
+    @Test
     @DisplayName("BE-23: không có BufferStore vẫn dùng đường cũ (InboundMessage, không bắt buộc envelope analyze)")
     void testWithoutBufferStoreKeepsLegacyEnqueue() {
         fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
@@ -705,6 +779,8 @@ class WebhookHandlerTest {
     private static class InMemoryBufferStore implements com.askfirst.common.store.BufferStore {
         final AtomicInteger seqGenerator = new AtomicInteger(1);
         final AtomicInteger placeholderSetCount = new AtomicInteger(0);
+        final AtomicInteger appendCount = new AtomicInteger(0);
+        final Map<String, Long> seqByUpdateId = new HashMap<>();
         long lastSeq;
         Integer placeholderId;
         boolean failAppend;
@@ -715,7 +791,15 @@ class WebhookHandlerTest {
                 throw new IllegalStateException("BUFFER_DOWN");
             }
             lastSeq = seqGenerator.getAndIncrement();
+            appendCount.incrementAndGet();
+            seqByUpdateId.put(message.updateId(), lastSeq);
             return lastSeq;
+        }
+
+        @Override
+        public java.util.OptionalLong findSeqByUpdateId(String chatId, String updateId) {
+            Long seq = seqByUpdateId.get(updateId);
+            return seq == null ? java.util.OptionalLong.empty() : java.util.OptionalLong.of(seq);
         }
 
         @Override
@@ -800,6 +884,13 @@ class WebhookHandlerTest {
                 + "\"date\": 1729000000, \"text\": \"" + text + "\"}}";
     }
 
+    private static String textUpdateFrom(long updateId, String text, String firstName, String lastName) {
+        return "{\"update_id\": " + updateId + ", \"message\": {\"message_id\": " + updateId
+                + ", \"from\": {\"id\": 111, \"is_bot\": false, \"first_name\": \"" + firstName
+                + "\", \"last_name\": \"" + lastName + "\"}, \"chat\": {\"id\": 222, \"type\": \"private\"}, "
+                + "\"date\": 1729000000, \"text\": \"" + text + "\"}}";
+    }
+
     private static String callbackUpdate(long updateId, String data) {
         return "{\"update_id\": " + updateId + ", \"callback_query\": {\"id\": \"cb_" + updateId + "\", "
                 + "\"from\": {\"id\": 111, \"is_bot\": false}, \"message\": {\"message_id\": 1, "
@@ -878,6 +969,16 @@ class WebhookHandlerTest {
     private static class InMemoryUserRepo extends UserRepo {
         private final Map<String, UserRecord> store = new HashMap<>();
         boolean failUpdateConsent = false;
+        final AtomicInteger displayNameWrites = new AtomicInteger(0);
+
+        @Override
+        public void updateDisplayName(String userId, String displayName) {
+            displayNameWrites.incrementAndGet();
+            UserRecord r = store.get(userId);
+            if (r != null) {
+                r.setDisplayName(displayName);
+            }
+        }
 
         public InMemoryUserRepo() {
             super();
@@ -964,6 +1065,10 @@ class WebhookHandlerTest {
 
         public InMemoryRateLimitRepo() {
             super();
+        }
+
+        long count(String userId) {
+            return counts.getOrDefault(userId, 0L);
         }
 
         @Override
