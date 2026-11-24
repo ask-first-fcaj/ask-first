@@ -2,6 +2,7 @@ import json
 import logging
 import pathlib
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -223,6 +224,24 @@ def test_warm_failure_does_not_break_init(monkeypatch: pytest.MonkeyPatch) -> No
     req, _ = fixture("analyze", "default")
     assert h.lambda_handler(req).get("error") is None and h.lambda_handler(req).get("error") is None
     assert Broken.calls == 2 and pipe.calls == 2
+
+
+def test_warm_loads_vietocr_reread_at_init(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ảnh trắng của ocr_warm không có chữ nên không chạm tới VietOCR: phải nạp trước riêng, kẻo ảnh thật đầu tiên chậm thêm."""
+    class Reread:
+        calls = 0
+
+        def predict(self, images):
+            Reread.calls += 1
+            return [""] * len(images)
+    pipe = Pipe()
+    pipe.ocr = SimpleNamespace(read=lambda data: None, reread=Reread())
+    monkeypatch.setattr(h, "_RUNTIME", None)
+    monkeypatch.setattr(h, "init_runtime", lambda env=None: rt(pipe))
+    req, _ = fixture("analyze", "default")
+    h.lambda_handler(req)
+    h.lambda_handler(req)
+    assert Reread.calls == 1
 
 
 # ---------- CACHE# ----------
