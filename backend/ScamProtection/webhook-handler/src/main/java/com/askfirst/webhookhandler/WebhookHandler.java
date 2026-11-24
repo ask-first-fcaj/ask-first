@@ -50,6 +50,9 @@ import java.util.Locale;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -266,7 +269,12 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     }
 
     /**
-     * Constructor 13 tham số (tương thích ngược). Delegate sang constructor đầy đủ 18 tham số.
+     * Constructor đầy đủ (13 tham số). Tất cả các constructor khác delegate vào
+     * đây.
+     *
+     * @param botUsername username của bot (ví dụ "AskFirstBot"), dùng để tạo deep
+     *                    link.
+     *                    Null = không hiển thị nút share (graceful degradation).
      */
     public WebhookHandler(
             TelegramClient telegram,
@@ -325,30 +333,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String botUsername) {
         this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
                 guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
-                null, null, sessionStore, bufferStore, donationStore);
-    }
-
-    /**
-     * Constructor 14 tham số (tương thích ngược). Delegate sang constructor đầy đủ 18 tham số.
-     */
-    public WebhookHandler(
-            TelegramClient telegram,
-            SqsClient sqs,
-            String queueUrl,
-            String secret,
-            UserRepo userRepo,
-            AuditRepo auditRepo,
-            RateLimitRepo rateLimitRepo,
-            GuardianRepo guardianRepo,
-            InviteRepo inviteRepo,
-            String policySha256,
-            DynamoStoreService dedup,
-            boolean localDevelopment,
-            String botUsername,
-            String policyUrl) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
-                guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
-                policyUrl, null, null, null, null);
+                null, sessionStore, bufferStore, donationStore);
     }
 
     /**
@@ -675,6 +660,17 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
 
             @Override
+            public List<GuardianRecord> listWards(String guardianUid) {
+                return store.values().stream()
+                        .filter(r -> guardianUid.equals(r.getGuardianUid())
+                                || ("GUARDIAN#" + guardianUid).equals(r.getGuardianUid())
+                                || guardianUid.equals(r.getSk())
+                                || ("GUARDIAN#" + guardianUid).equals(r.getSk())
+                                || (r.getGsi1Pk() != null && r.getGsi1Pk().endsWith(guardianUid)))
+                        .toList();
+            }
+
+            @Override
             public void delete(String elderUid, String guardianUid) {
                 store.entrySet().removeIf(e ->
                         (elderUid.equals(e.getValue().getElderUid()) || ("USER#" + elderUid).equals(e.getValue().getPk()))
@@ -793,6 +789,15 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                             old.riskyActions(), old.inputKinds(), old.alerted(), feedback,
                             old.createdAt(), old.ttlEpochSeconds()));
                 }
+            }
+
+            @Override
+            public java.util.List<CheckRecord> listRecentChecks(String userId, int limit, String startSortKey) {
+                return store.values().stream()
+                        .filter(r -> r.userId().equals(userId) || ("USER#" + r.userId()).equals(userId) || r.userId().equals("USER#" + userId))
+                        .sorted(java.util.Comparator.comparing(CheckRecord::checkId).reversed())
+                        .limit(limit)
+                        .collect(java.util.stream.Collectors.toList());
             }
         };
     }
@@ -1032,8 +1037,13 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         String userId = cb.userId();
         String data = cb.data();
 
-        if (data != null && data.startsWith("guardian:")) {
+        if (data != null && (data.startsWith("guardian:") || data.startsWith("g:"))) {
             return handleGuardianCallback(cb, chatId, userId, data, context);
+        }
+
+        // BE-36: Callback phân trang lịch sử
+        if (data != null && (data.startsWith("h:") || data.startsWith("history:"))) {
+            return handleHistoryCallback(cb, chatId, userId, data, context);
         }
 
         // BE-30: Xử lý nút [Bot báo sai] và luồng đóng góp mẫu (Donation Consent)
@@ -1149,7 +1159,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             Context context) {
 
         // Tạo mã mời mới (kèm deep link 1-chạm nếu BOT_USERNAME được cấu hình)
-        if ("guardian:create_invite".equals(data)) {
+        if ("guardian:create_invite".equals(data) || "g:inv".equals(data)) {
             if (telegram != null) {
                 telegram.answerCallbackQuery(cb.queryId(), "Đang tạo mã kết nối...");
             }
@@ -1327,8 +1337,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         }
 
         // Gỡ liên kết
-        if (data.startsWith("guardian:remove:")) {
-            String guardianUid = data.substring("guardian:remove:".length());
+        if (data.startsWith("guardian:remove:") || data.startsWith("g:rm:")) {
+            String prefix = data.startsWith("g:rm:") ? "g:rm:" : "guardian:remove:";
+            String guardianUid = data.substring(prefix.length());
             if (guardianRepo != null) {
                 guardianRepo.delete(userId, guardianUid);
             }
@@ -1343,14 +1354,49 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return response(200, "GUARDIAN_REMOVED");
         }
 
+        // Tạm dừng hoặc bật lại người thân (BE-36)
+        if (data.startsWith("g:tog:")) {
+            String guardianUid = data.substring("g:tog:".length());
+            if (guardianRepo != null) {
+                guardianRepo.toggleStatus(userId, guardianUid);
+            }
+            if (auditRepo != null) {
+                auditRepo.recordEvent(userId, "GUARDIAN_STATUS_TOGGLED", POLICY_VERSION, policySha256,
+                        "Toggled status for guardian: " + guardianUid);
+            }
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã cập nhật trạng thái");
+                telegram.sendText(chatId, "✅ Đã thay đổi trạng thái nhận cảnh báo của người thân.");
+            }
+            return response(200, "GUARDIAN_STATUS_TOGGLED");
+        }
+
+        // Người thân ngừng nhận cảnh báo (BE-36)
+        if (data.startsWith("g:stop:")) {
+            String elderUid = data.substring("g:stop:".length());
+            if (guardianRepo != null) {
+                guardianRepo.delete(elderUid, userId);
+            }
+            if (auditRepo != null) {
+                auditRepo.recordEvent(userId, "GUARDIAN_STOPPED", POLICY_VERSION, policySha256,
+                        "Stopped protecting elder: " + elderUid);
+            }
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã ngừng nhận cảnh báo");
+                telegram.sendText(chatId, "✅ Bạn đã ngừng nhận cảnh báo từ người thân.");
+            }
+            return response(200, "GUARDIAN_STOPPED");
+        }
+
         // Đổi mức chia sẻ (hiện nút chọn lại mức)
-        if (data.startsWith("guardian:level:")) {
-            String guardianUid = data.substring("guardian:level:".length());
+        if (data.startsWith("guardian:level:") || data.startsWith("g:lvl:")) {
+            String prefix = data.startsWith("g:lvl:") ? "g:lvl:" : "guardian:level:";
+            String guardianUid = data.substring(prefix.length());
             String msg = "Chọn mức chia sẻ mới cho người thân này:";
             Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(List.of(
-                    new InlineButton("Mức 1", "guardian:setlevel:" + guardianUid + ":1"),
-                    new InlineButton("Mức 2", "guardian:setlevel:" + guardianUid + ":2"),
-                    new InlineButton("Mức 3", "guardian:setlevel:" + guardianUid + ":3"))));
+                    new InlineButton("Mức 1", "g:set:" + guardianUid + ":1"),
+                    new InlineButton("Mức 2", "g:set:" + guardianUid + ":2"),
+                    new InlineButton("Mức 3", "g:set:" + guardianUid + ":3"))));
             if (telegram != null) {
                 telegram.answerCallbackQuery(cb.queryId(), "Chọn mức chia sẻ");
                 telegram.sendText(chatId, msg, keyboard);
@@ -1359,18 +1405,19 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         }
 
         // Lưu mức chia sẻ mới
-        if (data.startsWith("guardian:setlevel:")) {
-            String[] parts = data.split(":");
-            if (parts.length < 4) {
+        if (data.startsWith("guardian:setlevel:") || data.startsWith("g:set:")) {
+            int lastColon = data.lastIndexOf(':');
+            if (lastColon <= 0) {
                 if (telegram != null) {
                     telegram.answerCallbackQuery(cb.queryId(), "Dữ liệu không hợp lệ");
                 }
                 return response(200, "BAD_CALLBACK");
             }
-            String guardianUid = parts[2] + ":" + parts[3];
+            String prefix = data.startsWith("g:set:") ? "g:set:" : "guardian:setlevel:";
+            String guardianUid = data.substring(prefix.length(), lastColon);
             int newLevel;
             try {
-                newLevel = Integer.parseInt(parts[4]);
+                newLevel = Integer.parseInt(data.substring(lastColon + 1));
             } catch (Exception e) {
                 newLevel = 1;
             }
@@ -1704,6 +1751,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return handleGuardianCommand(chatId, userId, context);
         }
 
+        // BE-36: /lichsu — tra cứu lịch sử kiểm tra tin nhắn gần nhất
+        if (cmd.startsWith("/lichsu")) {
+            return handleHistoryCommand(chatId, userId, context);
+        }
+
         // BE-28: /ketnoi <code> — người thân nhập mã mời
         if (cmd.startsWith("/ketnoi")) {
             return handleKetNoiCommand(chatId, userId, text, firstName, username, context);
@@ -1746,7 +1798,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
                         List.of(
                                 new InlineButton("✅ Đồng ý", "consent:agree"),
-                                new InlineButton("Không đồng ý", "consent:decline"))));
+                                new InlineButton("❌ Không đồng ý", "consent:decline"))));
 
                 if (telegram != null) {
                     telegram.sendText(chatId, welcomeMsg, keyboard);
@@ -1800,8 +1852,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             List<GuardianRecord> guardians = guardianRepo != null
                     ? guardianRepo.listGuardians(userId)
                     : List.of();
+            List<GuardianRecord> wards = guardianRepo != null
+                    ? guardianRepo.listWards(userId)
+                    : List.of();
 
-            if (guardians.isEmpty()) {
+            if (guardians.isEmpty() && wards.isEmpty()) {
                 String XH = getAddressForm(userId);
                 String xh = getAddressFormLower(userId);
                 String msg = BotMessages.guardianListEmptyMessage(XH, xh);
@@ -1814,26 +1869,68 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 StringBuilder sb = new StringBuilder("👨‍👩‍👦 <b>Danh sách người thân</b>\n\n");
                 List<List<InlineButton>> rows = new ArrayList<>();
 
-                for (GuardianRecord g : guardians) {
-                    String status = switch (g.getStatus() != null ? g.getStatus() : "active") {
-                        case "paused" -> "⏸ Tạm dừng";
-                        case "revoked" -> "❌ Đã huỷ";
-                        case "unreachable" -> "⚠️ Không liên lạc được";
-                        default -> "✅ Đang hoạt động";
-                    };
-                    String level = "Mức " + (g.getShareLevel() != null ? g.getShareLevel() : 1);
-                    String name = g.getName() != null ? g.getName() : g.getGuardianUid();
+// === 1. Người thân bảo vệ Bác (guardians) ===
+                if (!guardians.isEmpty()) {
+                    sb.append("<b>Người thân bảo vệ Bác:</b>\n");
+                    for (GuardianRecord g : guardians) {
+                        boolean isPaused = "paused".equalsIgnoreCase(g.getStatus());
 
-                    sb.append("• <b>").append(name).append("</b> — ").append(status)
-                            .append(" (").append(level).append(")\n");
+                        String status = switch (g.getStatus() != null ? g.getStatus().toLowerCase() : "active") {
+                            case "paused" -> "⏸ Tạm dừng";
+                            case "revoked" -> "❌ Đã huỷ";
+                            case "unreachable" -> "⚠️ Không liên lạc được";
+                            default -> "✅ Đang hoạt động";
+                        };
 
-                    String gid = g.getGuardianUid();
-                    rows.add(List.of(
-                            new InlineButton("🔄 Đổi mức — " + name, "guardian:level:" + gid),
-                            new InlineButton("🗑 Gỡ", "guardian:remove:" + gid)));
+                        String level = "Mức " + (g.getShareLevel() != null ? g.getShareLevel() : 1);
+                        String name = g.getName() != null ? g.getName() : g.getGuardianUid();
+
+                        sb.append("• <b>").append(name).append("</b> — ").append(status)
+                                .append(" (").append(level).append(")\n");
+
+                        String gid = g.getGuardianUid();
+                        List<InlineButton> row = new ArrayList<>();
+                        row.add(new InlineButton("🔄 Đổi mức", "g:lvl:" + gid));
+
+                        if (isPaused) {
+                            row.add(new InlineButton("▶️ Bật lại", "g:tog:" + gid));
+                        } else {
+                            row.add(new InlineButton("⏸ Tạm dừng", "g:tog:" + gid));
+                        }
+                        row.add(new InlineButton("🗑 Gỡ", "g:rm:" + gid));
+
+                        rows.add(row);
+                    }
+                    rows.add(List.of(new InlineButton("➕ Tạo mã kết nối mới", "guardian:create_invite")));
                 }
 
-                rows.add(List.of(new InlineButton(BotMessages.BUTTON_CREATE_NEW_INVITE, "guardian:create_invite")));
+// === 2. Người cao tuổi bạn đang bảo vệ (wards) ===
+                if (!wards.isEmpty()) {
+                    if (!guardians.isEmpty()) {
+                        sb.append("\n");
+                    }
+                    sb.append("🛡️ <b>Người cao tuổi bạn đang bảo vệ:</b>\n");
+                    for (GuardianRecord w : wards) {
+                        String elderName = w.getName() != null ? w.getName() : w.getElderUid();
+
+                        String status = switch (w.getStatus() != null ? w.getStatus().toLowerCase() : "active") {
+                            case "paused" -> "⏸ Tạm dừng nhận cảnh báo";
+                            case "revoked" -> "❌ Đã ngừng nhận";
+                            default -> "✅ Đang nhận cảnh báo";
+                        };
+
+                        sb.append("• <b>").append(elderName).append("</b> — ").append(status).append("\n");
+
+                        String elderUid = w.getElderUid();
+                        rows.add(List.of(new InlineButton("🔕 Ngừng nhận cảnh báo", "g:stop:" + elderUid)));
+                    }
+                }
+
+// Nếu cả 2 danh sách đều rỗng
+                if (guardians.isEmpty() && wards.isEmpty()) {
+                    sb.append("Hiện chưa có người thân nào được kết nối.");
+                }
+
                 Map<String, Object> keyboard = TelegramClient.inlineKeyboard(rows);
                 if (telegram != null) {
                     telegram.sendText(chatId, sb.toString(), keyboard);
@@ -1843,6 +1940,129 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             log(context, "Lỗi /nguoithan: " + e.getMessage());
         }
         return response(200, "COMMAND_HANDLED");
+    }
+
+    private APIGatewayProxyResponseEvent handleHistoryCommand(long chatId, String userId, Context context) {
+        try {
+            String addressForm = getAddressForm(userId, context);
+            CheckRepo repo = (checkStore instanceof CheckRepo) ? (CheckRepo) checkStore : null;
+            List<CheckRecord> records = repo != null ? repo.listRecentChecks(userId, 10, null) : List.of();
+
+            if (records.isEmpty()) {
+                String msg = "📜 <b>Lịch sử kiểm tra tin nhắn</b>\n\n"
+                        + addressForm + " chưa có lượt kiểm tra tin nhắn nào ạ.";
+                List<GuardianRecord> wards = guardianRepo != null ? guardianRepo.listWards(userId) : List.of();
+                if (!wards.isEmpty()) {
+                    msg += "\n\n<i>💡 Lưu ý: Bạn không thể xem lịch sử kiểm tra tin nhắn của người thân mà mình đang bảo vệ (theo quy định quyền riêng tư BR-030).</i>";
+                }
+                if (telegram != null) {
+                    telegram.sendText(chatId, msg);
+                }
+                return response(200, "HISTORY_EMPTY");
+            }
+
+            StringBuilder sb = new StringBuilder("📜 <b>Lịch sử kiểm tra tin nhắn gần đây</b>\n\n");
+            for (CheckRecord r : records) {
+                String timeStr = formatCheckTime(r.createdAt());
+                String riskIcon = formatRiskLevel(r.level());
+                String scenarioName = (r.scenario() != null && !r.scenario().isBlank())
+                        ? r.scenario()
+                        : ((r.outcome() != null && !r.outcome().isBlank()) ? r.outcome() : "Kiểm tra chung");
+                sb.append("• ").append(timeStr).append(" | ").append(riskIcon).append(" | ").append(scenarioName).append("\n");
+            }
+            sb.append("\n<i>💡 Hệ thống chỉ lưu siêu dữ liệu đánh giá, tuyệt đối không lưu nội dung tin nhắn gốc để bảo vệ quyền riêng tư.</i>");
+
+            Map<String, Object> keyboard = null;
+            if (records.size() == 10) {
+                CheckRecord last = records.get(records.size() - 1);
+                keyboard = TelegramClient.inlineKeyboard(List.of(
+                        List.of(new InlineButton("⏩ Xem thêm", "h:" + last.checkId()))));
+            }
+
+            if (telegram != null) {
+                telegram.sendText(chatId, sb.toString(), keyboard);
+            }
+            return response(200, "HISTORY_SENT");
+        } catch (Exception e) {
+            log(context, "Lỗi /lichsu: " + e.getMessage());
+            return response(200, "COMMAND_HANDLED");
+        }
+    }
+
+    private APIGatewayProxyResponseEvent handleHistoryCallback(
+            TelegramCallbackQuery cb,
+            long chatId,
+            String userId,
+            String data,
+            Context context) {
+        try {
+            String checkId = data.startsWith("h:") ? data.substring(2) : data.substring("history:".length());
+            String startKey = checkId.startsWith("CHECK#") ? checkId : "CHECK#" + checkId;
+            CheckRepo repo = (checkStore instanceof CheckRepo) ? (CheckRepo) checkStore : null;
+            List<CheckRecord> records = repo != null ? repo.listRecentChecks(userId, 10, startKey) : List.of();
+
+            if (records.isEmpty()) {
+                if (telegram != null) {
+                    telegram.answerCallbackQuery(cb.queryId(), "Đã hết lịch sử kiểm tra.");
+                }
+                return response(200, "HISTORY_EMPTY");
+            }
+
+            StringBuilder sb = new StringBuilder("📜 <b>Lịch sử kiểm tra tin nhắn (tiếp theo)</b>\n\n");
+            for (CheckRecord r : records) {
+                String timeStr = formatCheckTime(r.createdAt());
+                String riskIcon = formatRiskLevel(r.level());
+                String scenarioName = (r.scenario() != null && !r.scenario().isBlank())
+                        ? r.scenario()
+                        : ((r.outcome() != null && !r.outcome().isBlank()) ? r.outcome() : "Kiểm tra chung");
+                sb.append("• ").append(timeStr).append(" | ").append(riskIcon).append(" | ").append(scenarioName).append("\n");
+            }
+            sb.append("\n<i>💡 Hệ thống chỉ lưu siêu dữ liệu đánh giá, tuyệt đối không lưu nội dung tin nhắn gốc để bảo vệ quyền riêng tư.</i>");
+
+            Map<String, Object> keyboard = null;
+            if (records.size() == 10) {
+                CheckRecord last = records.get(records.size() - 1);
+                keyboard = TelegramClient.inlineKeyboard(List.of(
+                        List.of(new InlineButton("⏩ Xem thêm", "h:" + last.checkId()))));
+            }
+
+            Integer msgId = parseMessageId(cb.messageId());
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Trang tiếp theo");
+                if (msgId != null) {
+                    telegram.editText(chatId, msgId, sb.toString(), keyboard);
+                } else {
+                    telegram.sendText(chatId, sb.toString(), keyboard);
+                }
+            }
+            return response(200, "HISTORY_PAGE_LOADED");
+        } catch (Exception e) {
+            log(context, "Lỗi callback lịch sử: " + e.getMessage());
+            return response(200, "CALLBACK_FAILED");
+        }
+    }
+
+    private static String formatRiskLevel(String level) {
+        if (level == null) return "🟡 Cần cảnh giác";
+        return switch (level.toUpperCase()) {
+            case "SAFE", "LOW" -> "🟢 Ít dấu hiệu";
+            case "SUSPICIOUS", "MEDIUM", "UNSURE" -> "🟡 Cần cảnh giác";
+            case "DANGEROUS", "HIGH" -> "🔴 Nguy hiểm";
+            default -> "🟡 Cần cảnh giác";
+        };
+    }
+
+    private static String formatCheckTime(String createdAt) {
+        if (createdAt == null || createdAt.isBlank()) {
+            return "Gần đây";
+        }
+        try {
+            Instant inst = Instant.parse(createdAt);
+            ZonedDateTime zdt = inst.atZone(ZoneId.of("Asia/Ho_Chi_Minh"));
+            return zdt.format(DateTimeFormatter.ofPattern("dd/MM HH:mm"));
+        } catch (Exception e) {
+            return createdAt.length() > 16 ? createdAt.substring(0, 16) : createdAt;
+        }
     }
 
     private APIGatewayProxyResponseEvent handleKetNoiCommand(
