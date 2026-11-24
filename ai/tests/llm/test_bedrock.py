@@ -114,3 +114,38 @@ def test_repo_config_backup_is_gpt_oss_and_priced():
     c = BedrockClient.from_file()
     assert c.model_id("backup") == "openai.gpt-oss-120b-1:0"   # ADR-002, AI1 duyệt 2026-11-11
     assert c.cost_usd(c.model_id("backup"), 1_000_000, 1_000_000) > 0   # có giá thì eval/CloudWatch mới tính đúng chi phí
+
+
+def test_runtime_client_assumes_role_when_env_set(monkeypatch):
+    import datetime as dt
+
+    from botocore.config import Config
+
+    from askfirst.llm import bedrock
+
+    class FakeSts:
+        def __init__(self):
+            self.calls = []
+
+        def assume_role(self, **kw):
+            self.calls.append(kw)
+            exp = dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)
+            return {"Credentials": {"AccessKeyId": "AKX", "SecretAccessKey": "s", "SessionToken": "t", "Expiration": exp}}
+
+    sts = FakeSts()
+    real_client = bedrock.boto3.client
+    monkeypatch.setattr(bedrock.boto3, "client", lambda name, **kw: sts if name == "sts" else real_client(name, **kw))
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "local")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "local")
+    cfg = Config(region_name="ap-southeast-2")
+
+    monkeypatch.delenv("BEDROCK_ROLE_ARN", raising=False)
+    assert bedrock.runtime_client(cfg)._request_signer._credentials.access_key == "local"
+    assert sts.calls == []
+
+    monkeypatch.setenv("BEDROCK_ROLE_ARN", "arn:aws:iam::111111111111:role/br")
+    c = bedrock.runtime_client(cfg)
+    assert c._request_signer._credentials.get_frozen_credentials().access_key == "AKX"
+    assert c.meta.region_name == "ap-southeast-2"
+    assert sts.calls == [{"RoleArn": "arn:aws:iam::111111111111:role/br", "RoleSessionName": "askfirst-ai"}]
+    bedrock._assumed_session.cache_clear()
