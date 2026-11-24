@@ -8,6 +8,15 @@
     PP-OCRv6_det_small.onnx: 090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f
     PP-OCRv6_rec_small.onnx: 6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884
     ch_ppocr_mobile_v2.0_cls_mobile.onnx: e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c
+- name: vietocr                  # AI-26: VietOCR vgg_seq2seq 0.3.13 → ONNX fp32 (scripts/export_vietocr_onnx.py), đọc lại dòng có dấu
+  version: vgg-seq2seq-0.3.13-fp32
+  s3_prefix: vietocr/vgg-seq2seq-0.3.13-fp32/
+  license: Apache-2.0 (code); trọng số chưa kiểm
+  files:
+    cnn.onnx: 2d4100cd0404db36a40cb2943fc03e21b0e4b59e093e3575fd3aa9e02ec058d9
+    encoder.onnx: 433029fbb8eee6225d10a15869cac2f0b42495d850a148381e093fd5c665ba73
+    decoder.onnx: 69539e828e86f1e32b68c85235b92a5d21b9c3eab9cbf39db98dd72c2bbc4148
+    vocab.json: c8dd4e0d04b435c6078b6feebc6b9894513c11cd241f90e8221f80ee51c2f6dd
 - name: embedder                 # AI-29: intfloat/multilingual-e5-small @614241f, onnx/model_qint8_avx512_vnni.onnx (int8)
   version: e5-small-qint8-614241f
   s3_prefix: embedder/e5-small-qint8-614241f/

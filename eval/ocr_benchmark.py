@@ -11,7 +11,8 @@ Kết quả thô của từng engine lưu ở --raw-dir, báo cáo sinh ra ở -
 KHÔNG vào repo). Trên Linux/macOS thay `.venv/Scripts/python.exe` bằng `.venv/bin/python`.
 Workflow `.github/workflows/ocr-bench.yml` chạy lại RapidOCR + cột (cấu hình G2) và đường production `askfirst`
 (fp32, int8) trên cả hai bộ và lưu kết quả thô. Hậu xử lý import từ `ai/src/askfirst/local_models/ocr.py` (AI-26);
-engine `askfirst*` cần thư mục model từ `ai/scripts/fetch_ocr_models.py` (biến `OCR_MODELS_DIR`, `OCR_MODELS_DIR_INT8`).
+engine `askfirst*` cần thư mục model từ `ai/scripts/fetch_ocr_models.py` (biến `OCR_MODELS_DIR`, `OCR_MODELS_DIR_INT8`);
+`askfirst_vietocr` cần thêm `VIETOCR_MODELS_DIR` (thư mục ra của `ai/scripts/export_vietocr_onnx.py`).
 """
 
 from __future__ import annotations
@@ -43,12 +44,13 @@ DATASET = ROOT / "eval" / "datasets" / "ocr_images.jsonl"
 BLUR = "[mờ]"
 TESSERACT_EXE = os.environ.get("TESSERACT_EXE", r"C:\Program Files\Tesseract-OCR\tesseract.exe")
 TESSDATA = os.environ.get("TESSDATA_PREFIX", str(Path.home() / "tessdata"))
-ENGINE_ORDER = ["rapidocr", "rapidocr_cols", "askfirst", "askfirst_int8", "rapidocr_x2", "rapidocr_latin", "rapidocr_latin_x2", "tesseract", "tesseract_vie_eng", "paddle_default", "paddle_cols", "paddle_vietocr"]
+ENGINE_ORDER = ["rapidocr", "rapidocr_cols", "askfirst", "askfirst_int8", "askfirst_vietocr", "rapidocr_x2", "rapidocr_latin", "rapidocr_latin_x2", "tesseract", "tesseract_vie_eng", "paddle_default", "paddle_cols", "paddle_vietocr"]
 ENGINE_LABEL = {
     "rapidocr": "RapidOCR (PP-OCRv6 small, ONNX)",
     "rapidocr_cols": "RapidOCR + sắp dòng theo cột (ảnh ghép 2 khung)",
     "askfirst": "Production `RapidOcr` (cột + sửa SĐT/URL), ONNX fp32",
     "askfirst_int8": "Production `RapidOcr` (cột + sửa SĐT/URL), ONNX int8 động",
+    "askfirst_vietocr": "Production `RapidOcr` fp32 + VietOCR (ONNX) đọc lại dòng có dấu",
     "rapidocr_x2": "RapidOCR + phóng ×2 ảnh rộng < 800 px",
     "rapidocr_latin": "RapidOCR rec Latinh (PP-OCRv5 mobile)",
     "rapidocr_latin_x2": "RapidOCR rec Latinh + phóng ×2",
@@ -121,8 +123,11 @@ class AskFirstEngine:
 
         d = Path(os.environ[self.env])
         threads = int(os.environ["OCR_THREADS"]) if os.environ.get("OCR_THREADS") else None
-        self.eng = RapidOcr(SimpleNamespace(path=lambda name: d), threads=threads)
+        self.eng = RapidOcr(SimpleNamespace(path=lambda name: d), threads=threads, reread=self.reread(threads))
         self.eng._engine = self.eng._load()   # tính thời gian nạp model vào load_s, không vào ảnh đầu
+
+    def reread(self, threads):
+        return None
 
     def read(self, path: str) -> str:
         return self.eng.read(Path(path).read_bytes()).text
@@ -130,6 +135,15 @@ class AskFirstEngine:
 
 class AskFirstInt8Engine(AskFirstEngine):
     env = "OCR_MODELS_DIR_INT8"
+
+
+class AskFirstVietOcrEngine(AskFirstEngine):
+    def reread(self, threads):
+        from askfirst.local_models.vietocr import VietOcr
+
+        v = VietOcr(SimpleNamespace(path=lambda name: Path(os.environ["VIETOCR_MODELS_DIR"])), threads=threads)
+        v._s = v._load()
+        return v
 
 
 class TesseractEngine:
@@ -234,6 +248,7 @@ ENGINES = {
     "rapidocr_cols": RapidOCRColumnsEngine,
     "askfirst": AskFirstEngine,
     "askfirst_int8": AskFirstInt8Engine,
+    "askfirst_vietocr": AskFirstVietOcrEngine,
     "rapidocr_latin": RapidOCRLatinEngine,
     "rapidocr_latin_x2": RapidOCRLatinx2Engine,
     "tesseract": TesseractEngine,
