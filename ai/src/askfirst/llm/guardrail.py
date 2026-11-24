@@ -7,12 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import boto3
 import yaml
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
-from askfirst.llm.bedrock import DEFAULT_CONFIG, LLMError
+from askfirst.llm.bedrock import DEFAULT_CONFIG, LLMError, runtime_client
 
 DEFAULT_TIMEOUT_S = 1.0
 
@@ -49,7 +48,7 @@ class BedrockGuardrail:
         if self.client is None:
             cfg = Config(region_name=self.region, connect_timeout=self.timeout_s, read_timeout=self.timeout_s,
                          retries={"total_max_attempts": 1})
-            self.client = boto3.client("bedrock-runtime", config=cfg)
+            self.client = runtime_client(cfg)
         return self.client
 
     def check(self, text: str) -> GuardResult:
