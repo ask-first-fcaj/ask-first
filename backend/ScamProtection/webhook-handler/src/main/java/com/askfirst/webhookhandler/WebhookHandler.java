@@ -59,6 +59,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
@@ -66,6 +67,7 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * Lambda Webhook Handler cho AskFirst Bot (BE-22, BE-25, BE-26, BE-28, ARCH
  * §4.3).
+ *
  * Luồng:
  * 1. Xác thực secret Telegram fail-closed (§8.2).
  * 2. Dedup theo update_id (chống duplicate khi Telegram retry).
@@ -2314,6 +2316,19 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 return response(500, "QUEUE_NOT_CONFIGURED");
             }
 
+            // 3b. Telegram gửi lại một update mà lần trước đã ghi BUFFER# nhưng enqueue SQS lỗi (trả 500, nhả dedup):
+            // không ghi lần hai (seq mới làm cụm gửi AI có tin trùng), không đếm rate limit lần hai, chỉ enqueue lại job.
+            if (bufferStore != null && queueReady) {
+                OptionalLong buffered = findBufferedSeq(inbound, context);
+                if (buffered.isPresent()) {
+                    log(context, "Update đã có trong BUFFER# (seq=" + buffered.getAsLong() + "): chỉ enqueue lại job");
+                    return enqueueAnalyzeJob(inbound, userId, buffered.getAsLong(), context);
+                }
+            }
+
+            // 3c. Nhớ tên Telegram để tin gửi người thân gọi đúng tên người cao tuổi (best-effort, không chặn xử lý)
+            rememberDisplayName(root, userId, context);
+
             // 4. Kiểm tra Giới hạn tốc độ người dùng (Rate Limiting - BE-26)
             if (rateLimitRepo != null) {
                 RateLimitRepo.RateLimitResult rlResult = rateLimitRepo.checkAndIncrement(userId);
@@ -2409,6 +2424,12 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
         }
 
+        return enqueueAnalyzeJob(inbound, userId, seq, context);
+    }
+
+    /** Enqueue AnalyzeJob trễ 3 giây cho tin đã nằm trong BUFFER# với seq đã cấp. Lỗi → 500 để Telegram gửi lại. */
+    private APIGatewayProxyResponseEvent enqueueAnalyzeJob(
+            InboundMessage inbound, String userId, long seq, Context context) {
         try {
             AnalyzeJob job = AnalyzeJob.create(Ulid.next(), inbound.chatId(), userId, seq, Instant.now());
             sqs.sendMessage(
@@ -2422,6 +2443,49 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return response(500, "SQS_FAILED");
         }
         return response(200, "OK");
+    }
+
+    /** Tin của update này đã nằm trong BUFFER# chưa. Tra lỗi thì coi như chưa có (xử lý như tin mới). */
+    private OptionalLong findBufferedSeq(InboundMessage inbound, Context context) {
+        try {
+            return bufferStore.findSeqByUpdateId(inbound.chatId(), inbound.updateId());
+        } catch (Exception e) {
+            log(context, "Không tra được update trong BUFFER#: " + e.getClass().getSimpleName());
+            return OptionalLong.empty();
+        }
+    }
+
+    /**
+     * Lưu tên Telegram (họ + tên) vào hồ sơ khi khác giá trị đã lưu. Chỉ gọi sau khi người dùng đã đồng ý điều khoản.
+     * Lỗi chỉ ghi log vì đây chỉ là thông tin phụ cho tin gửi người thân.
+     */
+    private void rememberDisplayName(JsonNode root, String userId, Context context) {
+        if (userRepo == null || root == null) {
+            return;
+        }
+        try {
+            String name = displayNameOf(root.path("message").path("from"));
+            if (name.isEmpty()) {
+                return;
+            }
+            Optional<UserRecord> user = userRepo.getUser(userId);
+            if (user.isPresent() && !name.equals(user.get().getDisplayName())) {
+                userRepo.updateDisplayName(userId, name);
+            }
+        } catch (Exception e) {
+            log(context, "Không lưu được tên hiển thị: " + e.getClass().getSimpleName());
+        }
+    }
+
+    /** "Họ Tên" từ object from của Telegram: bỏ ký tự điều khiển, tối đa 60 ký tự; rỗng nếu không có tên. */
+    static String displayNameOf(JsonNode from) {
+        String first = from.path("first_name").asText();
+        String last = from.path("last_name").asText();
+        String full = (first + " " + last).replaceAll("\\p{Cntrl}", "").replaceAll("\\s+", " ").trim();
+        if (full.codePointCount(0, full.length()) > 60) {
+            full = full.substring(0, full.offsetByCodePoints(0, 60)).trim();
+        }
+        return full;
     }
 
     private APIGatewayProxyResponseEvent handleApkBlocked(

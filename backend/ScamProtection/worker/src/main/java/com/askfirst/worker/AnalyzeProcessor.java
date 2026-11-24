@@ -352,7 +352,7 @@ public final class AnalyzeProcessor {
         if (!toSend.isEmpty()) {
             List<GuardianAlertContext> contexts = new ArrayList<>();
             for (AlertRecord r : toSend) {
-                contexts.add(new GuardianAlertContext(r.alertId(), WorkerMessages.ELDER_NAME_FALLBACK,
+                contexts.add(new GuardianAlertContext(r.alertId(), WorkerMessages.elderName(elder.displayName()),
                         r.shareLevel(), clock.instant()));
             }
             List<OutMessage> outs = null;
