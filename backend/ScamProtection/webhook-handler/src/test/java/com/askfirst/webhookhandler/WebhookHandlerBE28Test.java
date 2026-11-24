@@ -588,6 +588,17 @@ class WebhookHandlerBE28Test {
         }
 
         @Override
+        public List<GuardianRecord> listWards(String guardianUid) {
+            return store.values().stream()
+                    .filter(r -> guardianUid.equals(r.getGuardianUid())
+                            || ("GUARDIAN#" + guardianUid).equals(r.getGuardianUid())
+                            || guardianUid.equals(r.getSk())
+                            || ("GUARDIAN#" + guardianUid).equals(r.getSk())
+                            || (r.getGsi1Pk() != null && r.getGsi1Pk().endsWith(guardianUid)))
+                    .toList();
+        }
+
+        @Override
         public void delete(String elderUid, String gUid) {
             store.entrySet()
                     .removeIf(e -> (elderUid.equals(e.getValue().getElderUid())
