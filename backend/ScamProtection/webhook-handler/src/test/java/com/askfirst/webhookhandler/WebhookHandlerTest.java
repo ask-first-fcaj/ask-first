@@ -337,7 +337,7 @@ class WebhookHandlerTest {
                 fakeTelegram, fakeSqs, "https://sqs.mock.queue", SECRET,
                 fakeUserRepo, fakeAuditRepo, fakeRateLimitRepo,
                 null, null, POLICY_SHA256, null, false,
-                "AskFirstBot", "https://custom.askfirst.vn/privacy");
+                "AskFirstBot", "https://custom.askfirst.vn/privacy", null, null, null);
 
         String updateJson = """
                 {
