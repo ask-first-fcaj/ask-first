@@ -238,14 +238,30 @@ def test_fingerprint():
 # ---------------------------------------------------------------- qua handler
 
 def test_handler_with_real_pipeline(monkeypatch: pytest.MonkeyPatch):
-    """``PIPELINE_IMPL=real`` khởi tạo được từ ``ai/config``; chưa có model ID nên ra rules_only, render vẫn chạy."""
+    """``PIPELINE_IMPL=real`` khởi tạo được từ ``ai/config`` mà không gọi mạng; tin chữ ra rules_only, render vẫn chạy."""
     monkeypatch.setattr(h, "_RUNTIME", None)
-    rt = h.init_runtime({"PIPELINE_IMPL": "real", "CONFIG_DIR": str(CONFIG_DIR)})
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "ap-southeast-1")
+    rt = h.init_runtime({"PIPELINE_IMPL": "real", "CONFIG_DIR": str(CONFIG_DIR), "ARTIFACT_BUCKET": "b", "TABLE_NAME": "t",
+                         "BOT_TOKEN_PARAM": "/p"})
     assert isinstance(rt.pipeline, P.RealPipeline)
     req = json.loads((FIXTURES / "analyze" / "otp.json").read_text(encoding="utf-8"))["request"]
-    resp = h.lambda_handler(req, None, runtime=rt)
+    resp = h.lambda_handler(req, None, runtime=h.Runtime(rt.pipeline, rt.build_bundle, None))   # bỏ DynamoDB: test không ra mạng
     assert resp.get("error") is None and resp["analyze"]["verdict"]["path"] == "rules_only"
     m.AiResponse.model_validate(resp)
+
+
+@pytest.mark.parametrize("missing", ["ARTIFACT_BUCKET", "TABLE_NAME", "BOT_TOKEN_PARAM"])
+def test_real_runtime_without_aws_env_is_fatal_init(monkeypatch: pytest.MonkeyPatch, missing: str):
+    """Thiếu cấu hình là lỗi deploy: báo `fatal/init` ngay lần gọi đầu, không để từng request lỗi `retryable` lặp lại."""
+    env = {"PIPELINE_IMPL": "real", "CONFIG_DIR": str(CONFIG_DIR), "ARTIFACT_BUCKET": "b", "TABLE_NAME": "t", "BOT_TOKEN_PARAM": "/p"}
+    del env[missing]
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.delenv(missing, raising=False)
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "ap-southeast-1")
+    monkeypatch.setattr(h, "_RUNTIME", None)
+    req = json.loads((FIXTURES / "analyze" / "otp.json").read_text(encoding="utf-8"))["request"]
+    assert h.lambda_handler(req)["error"] == {"kind": "fatal", "code": "init"}
 
 
 def test_guardian_alert_renders():
@@ -338,7 +354,8 @@ def test_factory_wires_lazy_ocr_from_artifacts():
             raise AssertionError(name)
 
     p = build_pipeline("real", CONFIG_DIR, Store(), None)
-    assert p.ocr.version == "ppocrv6-small-rapidocr3.10.0" and p.ocr._engine is None
+    assert p.ocr.version == "ppocrv6-small-rapidocr3.10.0+vgg-seq2seq-0.3.13-fp32" and p.ocr._engine is None
+    assert p.ocr.reread is not None and p.ocr.reread._s is None   # VietOCR cũng nạp lười, ở dòng đầu cần đọc lại
     assert p.retriever is not None and p.retriever.version == ""   # RAG cũng nạp lười, ở lần tìm đầu
 
 

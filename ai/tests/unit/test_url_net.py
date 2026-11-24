@@ -378,3 +378,36 @@ def test_slow_drip_server_cannot_stretch_one_request():
         stop.set()
         srv.shutdown()
         srv.server_close()
+
+
+# ---------- expanding: nối vào URL intel của pipeline ----------
+
+def _codes(sigs):
+    return {s.code for s in sigs}
+
+
+def test_expanding_scores_the_destination_and_reuses_cache():
+    from askfirst.pipeline.respond import url_intel
+    n = Net(dns={"bit.ly": PUBLIC}, web={"http://bit.ly/vcb": (301, "https://vietcombank-xacthuc.com/login")})
+    kv = KV()
+    sig = U.expanding(url_intel(), U.UrlNet(kv, resolver=n.resolve, fetch=n.fetch))
+    assert _codes(sig(["bit.ly/vcb"], [])) == {"U_TYPOSQUAT"}         # thấy được đích: không cần U_SHORTENER
+    assert _codes(sig(["bit.ly/vcb"], [])) == {"U_TYPOSQUAT"}         # lần 2 từ cache `URL#`, không gọi mạng nữa
+    assert len(n.fetched) == 1
+
+
+def test_expanding_flags_metadata_redirect_without_opening_it():
+    from askfirst.pipeline.respond import url_intel
+    n = Net(dns={"bit.ly": PUBLIC}, web={"http://bit.ly/x": (302, "http://169.254.169.254/latest/meta-data/")})
+    sig = U.expanding(url_intel(), U.UrlNet(resolver=n.resolve, fetch=n.fetch))
+    assert _codes(sig(["bit.ly/x"], [])) == {"U_IP_URL", "U_SHORTENER"}
+    assert [u for u, _ in n.fetched] == ["http://bit.ly/x"]
+
+
+def test_expanding_unseen_destination_and_no_network_for_normal_links():
+    from askfirst.pipeline.respond import url_intel
+    n = Net()                                                          # DNS lỗi
+    sig = U.expanding(url_intel(), U.UrlNet(resolver=n.resolve, fetch=n.fetch))
+    out = sig(["https://bit.ly/a", "https://www.vietcombank.com.vn/x"], [])
+    assert _codes(out) == {"U_SHORTENER", "U_OFFICIAL"}
+    assert n.resolved == ["bit.ly"]                                    # link thường không bị mở

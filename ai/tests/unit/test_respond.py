@@ -6,6 +6,7 @@ Snapshot ở ``tests/unit/snapshots/respond/``. Đổi câu chữ (SH-08) thì c
 
 from __future__ import annotations
 
+import html
 import itertools
 import os
 import re
@@ -116,6 +117,19 @@ def test_cached_verdict_without_evidence_does_not_repeat_lead() -> None:
     text = "\n".join(msg.text_html for msg in R.render(cached, _ctx()).messages)
     assert text.count(R.signal_texts()["R_SECRECY"]) == 1
     assert R.signal_texts()["R_AUTHORITY"] in text
+
+
+def test_overlapping_quotes_shown_once_but_every_reason_kept() -> None:
+    # Tin thật trên bot test 19/11: mỗi luật cắt một đoạn quanh chỗ khớp nên 4 trích dẫn gần như cùng một câu.
+    msg = "Tôi là thiếu tá công an quận 1. Bác phải chuyển 200 triệu vào tài khoản an toàn, không được nói với con cháu."
+    v = FAST.model_copy(update={"signals": [m.Signal.model_validate(_sig(c, w, evidence=e)) for c, w, e in (
+        ("R_SAFE_ACCOUNT", 40, msg[10:]), ("R_SECRECY", 35, msg[38:]), ("R_MONEY_TRANSFER", 25, msg[:100]),
+        ("R_AUTHORITY", 20, msg[:66]), ("R_URGENCY", 15, "hạn chót 17h hôm nay"))]})
+    text = html.unescape("\n".join(x.text_html for x in R.render(v, _ctx()).messages))
+    assert text.count("200 triệu") == 1
+    assert "hạn chót 17h hôm nay" in R.render_guardian_alert(v, _gctx(3)).text_html
+    for code in ("R_SAFE_ACCOUNT", "R_SECRECY", "R_MONEY_TRANSFER", "R_AUTHORITY"):
+        assert R.signal_texts()[code] in text
 
 
 def test_otp_genuine_text() -> None:

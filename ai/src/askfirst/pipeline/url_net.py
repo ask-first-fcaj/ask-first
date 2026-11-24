@@ -35,7 +35,7 @@ from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass
 from urllib.parse import quote, urljoin, urlsplit
 
-from askfirst.domain.models import KVCache
+from askfirst.domain.models import KVCache, Signal
 
 log = logging.getLogger("askfirst.pipeline")
 
@@ -309,3 +309,40 @@ class UrlNet:
             self.kv.put(key, out.to_cache(), CACHE_TTL_S)
         except Exception as e:
             log.warning(json.dumps({"event": "url_cache_failed", "op": "put", "error": type(e).__name__}))
+
+
+SHORTENER_WEIGHT = 15    # yếu như U_BRAND_UNVERIFIED: link rút gọn tự nó chưa phải lừa đảo, chỉ là không thấy trang đích
+MAX_EXPAND = 3           # mỗi link tốn tới DEADLINE_S, mở tuần tự: chặn tổng thời gian khi tin dán nhiều link rút gọn
+
+
+def expanding(intel: Callable[[list[str], list[tuple[str, str]]], list[Signal]], net: UrlNet,
+              ) -> Callable[[list[str], list[tuple[str, str]]], list[Signal]]:
+    """Bọc URL intel (AI-24a, không gọi mạng): mở link rút gọn rồi chấm thêm host đích như một URL của tin.
+
+    Không xem được trang đích (timeout, lỗi, trả 2xx không chuyển hướng, quá nhiều redirect, bị chặn) thì thêm ``U_SHORTENER``.
+    Bị chặn vì đích là IP nội bộ thì host đích là IP nên URL intel ra thêm ``U_IP_URL``. Kết quả lấy từ cache chỉ có host
+    đích (không có đường dẫn), nên ``U_APK_LINK`` của đích chỉ bắt được ở lần mở đầu tiên.
+    """
+    def signals(urls: list[str], links: list[tuple[str, str]]) -> list[Signal]:
+        finals: list[str] = []
+        unseen = ""
+        tried = 0
+        for u in urls:
+            try:
+                host = (urlsplit(normalize(u)).hostname or "").rstrip(".")
+            except ValueError:
+                continue
+            if not net.is_shortener(host) or tried == MAX_EXPAND:
+                continue
+            tried += 1
+            e = net.expand(u)
+            if e.final_host and e.final_host != host:
+                finals.append(e.final_url or f"http://{e.final_host}")
+            if e.stop != "resolved":
+                unseen = unseen or host
+        out = intel(list(dict.fromkeys(urls + finals)), links)
+        if unseen:
+            out.append(Signal(code="U_SHORTENER", weight=SHORTENER_WEIGHT, evidence=unseen))
+        return out
+
+    return signals
