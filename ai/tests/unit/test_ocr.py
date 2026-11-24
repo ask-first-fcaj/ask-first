@@ -39,6 +39,17 @@ def test_repair_keeps_both_fixes():
     assert O.repair_phones("gọi O9l2 345 678") == "gọi 0912 345 678"
 
 
+@pytest.mark.parametrize(("raw", "fixed"), [
+    ("xử lý ngay: dichvucong-\nvn.com\nTin nhắn", "xử lý ngay: dichvucong-vn.com\nTin nhắn"),   # oi-004
+    ("vao https://vietcombank.vn-\nyys.club de sua", "vao https://vietcombank.vn-yys.club de sua"),   # oi-047
+    ("Hotline 1900-\n123.456", "Hotline 1900-\n123.456"),   # dòng sau không có đuôi tên miền: giữ
+    ("Tin nhắn -\nshopee.vn", "Tin nhắn -\nshopee.vn"),     # dấu gạch đứng riêng, không dính chữ: giữ
+    ("Bác đọc kỹ-\nnhé", "Bác đọc kỹ-\nnhé"),
+])
+def test_repair_urls_joins_host_wrapped_after_hyphen(raw, fixed):
+    assert O.repair_urls(raw) == fixed
+
+
 def test_order_by_columns_reads_left_then_right():
     # 2 khung chat cạnh nhau, engine trả xen kẽ trái/phải theo hàng
     box = lambda x, y: [[x, y], [x + 80, y], [x + 80, y + 20], [x, y + 20]]

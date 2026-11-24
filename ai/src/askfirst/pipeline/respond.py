@@ -19,6 +19,7 @@ import html
 import os
 import re
 from datetime import UTC, timedelta, timezone
+from difflib import SequenceMatcher
 from functools import cache
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -170,15 +171,28 @@ def scenario_citations(group: str, scenario: str) -> list[m.Citation]:
             for s in card.get("sources") or []]
 
 
+def _fresh(quote: str | None, shown: list[str]) -> str:
+    """Trả ``quote`` nếu nó không chồng phần lớn lên đoạn đã hiện (tin ngắn thì mỗi luật cắt gần cùng một câu), không thì ``""``."""
+    if not quote:
+        return ""
+    for p in shown:
+        common = SequenceMatcher(None, quote, p, autojunk=False).find_longest_match().size
+        if common * 2 >= min(len(quote), len(p)):
+            return ""
+    shown.append(quote)
+    return quote
+
+
 def _reasons(signals: list[m.Signal]) -> list[dict]:
-    """Dấu hiệu có câu giải thích, mạnh trước (luật cứng, trọng số cao), mỗi mã một lần."""
+    """Dấu hiệu có câu giải thích, mạnh trước (luật cứng, trọng số cao), mỗi mã một lần; trích dẫn trùng thì chỉ giữ câu giải thích."""
     texts = signal_texts()
     out: list[dict] = []
     seen: set[str] = set()
+    shown: list[str] = []
     for s in sorted(signals, key=lambda s: (not s.hard, -s.weight)):
         if s.code in texts and s.code not in seen:
             seen.add(s.code)
-            out.append({"quote": untrusted(s.evidence, MAX_QUOTE), "text": texts[s.code]})
+            out.append({"quote": untrusted(_fresh(s.evidence, shown), MAX_QUOTE), "text": texts[s.code]})
     return out[:MAX_REASONS]
 
 
@@ -271,8 +285,9 @@ def render_guardian_alert(verdict: m.Verdict, ctx: m.GuardianAlertContext) -> m.
     card = _card(verdict)
     texts = signal_texts()
     signals = list(dict.fromkeys(texts[s.code] for s in verdict.signals if s.code in texts))[:MAX_REASONS]
+    shown: list[str] = []
     summary = untrusted(verdict.explanation, MAX_EXPLANATION) or Markup("; ").join(
-        [untrusted(s.evidence, MAX_QUOTE) for s in verdict.signals if s.evidence][:2])
+        [untrusted(q, MAX_QUOTE) for s in verdict.signals if (q := _fresh(s.evidence, shown))][:2])
     at = ctx.at if ctx.at.tzinfo else ctx.at.replace(tzinfo=UTC)
     text = _render(
         "guardian/alert.j2", elder=untrusted(ctx.elder_name, MAX_NAME), level_vn=LEVEL_VN[verdict.level],

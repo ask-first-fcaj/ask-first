@@ -40,6 +40,30 @@ Plan ghi ONNX int8. `fetch_ocr_models.py --int8` lượng tử hoá động (`qu
 `OCR bench` so với fp32 trên cùng ảnh. Kết quả (2026-11-03, `docs/results/ocr-spike.md` mục 10): int8 chép đúng URL
 15/32 và 9/18, so với 31/32 và 17/18 của fp32, và còn chậm hơn. **Production dùng fp32** (ADR-003); `--int8` giữ lại chỉ để đo.
 
+## `vietocr`: `vgg-seq2seq-0.3.13-fp32` (AI-26)
+
+VietOCR `vgg_seq2seq` (VGG19-bn + GRU attention) xuất sang ONNX fp32, dùng qua `askfirst.local_models.vietocr.VietOcr` để đọc lại
+các dòng RapidOCR thiếu chữ có dấu (bộ chữ của `PP-OCRv6_rec_small` không có 88 chữ như ả ạ ấ ộ ữ, PaddleOCR #18254).
+Kết quả đo: `docs/results/ocr-vietocr.md`.
+
+| File | Nội dung | sha256 |
+|---|---|---|
+| `cnn.onnx` | VGG19-bn (79 MB) | `2d4100cd0404db36a40cb2943fc03e21b0e4b59e093e3575fd3aa9e02ec058d9` |
+| `encoder.onnx` | GRU 2 chiều + phần attention tính sẵn | `433029fbb8eee6225d10a15869cac2f0b42495d850a148381e093fd5c665ba73` |
+| `decoder.onnx` | một bước giải mã | `69539e828e86f1e32b68c85235b92a5d21b9c3eab9cbf39db98dd72c2bbc4148` |
+| `vocab.json` | bảng chữ + kích thước ảnh dòng của config `vgg_seq2seq` | `c8dd4e0d04b435c6078b6feebc6b9894513c11cd241f90e8221f80ee51c2f6dd` |
+
+- Dựng bằng `scripts/export_vietocr_onnx.py` (cách dựng env torch ghi ở đầu script) từ trọng số
+  `https://vocr.vn/data/vietocr/vgg_seq2seq.pth` (sha256 `0921503a41375a0584268e23ef3d414ea478a8fe8777865c7745d38f2d0bc5db`,
+  2026-11-23), vietocr 0.3.13, torch 2.15.0. ONNX không ra byte y hệt nếu đổi bản torch: bản trên S3 là bản chuẩn.
+- So với torch trên 1.254 dòng cắt từ 66 ảnh OCR: 1.215 dòng ra y hệt; các dòng khác lệch ở ký tự model vốn phân vân.
+- **License:** code `vietocr` Apache-2.0 (repo `pbcquoc/vietocr`). README ghi trọng số huấn luyện trên 10 triệu ảnh và
+  "được cung cấp sẵn" nhưng không ghi license riêng cho trọng số: **not verified**.
+- **Không dùng int8:** `cnn.onnx` int8 tĩnh (QDQ, theo kênh) giữ 82% từ có dấu đúng trên máy dev nhưng chỉ 49% trên Lambda x86_64.
+- Upload: `scripts/upload_artifacts.py vietocr OUT_DIR`, nên chạy trước hoặc ngay khi merge mục `vietocr` vào
+  `artifacts.yaml`. Chưa có artifact này trên S3 thì `RapidOcr` vẫn chạy: lần nạp đầu lỗi ghi `ocr_reread_failed` **một lần**,
+  sau đó container đó bỏ bước đọc lại (trả bản RapidOCR, không gọi S3 lại) tới khi Lambda thay container mới.
+
 ## `embedder`: `e5-small-qint8-614241f` (AI-29, ARCH §6.5)
 
 `intfloat/multilingual-e5-small` bản ONNX int8 do chính tác giả đưa lên repo model, dùng qua
