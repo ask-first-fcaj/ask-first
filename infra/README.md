@@ -113,6 +113,25 @@ Khi SAM hỏi các câu hỏi:
 
 Sau khi hoàn tất, SAM sẽ in ra các giá trị **Outputs** (bao gồm `WebhookFunctionUrl`, `DynamoDBTableName`, `JobsQueueUrl`, `DataBucketName`).
 
+### Bước 4: Lambda `ai` (BE-06, container image)
+
+`AiImageUri` để trống (mặc định) thì stack **không** tạo function `ai`. Image build trên GitHub Actions (`.github/workflows/ai-image.yml`), không build trên máy.
+
+1. **Một lần mỗi tài khoản:** tạo repo ECR `askfirst-ai` và role OIDC cho GitHub Actions, rồi lưu ARN role vào repo variable:
+   ```bash
+   aws cloudformation deploy --region ap-southeast-1 --stack-name askfirst-github-oidc \
+     --template-file infra/github-oidc.yaml --capabilities CAPABILITY_NAMED_IAM
+   gh variable set AWS_AI_IMAGE_ROLE_ARN --body "$(aws cloudformation describe-stacks --region ap-southeast-1 \
+     --stack-name askfirst-github-oidc --query "Stacks[0].Outputs[?OutputKey=='AiImagePushRoleArn'].OutputValue" --output text)"
+   ```
+   Tài khoản đã có OIDC provider của GitHub thì thêm `--parameter-overrides CreateOidcProvider=false`.
+2. **Model lên S3** (`DataBucket`), theo `ai/MODELS.md`: `ARTIFACT_BUCKET=<DataBucketName> uv run python scripts/upload_artifacts.py <ocr|vietocr|embedder|kb_index> <thư mục>` (chạy trong `ai/`).
+3. **Build và đẩy image:** Actions → *AI image* → *Run workflow* trên `main`. Summary in ra URI `…/askfirst-ai:<sha>`.
+4. **Deploy:** `sam deploy --parameter-overrides Stage=dev AiImageUri=<URI ở bước 3> ...` (giữ các tham số khác như bước 3). Pipeline thật lỗi thì deploy lại với `AiPipelineImpl=stub`.
+5. **Bedrock** ở `ap-southeast-2`: tài khoản phải bật được Qwen3 32B và gpt-oss-120b (BE-05). Guardrail trong `ai/config/models.yaml` là của tài khoản khác: gọi lỗi thì pipeline bỏ qua Guardrail; muốn bật thì chạy `ai/scripts/create_guardrail.py` trên tài khoản này và sửa `guardrail.id`.
+
+Function: 3008 MB, timeout 90 s, `/tmp` 1 GB, x86_64, alias `live` (worker gọi `askfirst-<stage>-ai:live`).
+
 ---
 
 ## 4. Kiểm Tra Nghiệm Thu ("Xong Khi")

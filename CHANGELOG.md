@@ -5,6 +5,9 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 
 ## [Unreleased]
 
+### Added
+- BE-06 (#62): **image Lambda `ai`**: `ai/Dockerfile` (base Lambda Python 3.12, model tải từ S3 lúc chạy), workflow `AI image` build trên GitHub Actions, kiểm image ≤ 2 GB, import đủ thư viện trên rootfs chỉ đọc và gọi thử handler bản stub; chạy tay thì đẩy lên ECR qua OIDC (`infra/github-oidc.yaml`). `infra/template.yaml` thêm function `ai` (3008 MB, 90 s, x86_64, alias `live`, quyền DynamoDB chỉ `CACHE#`/`URL#`), chỉ tạo khi truyền `AiImageUri`. Cách deploy ở `infra/README.md` bước 4.
+
 ### Changed
 - AI-06: **phần "Vì sao Bot nghi ngờ" không lặp trích dẫn nữa.** Tin ngắn làm mỗi luật cắt gần cùng một câu (trên bot test, 4 gạch đầu dòng trích lại cùng câu "…chuyển 200 triệu vào tài khoản an toàn…"). Giờ đoạn trích nào trùng từ một nửa trở lên với đoạn đã hiện thì chỉ giữ câu giải thích; tóm tắt trong tin cảnh báo người thân cũng bỏ đoạn trùng.
 - AI-24b (#70): **pipeline thật bắt đầu mở link rút gọn.** `url_net` (PR #127) trước đây chưa được gọi ở đâu; giờ `build_pipeline("real")` bọc URL intel bằng `url_net.expanding`: link thuộc `SHORTENERS` được mở bằng `HEAD` (chống SSRF như cũ, cache `URL#` 24 giờ qua `url_cache`), host đích được chấm như một URL của tin (vd. `bit.ly/…` → `vietcombank-xacthuc.com` ra `U_TYPOSQUAT`). Không xem được trang đích (lỗi, timeout, 2xx không chuyển hướng, bị chặn) thì thêm **`U_SHORTENER` 15 điểm** (yếu, không nâng sàn); đích là IP nội bộ thì thêm `U_IP_URL`, không mở. Mở tối đa 3 link rút gọn mỗi tin. Link thường không gọi mạng.

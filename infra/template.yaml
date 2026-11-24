@@ -40,14 +40,28 @@ Parameters:
       Token bot cho worker (giai đoạn dev, chưa dùng SSM). Truyền lúc deploy, KHÔNG ghi vào samconfig.toml:
       sam deploy --parameter-overrides Stage=dev TelegramBotToken=<token>
 
+  AiImageUri:
+    Type: String
+    Default: ''
+    Description: >-
+      URI image Lambda ai trên ECR (workflow AI image đẩy lên, BE-06). Để trống thì KHÔNG tạo function ai.
+
+  AiPipelineImpl:
+    Type: String
+    Default: real
+    AllowedValues:
+      - real
+      - stub
+    Description: PIPELINE_IMPL của Lambda ai. Đổi về stub nếu pipeline thật lỗi (INT-01).
+
 Conditions:
   HasAlarmTopic: !Not [!Equals [!Ref AlarmTopicArn, '']]
+  HasAiImage: !Not [!Equals [!Ref AiImageUri, '']]
 
 Globals:
   Function:
     Timeout: 30
     MemorySize: 512
-    Runtime: java21
     Architectures:
       - x86_64
 
@@ -61,6 +75,7 @@ Resources:
       FunctionName: !Sub askfirst-${Stage}-webhook
       Description: Telegram webhook handler with Function URL
       CodeUri: ../backend/ScamProtection/webhook-handler/
+      Runtime: java21
       Handler: com.askfirst.webhookhandler.WebhookHandler::handleRequest
       # Handler đọc/ghi DynamoDB và gửi SQS -> cần quyền, nếu không dev sẽ AccessDenied
       Policies:
@@ -119,6 +134,7 @@ Resources:
       FunctionName: !Sub askfirst-${Stage}-worker
       Description: SQS jobs worker (analyze, followup)
       CodeUri: ../backend/ScamProtection/worker/
+      Runtime: java21
       Handler: com.askfirst.worker.WorkerHandler::handleRequest
       # Lambda ai chạy tối đa 90 giây, cộng gửi Telegram: 120 giây. JobsQueue.VisibilityTimeout (720) = 6 lần giá trị này.
       Timeout: 120
@@ -164,6 +180,7 @@ Resources:
       FunctionName: !Sub askfirst-${Stage}-worker-dlq
       Description: Đọc jobs-dlq, báo "bận" cho người dùng (BE-07)
       CodeUri: ../backend/ScamProtection/worker/
+      Runtime: java21
       Handler: com.askfirst.worker.DlqHandler::handleRequest
       Timeout: 30
       MemorySize: 512
@@ -183,6 +200,67 @@ Resources:
             BatchSize: 1
             ScalingConfig:
               MaximumConcurrency: 2
+
+  # ============================================================================
+  # 1c. LAMBDA AI (container image, BE-06). Worker gọi qua alias live (AI_FUNCTION_ARN ở trên).
+  # ============================================================================
+  AiFunction:
+    Type: AWS::Serverless::Function
+    Condition: HasAiImage
+    Properties:
+      FunctionName: !Sub askfirst-${Stage}-ai
+      Description: AI pipeline (OCR, luật, RAG, Bedrock judge)
+      PackageType: Image
+      ImageUri: !Ref AiImageUri
+      # x86_64 cho khớp số đo OCR và dự toán chi phí; arm64 chưa thử.
+      MemorySize: 3008
+      Timeout: 90
+      # Model OCR, VietOCR, embedder tải về /tmp (khoảng 0,3 GB) cùng ảnh Telegram
+      EphemeralStorage:
+        Size: 1024
+      AutoPublishAlias: live
+      Policies:
+        # Chỉ CACHE# (verdict) và URL# (url intel), ARCH §8.3
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+              Resource: !GetAtt AskFirstTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  dynamodb:LeadingKeys:
+                    - CACHE#*
+                    - URL#*
+            # Model local do S3ArtifactStore tải, prefix theo ai/config/artifacts.yaml
+            - Effect: Allow
+              Action: s3:GetObject
+              Resource:
+                - !Sub ${DataBucket.Arn}/ocr/*
+                - !Sub ${DataBucket.Arn}/vietocr/*
+                - !Sub ${DataBucket.Arn}/embedder/*
+                - !Sub ${DataBucket.Arn}/kb_index/*
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/askfirst/${Stage}/telegram/bot_token
+            - Effect: Allow
+              Action: kms:Decrypt
+              Resource: '*'
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub ssm.${AWS::Region}.amazonaws.com
+            # Bedrock ở ap-southeast-2 (ai/config/models.yaml): Converse dùng quyền InvokeModel; guardrail profile apac
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:ApplyGuardrail
+              Resource: '*'
+      Environment:
+        Variables:
+          PIPELINE_IMPL: !Ref AiPipelineImpl
+          ARTIFACT_BUCKET: !Ref DataBucket
+          TABLE_NAME: !Ref AskFirstTable
+          BOT_TOKEN_PARAM: !Sub /askfirst/${Stage}/telegram/bot_token
 
   # ============================================================================
   # 2. DYNAMODB ASKFIRST (SINGLE-TABLE)
