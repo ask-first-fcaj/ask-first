@@ -9,7 +9,9 @@
 - **Kết quả:** URL và SĐT giữ nguyên; từ có dấu đúng 37% → 89% (50 ảnh) và 27% → 97% (16 ảnh); tín hiệu luật bị mất 15/33 → 6/33. Trên Lambda 3008 MB, mỗi ảnh chậm thêm p50 0,56 s, p95 3,42 s.
 - **Phát hiện kèm:** riêng RapidOCR production trên Lambda đã có **p95 5,07 s**, vượt mục tiêu 3 s của ADR-003 (điều kiện 2, trước giờ chỉ đo thay thế trên GitHub Actions).
 
-**Đề xuất (cần AI1 quyết):**
+**Quyết định (AI1, 2026-11-24):** bật VietOCR. Chấp nhận thêm p95 3,42 s mỗi ảnh để đọc đúng chữ có dấu. `version` của `vietocr` đã có trên `main` từ #178. Việc còn lại: đưa artifact lên S3 và đo lại trên Lambda `ai` thật (BE-06).
+
+**Đề xuất ban đầu của AI2:**
 1. Bật VietOCR (artifact `vietocr` trong `config/artifacts.yaml`), đánh đổi độ trễ lấy chữ đúng. Nếu chưa chấp nhận độ trễ, xoá `version` của mục này là tắt hẳn, không cần đổi code.
 2. Mở lại ADR-003 phần độ trễ: ngay cả khi không có VietOCR, OCR trên Lambda đã vượt 3 s ở 30/66 ảnh.
 

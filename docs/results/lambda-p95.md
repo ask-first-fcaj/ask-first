@@ -1,6 +1,6 @@
 # Đo độ trễ Lambda `ai` (INT-01 #56, INT-02 #66, INT-03 #76)
 
-> Người đo: AI1. Ngày: 2026-11-24. Account team, `ap-southeast-1`, `askfirst-dev-ai` alias `live` = v10 (image `main-48c95f8`, 3008 MB), Bedrock ở account khác qua `BEDROCK_ROLE_ARN` (#182).
+> Người đo: AI1. Ngày: 2026-11-24 (ảnh: 2026-11-25). Account team, `ap-southeast-1`, `askfirst-dev-ai` alias `live` = v10 (image `main-48c95f8`, 3008 MB), Bedrock ở account khác qua `BEDROCK_ROLE_ARN` (#182).
 
 ## Kết luận
 
@@ -9,7 +9,7 @@
 - **Cold start:** init của `ai` p50 6,2 s, tối đa 8,5 s. Init của `worker` khoảng 2,2 s. Phía worker, lần gọi `ai` chậm nhất (có cold start của `ai`) mất 12,3 s. Lần đầu sau khi deploy, init của `ai` từng chạm mốc 10 s và phải chạy lại, request đó mất 13,9 s.
 - **Log:** worker và `ai` ghi cùng `trace_id`. Log 30 ngày của cả hai function kh có nội dung tin nhắn.
 - **Về stub:** đặt `PIPELINE_IMPL=stub` trên `$LATEST` thì trả `pipeline=stub`, đặt lại `real` thì trả `real`. Alias `live` kh bị đụng.
-- **Chưa đo:** p95 ảnh đầu-cuối khi warm (#66). Cần gửi ảnh thật qua bot vì `ai` tự tải ảnh bằng `file_id` của Telegram. Đã biết OCR trên Lambda có p95 5,07 s, thêm VietOCR thì 7,52 s ([ocr-vietocr.md](ocr-vietocr.md)).
+- **Ảnh, container ấm (#66, đo 25/11):** 21 ảnh qua bot, đều đi path `llm`. Đầu-cuối p95 **17,0 s** (p50 11,3 s), vượt mốc 15 s. Phần trong `ai` p95 12,2 s, cả lần chạy của worker p95 13,5 s. Khoảng 3,5 s còn lại là debounce 3 s của SQS (`AnalyzeJob` `DelaySeconds = 3`) cộng thời gian poll. AI1 chấp nhận vì vẫn dưới ngưỡng khoảng 30 s cho ảnh (ADR-003).
 
 ## Văn bản (container ấm)
 
@@ -32,6 +32,21 @@ Lấy 100 câu từ 4 bộ eval (`real_scam`, `benign_normal`, `benign_suspiciou
 | `fast` | 1 | 99 ms |
 
 Tổng `cost_usd_est` cho 100 câu là 0,0756 USD.
+
+## Ảnh (container ấm, 25/11)
+
+Gửi `eval/assets/ocr/002.png`–`022.png` (21 ảnh) qua Telegram Web tới bot test `@askfirst_ai2_test_bot`. Gửi lần lượt, mỗi ảnh chờ bot trả lời xong mới gửi tấm tiếp; có vài ảnh lớn trả lời chậm hơn 15 s nên hai job có thể chồng nhau. Trên dev, flag `CONFIG#global/FLAGS.llm_enabled` đang là `false`, khi đó ảnh chỉ đi `rules_only` (bot báo bảo trì). Vì vậy flag được bật `true` lúc 04:36 UTC và trả về `false` lúc 04:47 UTC. Trong khoảng đó `ai` và `worker` kh có `INIT_START` nào, cũng kh có `job_failed`.
+
+| Đo | n | p50 | p95 | tối đa |
+|---|---|---|---|---|
+| `ai` op `analyze` (log `ai`, gồm tải ảnh, OCR, VietOCR, guard, RAG, judge) | 21 | 6,81 s | 12,19 s | 12,84 s |
+| Worker gọi `ai` (`ai_invoke … ms=`) | 21 | 6,83 s | 12,21 s | 12,88 s |
+| `REPORT Duration` của worker (thêm render, gửi tin, ghi DynamoDB) | 21 | 7,72 s | 13,50 s | 14,31 s |
+| Đầu-cuối: `START` webhook → `REPORT` worker | 21 | 11,28 s | **17,02 s** | 18,24 s |
+
+- Job id là ULID do webhook sinh, trễ hơn `START` webhook 0,2–1 s. Đầu-cuối được ghép từ `START` webhook gần nhất trước ULID tới dòng `REPORT` của worker cho job đó.
+- Số đầu-cuối chưa gồm thời gian Telegram nhận ảnh từ máy người gửi rồi đẩy webhook.
+- Mẫu `001.png` gửi trước khi bật flag ra `rules_only` và gặp cold start (`ai` init 8,9 s, worker thấy 14,7 s), nên kh tính.
 
 ## Cold start (log CloudWatch 30 ngày tới 24/11)
 
@@ -56,4 +71,5 @@ Tổng `cost_usd_est` cho 100 câu là 0,0756 USD.
 ## Cách chạy lại
 
 - Văn bản: dùng script tạm (kh commit), gọi `lambda.invoke(FunctionName="askfirst-dev-ai", Qualifier="live")` lần lượt từng câu, có `check_id` và tiền tố riêng, rồi lấy `analyze.verdict.latency_ms`.
+- Ảnh: bật `llm_enabled` nếu đang tắt, gửi ảnh qua bot, lấy `ai_invoke op=analyze` và `REPORT` của worker, `START` của webhook trong khoảng thời gian đó, ghép theo job id (ULID mang thời điểm tạo). Đo xong trả flag về như cũ.
 - Cold start: chạy CloudWatch Logs Insights `filter @type="REPORT" and ispresent(@initDuration) | stats pct(@initDuration,50), pct(@initDuration,95), max(@initDuration)` trên `/aws/lambda/askfirst-dev-{ai,worker}`.

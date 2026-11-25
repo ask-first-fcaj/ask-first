@@ -6,11 +6,13 @@ Không gọi Bedrock: LLM là fake trả chuỗi cố định. Mọi số trong 
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 
 import pytest
 
 from askfirst.pipeline import judge as J
+from askfirst.pipeline.respond import signal_texts
 
 TEXT = "Lỗi phạt nguội của bạn chưa xử lý, tra cứu và nộp phạt tại dichvucong-vn[.]com trong hôm nay."
 
@@ -278,6 +280,13 @@ def test_system_prompt_v1_loads_and_covers_taxonomy():
         assert code in p
     for field in J.JUDGE_SCHEMA["required"]:
         assert field in p
+
+
+def test_system_prompt_lists_exactly_rule_codes_that_have_explanations():
+    # Mã ngoài signals.j2 thì Respond bỏ qua, nên prompt phải liệt kê đúng các mã R_ có câu giải thích.
+    section = J.load_system_prompt().split("## Mã dấu hiệu", 1)[1].split("\n## ", 1)[0]
+    listed = set(re.findall(r"\bR_[A-Z_]+", section))
+    assert listed == {c for c in signal_texts() if c.startswith("R_")}
 
 
 # ------------------------------------------------------------------ gọi model
