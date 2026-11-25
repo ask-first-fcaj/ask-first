@@ -5,6 +5,9 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 
 ## [Unreleased]
 
+### Added
+- BE-06 (#62): **image Lambda `ai`**: `ai/Dockerfile` (base Lambda Python 3.12, model tải từ S3 lúc chạy), workflow `AI image` build trên GitHub Actions, kiểm image ≤ 2 GB, import đủ thư viện trên rootfs chỉ đọc và gọi thử handler bản stub; chạy tay thì đẩy lên ECR qua OIDC (`infra/github-oidc.yaml`). `infra/template.yaml` thêm function `ai` (3008 MB, 90 s, x86_64, alias `live`, quyền DynamoDB chỉ `CACHE#`/`URL#`), chỉ tạo khi truyền `AiImageUri`. Cách deploy ở `infra/README.md` bước 4.
+
 ### Changed
 - SH-09 (#160): **đo token Bedrock mỗi lượt kiểm tra** cho dự toán chi phí, phần AI1 ở `docs/results/cost-estimate.md`. `eval/measure_cost.py` chạy `RealPipeline` và đếm token LLM, text unit Guardrail của từng lượt, không đổi `Verdict`. 1 lượt trên 184 mẫu (`judge_v2`): mỗi lượt có gọi LLM trung bình 3.685 token input (p95 6.357), 297 output (p95 628), 1,2 lời gọi, 0,000753 USD. Với 3.000 lượt/tháng và 25% không gọi LLM như ARCH §12: LLM ≈ 1,7 USD, Guardrail ≈ 0,34 USD. 50 tin ảnh (OCR local rồi judge) đo riêng: 0,000769 USD mỗi lượt, gần bằng tin chữ. Tỉ lệ fast path 25% chưa kiểm. Link Pricing Calculator và các dịch vụ khác chờ BE1.
 - SH-09 (#160): **dự toán chi phí đầy đủ** trong `docs/results/cost-estimate.md`: link AWS Pricing Calculator (Lambda `ai`/`worker`/`webhook`, SQS, DynamoDB, S3, ECR, CloudWatch ở `ap-southeast-1`, 4,04 USD/tháng không Free Tier) cộng Bedrock tính tay (Calculator không có Qwen3 ở Sydney; 2.250 × 0,000792 USD + Guardrail ≈ 2,1 USD). Tổng 3.000 lượt/tháng ≈ 6,2 USD không Free Tier, ≈ 2,4 USD có always-free (chưa kiểm loại Free Tier của tài khoản). Kèm số nhập, căn cứ và 5 cách tối ưu. ARCH §12 sửa theo bảng này (bỏ voice, VLM; token đo thật).
