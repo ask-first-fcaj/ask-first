@@ -56,7 +56,7 @@ public final class FollowupProcessor {
         for (AlertRecord r : records) {
             if (AlertRecord.SENT.equals(r.status())) {
                 List<List<Btn>> ack = List.of(List.of(new Btn(WorkerMessages.ACK_BUTTON, "ack:" + r.alertId())));
-                trySend(r.guardianChatId(), WorkerMessages.followupGuardian(WorkerMessages.ELDER_NAME_FALLBACK),
+                trySend(r.guardianChatId(), WorkerMessages.followupGuardian(WorkerMessages.elderName(elder.displayName())),
                         ack, true, job);
             }
         }

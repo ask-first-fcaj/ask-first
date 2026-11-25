@@ -47,6 +47,25 @@ class FollowupProcessorTest {
     }
 
     @Test
+    void guardianReminder_namesTheElder_whenKnown() {
+        env.directory.elder = new GuardianDirectory.Elder("Bác", true, "Nguyễn Văn An");
+        String a1 = alert("tg:201", "201", AlertRecord.SENT);
+
+        env.followup.process(job(a1));
+
+        assertTrue(env.telegram.sentTo("201").getFirst().text().contains("Nguyễn Văn An"));
+    }
+
+    @Test
+    void guardianReminder_usesGenericName_whenElderNameUnknown() {
+        String a1 = alert("tg:201", "201", AlertRecord.SENT);
+
+        env.followup.process(job(a1));
+
+        assertTrue(env.telegram.sentTo("201").getFirst().text().contains(WorkerMessages.ELDER_NAME_FALLBACK));
+    }
+
+    @Test
     void anyAck_meansNoReminder() {
         String a1 = alert("tg:201", "201", AlertRecord.SENT);
         String a2 = alert("tg:202", "202", AlertRecord.SENT);

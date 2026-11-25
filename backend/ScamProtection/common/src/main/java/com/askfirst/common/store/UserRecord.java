@@ -25,6 +25,7 @@ public class UserRecord {
     private String chatId;
     private String role = "elder";          // elder | guardian | both
     private String addressForm = DEFAULT_ADDRESS_FORM; // Bác | Cô | Chú
+    private String displayName;   // tên Telegram (họ + tên), chỉ để tin gửi người thân gọi đúng tên người cao tuổi
     private String status = "active";
     private String consentVersion;
     private String policySha256;
@@ -106,6 +107,15 @@ public class UserRecord {
 
     public void setAddressForm(String addressForm) {
         this.addressForm = addressForm;
+    }
+
+    @DynamoDbAttribute("display_name")
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
     }
 
     @DynamoDbAttribute("status")

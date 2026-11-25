@@ -22,7 +22,8 @@ public final class RepoGuardianDirectory implements GuardianDirectory {
     public Optional<Elder> elder(String userId) {
         return users.getUser(userId).map(u -> new Elder(
                 u.getAddressForm() == null ? UserRecord.DEFAULT_ADDRESS_FORM : u.getAddressForm(),
-                u.getPurposes() != null && Boolean.TRUE.equals(u.getPurposes().get("guardian"))));
+                u.getPurposes() != null && Boolean.TRUE.equals(u.getPurposes().get("guardian")),
+                u.getDisplayName()));
     }
 
     @Override
