@@ -6,6 +6,7 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 ## [Unreleased]
 
 ### Added
+- FR13 (#31): người thân bấm "Tôi đã liên hệ" thì **người cao tuổi nhận tin** "Dạ, {tên người thân} đã nhận cảnh báo và liên hệ {bác/cô/chú} rồi ạ." Chỉ gửi ở lần ack đầu; bấm lại ở tin nhắc 15 phút thì không gửi lần nữa. Gửi lỗi chỉ ghi log, không làm hỏng ack.
 - BE-10 (#88): **script làm nóng Lambda trước demo** `scripts/warmup.py`: gọi thẳng `webhook`, `worker:live`, `ai:live` song song `-n` lần (mặc định 3) bằng event kh làm gì, kh qua Telegram, kh gọi Bedrock; in thời gian và init của từng lần, lỗi thì thoát mã 1. Chạy thử trên `dev` 25/11: lần đầu 9/9 cold start (`ai` init 8,4–8,6 s), chạy lại ngay thì cả 9 lần 0,2 s. Bảng p50/p95 theo khâu ở `docs/results/lambda-p95.md`.
 - BE-06 (#62): **image Lambda `ai`**: `ai/Dockerfile` (base Lambda Python 3.12, model tải từ S3 lúc chạy), workflow `AI image` build trên GitHub Actions, kiểm image ≤ 2 GB, import đủ thư viện trên rootfs chỉ đọc và gọi thử handler bản stub; chạy tay thì đẩy lên ECR qua OIDC (`infra/github-oidc.yaml`). `infra/template.yaml` thêm function `ai` (3008 MB, 90 s, x86_64, alias `live`, quyền DynamoDB chỉ `CACHE#`/`URL#`), chỉ tạo khi truyền `AiImageUri`. Cách deploy ở `infra/README.md` bước 4.
 
