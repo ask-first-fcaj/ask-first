@@ -1,0 +1,75 @@
+# Danh sách từ cho eval/readability.py (AI-32, #92). Mỗi dòng: <từ hoặc cụm><TAB><loại>. Dòng bắt đầu bằng # là chú thích.
+# Loại: hv = từ Hán-Việt hoặc thuật ngữ khó với người cao tuổi; en = từ tiếng Anh/mượn hay gặp trong tin lừa đảo.
+# Danh sách do team tự lập, CHƯA kiểm với người đọc thật: thêm bớt khi có kết quả đọc thử (SH-08). Khớp không phân biệt hoa thường, theo từ nguyên vẹn.
+
+# --- hv: Hán-Việt / thuật ngữ khó
+mạo danh	hv
+giả mạo	hv
+chiếm đoạt	hv
+lừa đảo qua mạng	hv
+xác thực	hv
+xác minh	hv
+khả nghi	hv
+tố giác	hv
+trình báo	hv
+thao túng	hv
+phát tán	hv
+truy cập	hv
+đăng nhập	hv
+kích hoạt	hv
+vô hiệu hóa	hv
+vô hiệu hoá	hv
+định danh	hv
+sinh trắc học	hv
+tiết lộ	hv
+mã độc	hv
+phần mềm độc hại	hv
+tấn công	hv
+rủi ro	hv
+cảnh giác	hv
+khẩn cấp	hv
+thanh khoản	hv
+phong tỏa	hv
+phong toả	hv
+đối tượng	hv
+bất thường	hv
+vi phạm	hv
+cưỡng chế	hv
+thụ hưởng	hv
+tài khoản thụ hưởng	hv
+phí tra soát	hv
+tra soát	hv
+cơ quan chức năng	hv
+tên miền	hv
+đường dẫn	hv
+ủy quyền	hv
+uỷ quyền	hv
+hợp thức hóa	hv
+hợp thức hoá	hv
+
+# --- en: tiếng Anh / mượn
+link	en
+app	en
+account	en
+otp	en
+password	en
+code	en
+online	en
+website	en
+web	en
+phishing	en
+scam	en
+hacker	en
+fake	en
+click	en
+inbox	en
+spam	en
+hotline	en
+ib	en
+admin	en
+update	en
+verify	en
+bank	en
+banking	en
+qr	en
+sms	en

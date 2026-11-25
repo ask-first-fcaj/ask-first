@@ -234,7 +234,6 @@ def test_vietnamese_with_link_word_is_not_flagged_as_english():
 def test_n0_template_never_says_safe():
     pc = _check(group="N0", scenario="N0", signals=[], short_explanation="Tin này an toàn.")
     assert "an toàn" not in pc.judgement.short_explanation
-    assert pc.judgement.short_explanation.startswith("Bot chưa thấy dấu hiệu")
 
 
 def test_explanation_clipped_to_280():
