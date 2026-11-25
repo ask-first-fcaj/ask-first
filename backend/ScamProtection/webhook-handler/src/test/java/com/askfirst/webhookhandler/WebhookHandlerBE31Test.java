@@ -175,7 +175,7 @@ class WebhookHandlerBE31Test {
         assertEquals(200, res.getStatusCode());
         assertFalse(telegramClient.sentMessages.isEmpty());
         String msg = telegramClient.sentMessages.get(0).text;
-        assertTrue(msg.contains("Chào mừng Bác đến với AskFirst!") || msg.contains("Tôi đồng ý"),
+        assertTrue(msg.contains("Chào mừng Bác đến với AskFirst!") || msg.contains("Tôi đồng ý") || msg.contains("Đồng ý"),
                 "User đã rút consent phải nhận thông báo yêu cầu đồng ý");
     }
 

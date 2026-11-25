@@ -217,7 +217,7 @@ Trong MVP, gửi voice (mọi độ dài) thì bot trả câu "chưa hỗ trợ 
 
 **Issue:** [#24](https://github.com/ask-first-fcaj/ask-first/issues/24) · **Phạm vi:** MVP · **Xong ở:** M2 (W4) · **Tham chiếu:** ARCH §5.5
 
-**Khi nào báo tự động:** mức `DANGEROUS` **và** có hành động rủi ro (chuyển tiền, đưa OTP, cài app, chia sẻ màn hình, giữ bí mật) **và** có người thân đang `active`. Ở mức `SUSPICIOUS` bot chỉ hiện nút "📣 Báo cho con" để người cao tuổi tự quyết.
+**Khi nào báo tự động:** mức `DANGEROUS` **và** có hành động rủi ro (chuyển tiền, đưa OTP, cài app, chia sẻ màn hình, giữ bí mật) **và** có người thân đang `active`. Ở mức `SUSPICIOUS` bot chỉ hiện nút "📣 Báo cho người nhà" để người cao tuổi tự quyết.
 
 **Bot phải:**
 - Gửi **song song** cho mọi người thân `active`, nội dung theo mức chia sẻ.

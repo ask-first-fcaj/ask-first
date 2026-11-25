@@ -12,32 +12,33 @@
   steps:
     - id: khoa_tai_khoan
       phase: "0-5 phút"
-      action: Liên hệ ngân hàng của mình để khóa tài khoản hoặc thẻ
-      detail: Gọi tổng đài ngân hàng, nói rõ nghi bị lừa, yêu cầu khóa tài khoản hoặc thẻ và tra soát. Đừng chờ chắc chắn bị lừa mới gọi.
+      action: Khóa thẻ và tài khoản ngân hàng
+      detail: Khóa ngay trong ứng dụng ngân hàng, hoặc gọi tổng đài ngân hàng và nói rõ là nghi bị lừa. Chưa chắc bị lừa cũng cứ khóa trước.
       hotline_ref: bank_of_victim
       sources:
         - {url: "https://bocongan.gov.vn/bai-viet/canh-bao-thu-doan-lua-dao-cai-ung-dung-vneid-gia-mao-d22-t45880", publisher: "Bộ Công an", date: "2025-07-05"}
-      verified_at: 2026-10-30
+        - {url: "https://www.vietcombank.com.vn/vi-VN/KHCN/Danh-sach-nguyen-tac-GDAT/khcn---viec-can-lam-gap-khi-bi-lua-dao", publisher: "Vietcombank", date: "2023-12-26"}
+      verified_at: 2026-11-12
     - id: tat_nguon
       phase: "0-5 phút"
-      action: Nếu đã bấm link lạ hoặc cài ứng dụng lạ, tắt nguồn điện thoại
-      detail: Tắt nguồn để kẻ gian không còn cơ hội lấy mã OTP ngân hàng hoặc dữ liệu sinh trắc học.
+      action: Đã bấm link lạ hoặc cài ứng dụng lạ thì tắt nguồn điện thoại (sau khi đã gọi/khóa ngân hàng xong)
+      detail: Để kẻ gian không lấy được mã OTP hay dữ liệu khuôn mặt, vân tay.
       hotline_ref: null
       sources:
         - {url: "https://bocongan.gov.vn/bai-viet/canh-bao-thu-doan-lua-dao-cai-ung-dung-vneid-gia-mao-d22-t45880", publisher: "Bộ Công an", date: "2025-07-05"}
       verified_at: 2026-10-30
     - id: go_app_doi_mat_khau
       phase: "5-15 phút"
-      action: Gỡ ứng dụng lạ và đổi mật khẩu từ một thiết bị khác
-      detail: Dùng thiết bị an toàn để đổi mật khẩu ngân hàng, ví, mạng xã hội. Gỡ ứng dụng vừa cài theo yêu cầu của người lạ.
+      action: Đổi mật khẩu bằng một điện thoại khác, gỡ ứng dụng lạ
+      detail: Đổi mật khẩu ngân hàng, ví điện tử, Zalo, Facebook bằng máy khác. Gỡ ứng dụng mà người lạ bảo cài.
       hotline_ref: null
       sources:
         - {url: "docs/research-concept.md", publisher: "Nhóm dự án (research-concept §3.3), chưa có nguồn bên ngoài"}
       verified_at: 2026-10-30
     - id: trinh_bao_cong_an
       phase: "15-30 phút"
-      action: Đến hoặc gọi công an xã, phường gần nhất để trình báo
-      detail: Mang ảnh chụp tin nhắn, số điện thoại của kẻ gian, số tài khoản nhận tiền, biên lai chuyển tiền.
+      action: Báo công an xã, phường gần nhất
+      detail: Mang theo ảnh chụp tin nhắn, số điện thoại của kẻ gian, số tài khoản đã chuyển tiền và biên lai.
       hotline_ref: police_113
       sources:
         - {url: "https://bocongan.gov.vn/bai-viet/canh-bao-thu-doan-lua-dao-cai-ung-dung-vneid-gia-mao-d22-t45880", publisher: "Bộ Công an", date: "2025-07-05"}
@@ -45,8 +46,8 @@
       verified_at: 2026-10-30
     - id: bao_nguoi_than
       phase: "sau đó"
-      action: Báo cho người thân tin cậy
-      detail: Nói với con cháu hoặc người thân để cùng xử lý và để cảnh giác nếu kẻ gian liên hệ lại.
+      action: Kể cho con cháu biết
+      detail: Để cả nhà cùng xử lý và cảnh giác nếu kẻ gian gọi lại.
       hotline_ref: null
       sources:
         - {url: "docs/research-concept.md", publisher: "Nhóm dự án (research-concept §3.3), chưa có nguồn bên ngoài"}
