@@ -36,4 +36,4 @@
 | `backend/` (Java) | `mvn dependency:list -DincludeScope=runtime`, tra từng package qua API `https://api.osv.dev/v1/querybatch` | Trước: 64 package, `jackson-databind` 2.17.0 (12 advisory, 5 High) và `jackson-core` 2.21.5 (2 High). Sau khi import `jackson-bom` 2.21.7: 63 package, 0 lỗ hổng. `mvn test` pass. |
 
 - Chưa chạy OWASP Dependency-Check (`mvn dependency-check:check`) vì phải tải cơ sở dữ liệu NVD, nặng cho máy dev. OSV gom advisory của GitHub nên đủ cho mức High/Critical, nma chưa so với NVD.
-- Java chưa có bước quét trong CI.
+- Đã thêm bước quét dependency Java vào CI (job `backend`, chỉ Ubuntu) bằng `scripts/scan_java_deps.py` tra cứu OSV API tự động.

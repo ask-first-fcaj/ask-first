@@ -87,6 +87,11 @@ jobs:
             [ $status -eq 0 ] && echo "OK: ${cls} chạy thật"
           done
           exit $status
+      - name: Quét lỗ hổng dependency Java (OSV, BE-09b)
+        if: steps.has.outputs.found == 'true' && matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          python3 scripts/scan_java_deps.py --dir "${{ steps.has.outputs.dir }}"
 
   ai:
     name: ai (${{ matrix.os }})
