@@ -92,7 +92,7 @@ class WebhookHandlerBE35Test {
 
         // Tin nhắn cảnh báo đỏ cho người cao tuổi
         assertEquals(1, telegramClient.sentMessages.size());
-        FakeTelegramClient.SentMsg sent = telegramClient.sentMessages.get(0);
+        FakeTelegramClient.SentMsg sent = telegramClient.sentMessages.getFirst();
         assertEquals(ELDER_CHAT_ID, sent.chatId());
         assertTrue(sent.text().contains("CẢNH BÁO NGUY HIỂM"), "Phải có tiêu đề CẢNH BÁO NGUY HIỂM");
         assertTrue(sent.text().contains("TUYỆT ĐỐI KHÔNG BẤM CÀI ĐẶT"), "Phải có hướng dẫn tuyệt đối không cài đặt");
@@ -100,8 +100,8 @@ class WebhookHandlerBE35Test {
 
         // Ghi nhận Audit Log
         assertEquals(1, auditRepo.events.size());
-        assertEquals("APK_BLOCKED", auditRepo.events.get(0).event());
-        assertTrue(auditRepo.events.get(0).details().contains("DichVuCong_Gia.apk"));
+        assertEquals("APK_BLOCKED", auditRepo.events.getFirst().event());
+        assertTrue(auditRepo.events.getFirst().details().contains("DichVuCong_Gia.apk"));
     }
 
     // ── Test 2: Tệp .apk khi đã kết nối người thân (active & revoked) ──────────
@@ -189,7 +189,7 @@ class WebhookHandlerBE35Test {
         assertEquals(200, res.getStatusCode());
         assertEquals("APK_BLOCKED", res.getBody());
         assertEquals(1, telegramClient.sentMessages.size());
-        assertTrue(telegramClient.sentMessages.get(0).text().contains("CẢNH BÁO NGUY HIỂM"));
+        assertTrue(telegramClient.sentMessages.getFirst().text().contains("CẢNH BÁO NGUY HIỂM"));
         assertEquals(0, sqsClient.enqueuedMessages.size());
     }
 
@@ -205,7 +205,7 @@ class WebhookHandlerBE35Test {
         assertEquals(0, sqsClient.enqueuedMessages.size(), "PDF không được đẩy vào SQS");
 
         assertEquals(1, telegramClient.sentMessages.size());
-        String reply = telegramClient.sentMessages.get(0).text();
+        String reply = telegramClient.sentMessages.getFirst().text();
         assertTrue(reply.contains("chưa hỗ trợ đọc trực tiếp định dạng tệp này"));
         assertTrue(reply.contains("CHỤP ẢNH MÀN HÌNH"));
     }
@@ -220,7 +220,7 @@ class WebhookHandlerBE35Test {
         assertEquals(200, res.getStatusCode());
         assertEquals("UNSUPPORTED_DOCUMENT", res.getBody());
         assertEquals(0, sqsClient.enqueuedMessages.size());
-        assertTrue(telegramClient.sentMessages.get(0).text().contains("CHỤP ẢNH MÀN HÌNH"));
+        assertTrue(telegramClient.sentMessages.getFirst().text().contains("CHỤP ẢNH MÀN HÌNH"));
     }
 
     // ── Test 7: Tài liệu dạng ẢNH (image/png) được xử lý như ảnh thường ───────
@@ -238,7 +238,7 @@ class WebhookHandlerBE35Test {
 
         // Đã được đưa vào SQS như ảnh bình thường
         assertEquals(1, sqsClient.enqueuedMessages.size(), "Ảnh gửi dạng file phải được đưa vào SQS để phân tích");
-        assertTrue(telegramClient.sentMessages.get(0).text().contains("Cháu đang kiểm tra"));
+        assertTrue(telegramClient.sentMessages.getFirst().text().contains("Cháu đang kiểm tra"));
     }
 
     // ── Test 8: Video không hỗ trợ ───────────────────────────────────────────
@@ -264,7 +264,7 @@ class WebhookHandlerBE35Test {
         assertEquals("UNSUPPORTED_MEDIA", res.getBody());
         assertEquals(0, sqsClient.enqueuedMessages.size());
 
-        String reply = telegramClient.sentMessages.get(0).text();
+        String reply = telegramClient.sentMessages.getFirst().text();
         assertTrue(reply.contains("chưa hỗ trợ kiểm tra trực tiếp video, vị trí hoặc danh bạ"));
         assertTrue(reply.contains("CHỤP ẢNH MÀN HÌNH"));
     }
@@ -339,7 +339,7 @@ class WebhookHandlerBE35Test {
         assertEquals(200, res.getStatusCode());
         assertEquals("UNSUPPORTED_AUDIO", res.getBody());
         assertEquals(0, sqsClient.enqueuedMessages.size());
-        assertTrue(telegramClient.sentMessages.get(0).text().contains("chưa hỗ trợ kiểm tra tệp âm thanh"));
+        assertTrue(telegramClient.sentMessages.getFirst().text().contains("chưa hỗ trợ kiểm tra tệp âm thanh"));
     }
 
     // ── Test 12: Sticker ─────────────────────────────────────────────────────
@@ -364,7 +364,7 @@ class WebhookHandlerBE35Test {
         assertEquals(200, res.getStatusCode());
         assertEquals("STICKER_REPLIED", res.getBody());
         assertEquals(0, sqsClient.enqueuedMessages.size());
-        assertTrue(telegramClient.sentMessages.get(0).text().contains("Cháu là trợ lý phòng chống lừa đảo"));
+        assertTrue(telegramClient.sentMessages.getFirst().text().contains("Cháu là trợ lý phòng chống lừa đảo"));
     }
 
     // ── Test 13: Xử lý lỗi DB khi lấy xưng hô cho APK ────────────────────────
@@ -384,7 +384,7 @@ class WebhookHandlerBE35Test {
 
         // Vẫn phải gửi cảnh báo khẩn cấp cho người cao tuổi với xưng hô mặc định "Bác"
         assertEquals(1, telegramClient.sentMessages.size());
-        FakeTelegramClient.SentMsg sent = telegramClient.sentMessages.get(0);
+        FakeTelegramClient.SentMsg sent = telegramClient.sentMessages.getFirst();
         assertEquals(ELDER_CHAT_ID, sent.chatId());
         assertTrue(sent.text().contains("CẢNH BÁO NGUY HIỂM"));
         assertTrue(sent.text().contains("TUYỆT ĐỐI KHÔNG BẤM CÀI ĐẶT"));
@@ -418,7 +418,7 @@ class WebhookHandlerBE35Test {
 
         // Phải gửi thông báo giải thích và hướng dẫn người dùng gửi lại
         assertEquals(1, telegramClient.sentMessages.size());
-        FakeTelegramClient.SentMsg sent = telegramClient.sentMessages.get(0);
+        FakeTelegramClient.SentMsg sent = telegramClient.sentMessages.getFirst();
         assertEquals(ELDER_CHAT_ID, sent.chatId());
         assertTrue(sent.text().contains("gián đoạn tạm thời"));
         assertTrue(sent.text().contains("gửi lại"));
@@ -439,7 +439,7 @@ class WebhookHandlerBE35Test {
 
         // Tin cảnh báo người cao tuổi vẫn gửi thành công
         assertEquals(1, telegramClient.sentMessages.size());
-        assertTrue(telegramClient.sentMessages.get(0).text().contains("CẢNH BÁO NGUY HIỂM"));
+        assertTrue(telegramClient.sentMessages.getFirst().text().contains("CẢNH BÁO NGUY HIỂM"));
     }
 
     // ── Test 16: Outer catch xưng hô Bác/cháu, không xưng Quý khách ───────────
@@ -467,7 +467,7 @@ class WebhookHandlerBE35Test {
         assertEquals("INTERNAL_ERROR_LOGGED", res.getBody());
 
         assertEquals(1, telegramClient.sentMessages.size());
-        FakeTelegramClient.SentMsg sent = telegramClient.sentMessages.get(0);
+        FakeTelegramClient.SentMsg sent = telegramClient.sentMessages.getFirst();
         assertEquals(ELDER_CHAT_ID, sent.chatId());
         assertTrue(sent.text().contains("gián đoạn tạm thời"));
         assertTrue(sent.text().contains("Bác"));

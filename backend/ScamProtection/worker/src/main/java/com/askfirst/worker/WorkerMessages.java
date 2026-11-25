@@ -7,11 +7,16 @@ import com.askfirst.common.TelegramClient;
  */
 final class WorkerMessages {
 
-    /** Chưa lưu tên Telegram của người cao tuổi nên dùng cách gọi chung cho tin gửi người thân. */
+    /** Dùng khi chưa có tên Telegram của người cao tuổi (hồ sơ cũ, hoặc tài khoản không có tên). */
     static final String ELDER_NAME_FALLBACK = "Người thân của bạn";
     static final String GUARDIAN_FALLBACK_NAME = "người thân";
 
     private WorkerMessages() {
+    }
+
+    /** Tên để gọi người cao tuổi trong tin gửi người thân: tên Telegram nếu có, không thì cách gọi chung. */
+    static String elderName(String displayName) {
+        return displayName == null || displayName.isBlank() ? ELDER_NAME_FALLBACK : displayName.trim();
     }
 
     /** Cách xưng hô đã lưu (Bác | Cô | Chú); giá trị lạ thì dùng "Bác". */

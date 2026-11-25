@@ -141,6 +141,11 @@ public class UserRepo {
         update(userId, true, user -> user.setAddressForm(addressForm));
     }
 
+    /** Lưu tên Telegram để tin gửi người thân gọi đúng tên. Không tạo hồ sơ mới nếu người dùng chưa có. */
+    public void updateDisplayName(String userId, String displayName) {
+        update(userId, false, user -> user.setDisplayName(displayName));
+    }
+
     /**
      * Checks if user has given active consent matching the current policy SHA256.
      * According to ND 356: unconsented or outdated policy versions MUST NOT process

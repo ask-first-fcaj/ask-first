@@ -130,6 +130,27 @@ class AnalyzeProcessorTest {
     // ---------- báo người thân ----------
 
     @Test
+    void alertToGuardian_usesElderDisplayName_whenKnown() {
+        env.directory.elder = new GuardianDirectory.Elder("Bác", true, "Nguyễn Văn An");
+        long seq = seedWithPlaceholder(1);
+        dangerous();
+
+        env.analyze.process(Fakes.analyzeJob(JOB, CHAT, seq), 120_000);
+
+        assertEquals("Nguyễn Văn An", env.ai.guardianRequests.getFirst().guardians().getFirst().elderName());
+    }
+
+    @Test
+    void alertToGuardian_fallsBackToGenericName_whenElderNameUnknown() {
+        long seq = seedWithPlaceholder(1);   // Elder mặc định không có displayName
+        dangerous();
+
+        env.analyze.process(Fakes.analyzeJob(JOB, CHAT, seq), 120_000);
+
+        assertEquals(WorkerMessages.ELDER_NAME_FALLBACK, env.ai.guardianRequests.getFirst().guardians().getFirst().elderName());
+    }
+
+    @Test
     void dangerous_alertsAllGuardians_andSchedulesFollowup() {
         long seq = seedWithPlaceholder(1);
         dangerous();
