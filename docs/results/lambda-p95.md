@@ -68,6 +68,19 @@ Gửi `eval/assets/ocr/002.png`–`022.png` (21 ảnh) qua Telegram Web tới bo
   - Log `worker` chỉ gồm id job, op, ms, mức rủi ro, đường xử lý, mã lỗi và cảnh báo SLF4J.
 - Ghi chú cho BE: 08:30–08:52 UTC ngày 24/11 worker báo `job_failed … error=AiException:invoke` 7 lần (2 job), nhưng `ai` kh có log nào trong khoảng đó, tức lỗi xảy ra trước khi tới `ai`. Lần thử lúc 08:55 thì chạy được.
 
+## Làm nóng trước demo (BE-10 #88, 25/11)
+
+`scripts/warmup.py` gọi thẳng 3 function trên `dev` (cách chạy ở đầu file). Mỗi function 3 lần song song, event kh làm gì.
+
+| Lần chạy | `webhook` | `worker:live` | `ai:live` |
+|---|---|---|---|
+| 1 (nguội) | 3,9–4,1 s, init 3,3–3,4 s | 2,4–2,8 s, init 1,7–2,2 s | 8,8–9,0 s, init 8,4–8,6 s |
+| 2 (ngay sau đó) | 0,2 s, kh init | 0,2 s, kh init | 0,2 s, kh init |
+
+- Bảng p50/p95 theo khâu (webhook → SQS → worker → `ai`) là bảng ở mục "Ảnh" phía trên. Bảng các khâu trong `ai` (guard, judge, RAG) là bảng ở mục "Văn bản".
+- Chưa đo: container ấm giữ được bao lâu khi kh có tin. Vì vậy nên chạy script khoảng 5 phút trước demo.
+- Chưa làm: load test 50 tin liên tục và 10 tin đồng thời qua bot (`scripts/load_test.py` trong issue).
+
 ## Cách chạy lại
 
 - Văn bản: dùng script tạm (kh commit), gọi `lambda.invoke(FunctionName="askfirst-dev-ai", Qualifier="live")` lần lượt từng câu, có `check_id` và tiền tố riêng, rồi lấy `analyze.verdict.latency_ms`.
