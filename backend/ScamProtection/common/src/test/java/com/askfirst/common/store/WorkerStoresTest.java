@@ -107,6 +107,21 @@ class WorkerStoresTest {
     }
 
     @Test
+    @DisplayName("BufferStore: findSeqByUpdateId tìm đúng tin theo update_id; update lạ hoặc cụm đã xử lý xong thì không thấy")
+    void bufferFindsSeqByUpdateId() {
+        buffer.append(chat, message(chat, 1), ttl());
+        long second = buffer.append(chat, message(chat, 2), ttl());
+
+        assertThat(buffer.findSeqByUpdateId(chat, "u1")).hasValue(1);
+        assertThat(buffer.findSeqByUpdateId(chat, "u2")).hasValue(second);
+        assertThat(buffer.findSeqByUpdateId(chat, "u999")).isEmpty();
+        assertThat(buffer.findSeqByUpdateId("chat-khac", "u2")).isEmpty();
+
+        buffer.finish(chat, second);   // cụm đã xử lý xong: update cũ không còn bị coi là trùng
+        assertThat(buffer.findSeqByUpdateId(chat, "u2")).isEmpty();
+    }
+
+    @Test
     @DisplayName("BufferStore: 20 webhook song song nhận 20 seq khác nhau (ADD nguyên tử)")
     void bufferSeqIsAtomicUnderConcurrency() throws Exception {
         ExecutorService pool = Executors.newFixedThreadPool(10);

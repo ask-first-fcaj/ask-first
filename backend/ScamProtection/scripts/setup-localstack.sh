@@ -14,24 +14,43 @@ VERSION=0.0.1-SNAPSHOT
 
 ./mvnw -q clean package -DskipTests
 
-QUEUE_URL=$(awsl sqs create-queue --queue-name webhookQueue \
-  --attributes VisibilityTimeout=60 --query QueueUrl --output text)
+# Hàng đợi chính (webhook gửi job vào đây, worker đọc) + DLQ. Tạo trước rồi mới gắn thuộc tính để chạy lại được
+# (create-queue với thuộc tính khác bản đã có sẽ báo lỗi).
+DLQ_URL=$(awsl sqs create-queue --queue-name webhookDLQ --query QueueUrl --output text)
+DLQ_ARN=$(awsl sqs get-queue-attributes --queue-url "$DLQ_URL" \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+QUEUE_URL=$(awsl sqs create-queue --queue-name webhookQueue --query QueueUrl --output text)
 QUEUE_ARN=$(awsl sqs get-queue-attributes --queue-url "$QUEUE_URL" \
   --attribute-names QueueArn --query Attributes.QueueArn --output text)
+# VisibilityTimeout 720 s = 6 x timeout worker (120 s); thử tối đa 5 lần rồi vào webhookDLQ
+awsl sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes \
+  "{\"VisibilityTimeout\":\"720\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"5\\\"}\"}"
+AI_FUNCTION_ARN=arn:aws:lambda:$REGION:000000000000:function:ai   # worker bắt buộc có biến này, kể cả khi chưa deploy ai
 
 # --- Biến bắt buộc (không có giá trị giả) -----------------------------------
 : "${TELEGRAM_BOT_TOKEN:?Thiếu TELEGRAM_BOT_TOKEN trong .env}"
 : "${TELEGRAM_WEBHOOK_SECRET:?Thiếu TELEGRAM_WEBHOOK_SECRET trong .env (handler từ chối mọi request nếu không có secret)}"
 
 # Policy SHA-256: ưu tiên giá trị trong .env, nếu không có thì tính từ docs/privacy-policy.md
+
+# Tìm root của repository
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+POLICY_FILE="$REPO_ROOT/docs/privacy-policy.md"
+
+# Policy SHA-256: ưu tiên giá trị trong .env
 if [ -z "${POLICY_SHA256:-}" ]; then
-  [ -f docs/privacy-policy.md ] || { echo "Thiếu POLICY_SHA256 trong .env và không thấy docs/privacy-policy.md"; exit 1; }
+  [ -f "$POLICY_FILE" ] || {
+    echo "Thiếu POLICY_SHA256 trong .env và không thấy $POLICY_FILE"
+    exit 1
+  }
+
   if command -v sha256sum >/dev/null 2>&1; then
-    POLICY_SHA256=$(sha256sum docs/privacy-policy.md | cut -d' ' -f1)
+    POLICY_SHA256=$(sha256sum "$POLICY_FILE" | cut -d' ' -f1)
   else
-    POLICY_SHA256=$(shasum -a 256 docs/privacy-policy.md | cut -d' ' -f1)
+    POLICY_SHA256=$(shasum -a 256 "$POLICY_FILE" | cut -d' ' -f1)
   fi
-  echo "POLICY_SHA256 tính từ docs/privacy-policy.md: $POLICY_SHA256"
+
+  echo "POLICY_SHA256 tính từ privacy-policy.md: $POLICY_SHA256"
 fi
 
 # --- Bảng DynamoDB: cùng schema với infra/template.yaml (ARCH §7) -----------
@@ -50,11 +69,11 @@ awsl dynamodb wait table-exists --table-name "$TABLE_NAME"
 awsl dynamodb update-time-to-live --table-name "$TABLE_NAME" \
   --time-to-live-specification Enabled=true,AttributeName=ttl >/dev/null
 
-deploy() {  # tên | handler | jar | biến môi trường
+deploy() {  # tên | handler | jar | biến môi trường | timeout (giây, mặc định 30)
   awsl lambda delete-function --function-name "$1" >/dev/null 2>&1 || true
   awsl lambda create-function --function-name "$1" --runtime java21 \
     --handler "$2" --zip-file "fileb://$3" --role "$ROLE" \
-    --timeout 30 --memory-size 1024 --environment "$4" >/dev/null
+    --timeout "${5:-30}" --memory-size 1024 --environment "$4" >/dev/null
   awsl lambda wait function-active-v2 --function-name "$1"
 }
 
@@ -62,12 +81,30 @@ deploy webhook-handler "com.askfirst.webhookhandler.WebhookHandler::handleReques
   "webhook-handler/target/webhook-handler-$VERSION.jar" \
   "Variables={WEBHOOK_QUEUE_URL=$QUEUE_URL,TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN,TELEGRAM_WEBHOOK_SECRET=$TELEGRAM_WEBHOOK_SECRET,POLICY_SHA256=$POLICY_SHA256,AWS_ENDPOINT_URL=$INTERNAL,DYNAMODB_TABLE_NAME=$TABLE_NAME}"
 
+# Worker gọi DynamoDB/SQS/Lambda nên cần AWS_ENDPOINT_URL (địa chỉ LocalStack nhìn từ trong container);
+# timeout 120 s vì ai có thể chạy tới ~95 s
 deploy worker "com.askfirst.worker.WorkerHandler::handleRequest" \
   "worker/target/worker-$VERSION.jar" \
-  "Variables={TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN}"
+  "Variables={TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN,AWS_ENDPOINT_URL=$INTERNAL,DYNAMODB_TABLE_NAME=$TABLE_NAME,WEBHOOK_QUEUE_URL=$QUEUE_URL,AI_FUNCTION_ARN=$AI_FUNCTION_ARN}" 120
 
+# Báo "bận" cho người dùng khi job rơi vào DLQ (cùng jar với worker)
+deploy worker-dlq "com.askfirst.worker.DlqHandler::handleRequest" \
+  "worker/target/worker-$VERSION.jar" \
+  "Variables={TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN,AWS_ENDPOINT_URL=$INTERNAL,DYNAMODB_TABLE_NAME=$TABLE_NAME}"
+
+# Xóa trigger cũ (deploy lại hàm không tự xóa trigger) rồi tạo lại
+for fn in worker worker-dlq; do
+  for uuid in $(awsl lambda list-event-source-mappings --function-name "$fn" \
+                  --query 'EventSourceMappings[].UUID' --output text 2>/dev/null); do
+    awsl lambda delete-event-source-mapping --uuid "$uuid" >/dev/null 2>&1 || true
+  done
+done
+# ReportBatchItemFailures: bắt buộc, nếu thiếu thì batchItemFailures của worker bị bỏ qua và SQS không bao giờ giao lại
 awsl lambda create-event-source-mapping --function-name worker \
-  --event-source-arn "$QUEUE_ARN" --batch-size 1 >/dev/null
+  --event-source-arn "$QUEUE_ARN" --batch-size 1 \
+  --function-response-types ReportBatchItemFailures >/dev/null
+awsl lambda create-event-source-mapping --function-name worker-dlq \
+  --event-source-arn "$DLQ_ARN" --batch-size 1 >/dev/null
 
 # API Gateway (xóa bản cũ cùng tên để chạy lại được)
 for id in $(awsl apigateway get-rest-apis --query "items[?name=='telegram-webhook-api'].id" --output text); do
