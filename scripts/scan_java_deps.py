@@ -50,7 +50,7 @@ def run_mvn_dependency_list(project_dir: Path) -> list[str]:
     else:
         mvn = "mvn"
 
-    cmd = [mvn, "dependency:list", "-DincludeScope=runtime", "-B"]
+    cmd = [mvn, "test-compile", "dependency:list", "-DincludeScope=runtime", "-B"]
     proc = subprocess.run(cmd, cwd=project_dir, capture_output=True, text=True, check=False, shell=(os.name == "nt"))
     if proc.returncode != 0:
         err_msg = proc.stderr.strip() or proc.stdout.strip()

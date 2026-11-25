@@ -92,7 +92,7 @@ jobs:
         working-directory: ${{ steps.has.outputs.dir }}
         shell: bash
         run: |
-          ./mvnw -B dependency:list -DincludeScope=runtime | python3 "$GITHUB_WORKSPACE/scripts/scan_java_deps.py" --stdin
+          ./mvnw -B test-compile dependency:list -DincludeScope=runtime | python3 "$GITHUB_WORKSPACE/scripts/scan_java_deps.py" --stdin
 
   ai:
     name: ai (${{ matrix.os }})
