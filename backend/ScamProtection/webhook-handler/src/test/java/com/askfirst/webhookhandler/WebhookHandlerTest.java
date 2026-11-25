@@ -101,8 +101,9 @@ class WebhookHandlerTest {
         APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(updateJson), mockContext);
         assertThat(res.getStatusCode()).isEqualTo(200);
         assertThat(res.getBody()).isEqualTo("COMMAND_HANDLED");
-        assertThat(fakeTelegram.lastText).contains("Chào mừng Bác đến với AskFirst");
-        assertThat(fakeTelegram.lastText).contains("Nghị định 356");
+        assertThat(fakeTelegram.lastText).contains("Chào Bác, cháu là AskFirst");
+        assertThat(fakeTelegram.lastText).contains("Chính sách quyền riêng tư");
+        assertThat(fakeTelegram.lastText).contains("<b>không bao giờ</b> hỏi mã OTP");
         assertThat(fakeTelegram.lastMarkup).isNotNull();
     }
 
@@ -134,7 +135,10 @@ class WebhookHandlerTest {
         // AuditRepo recorded
         assertThat(fakeAuditRepo.events).contains("CONSENT_GIVEN");
         // Confirmation message sent
-        assertThat(fakeTelegram.lastText).contains("Cảm ơn Bác đã đồng ý điều khoản");
+        assertThat(fakeTelegram.lastText).contains("Cảm ơn bác!");
+        assertThat(fakeTelegram.lastText).contains("Tôi bị lừa rồi");
+        assertThat(fakeTelegram.lastText).contains("/bilua");
+        assertThat(fakeTelegram.lastText).contains("ghim cuộc trò chuyện");
     }
 
     @Test
@@ -159,7 +163,7 @@ class WebhookHandlerTest {
         APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(callbackJson), mockContext);
         assertThat(res.getStatusCode()).isEqualTo(200);
         assertThat(fakeAuditRepo.events).contains("CONSENT_DECLINED");
-        assertThat(fakeTelegram.lastText).contains("không thu thập hoặc phân tích");
+        assertThat(fakeTelegram.lastText).contains("chưa có đồng ý thì cháu chưa kiểm tra tin giúp bác được");
     }
 
     @Test
@@ -182,7 +186,7 @@ class WebhookHandlerTest {
         assertThat(res.getStatusCode()).isEqualTo(200);
         assertThat(res.getBody()).isEqualTo("CONSENT_REQUIRED");
         assertThat(fakeSqs.messageSent.get()).isFalse(); // NEVER queued
-        assertThat(fakeTelegram.lastText).contains("Tôi đồng ý");
+        assertThat(fakeTelegram.lastText).contains("Đồng ý");
     }
 
     @Test
@@ -265,7 +269,8 @@ class WebhookHandlerTest {
                         "{\"update_id\": 109, \"message\": {\"message_id\": 6, \"from\": {\"id\": 111, \"is_bot\": false}, \"chat\": {\"id\": 222, \"type\": \"private\"}, \"date\": 1729000000, \"text\": \"/huongdan\"}}"),
                 mockContext);
         assertThat(hdRes.getBody()).isEqualTo("COMMAND_HANDLED");
-        assertThat(fakeTelegram.lastText).contains("Hướng dẫn sử dụng AskFirst");
+        assertThat(fakeTelegram.lastText).contains("Cách nhờ cháu kiểm tra một tin");
+        assertThat(fakeTelegram.lastText).contains("chụp màn hình");
 
         // /bilua (emergency checklist)
         APIGatewayProxyResponseEvent biluaRes = handler.handleRequest(
@@ -273,9 +278,83 @@ class WebhookHandlerTest {
                         "{\"update_id\": 110, \"message\": {\"message_id\": 7, \"from\": {\"id\": 111, \"is_bot\": false}, \"chat\": {\"id\": 222, \"type\": \"private\"}, \"date\": 1729000000, \"text\": \"/bilua\"}}"),
                 mockContext);
         assertThat(biluaRes.getBody()).isEqualTo("COMMAND_HANDLED");
-        assertThat(fakeTelegram.lastText).contains("CÁC VIỆC CẦN LÀM NGAY (30 PHÚT ĐẦU");
-        assertThat(fakeTelegram.lastText).contains("Khóa thẻ / tài khoản ngân hàng");
+        assertThat(fakeTelegram.lastText).contains("Nghi bị lừa: cô làm ngay theo thứ tự");
+        assertThat(fakeTelegram.lastText).contains("Khóa thẻ và tài khoản ngân hàng");
         assertThat(fakeTelegram.lastText).contains("113");
+    }
+
+    @Test
+    @DisplayName("SH-08: /start when already consented greets user gently without re-asking consent")
+    void testStartCommandWhenAlreadyConsented() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+
+        String updateJson = """
+                {
+                  "update_id": 111,
+                  "message": {
+                    "message_id": 8,
+                    "from": { "id": 111, "is_bot": false },
+                    "chat": { "id": 222, "type": "private" },
+                    "date": 1729000000,
+                    "text": "/start"
+                  }
+                }
+                """;
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(updateJson), mockContext);
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(res.getBody()).isEqualTo("COMMAND_HANDLED");
+        assertThat(fakeTelegram.lastText).isEqualTo("Chào bác ạ. Có tin nào lạ, bác gửi vào đây cho cháu xem nhé.");
+    }
+
+    @Test
+    @DisplayName("SH-08: Text 'Tôi bị lừa rồi' triggers emergency checklist (/bilua fast path)")
+    void testEmergencyTextMessageTriggersBilua() {
+        String updateJson = """
+                {
+                  "update_id": 112,
+                  "message": {
+                    "message_id": 9,
+                    "from": { "id": 111, "is_bot": false },
+                    "chat": { "id": 222, "type": "private" },
+                    "date": 1729000000,
+                    "text": "Tôi bị lừa rồi"
+                  }
+                }
+                """;
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(updateJson), mockContext);
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(res.getBody()).isEqualTo("COMMAND_HANDLED");
+        assertThat(fakeTelegram.lastText).contains("Nghi bị lừa: bác làm ngay theo thứ tự");
+        assertThat(fakeTelegram.lastText).contains("Khóa thẻ và tài khoản ngân hàng");
+    }
+
+    @Test
+    @DisplayName("SH-08: Custom policyUrl is embedded in unconsented /start welcome message")
+    void testCustomPolicyUrl() {
+        WebhookHandler customHandler = new WebhookHandler(
+                fakeTelegram, fakeSqs, "https://sqs.mock.queue", SECRET,
+                fakeUserRepo, fakeAuditRepo, fakeRateLimitRepo,
+                null, null, POLICY_SHA256, null, false,
+                "AskFirstBot", "https://custom.askfirst.vn/privacy", null, null, null, null, null);
+
+        String updateJson = """
+                {
+                  "update_id": 113,
+                  "message": {
+                    "message_id": 10,
+                    "from": { "id": 999, "is_bot": false },
+                    "chat": { "id": 888, "type": "private" },
+                    "date": 1729000000,
+                    "text": "/start"
+                  }
+                }
+                """;
+
+        APIGatewayProxyResponseEvent res = customHandler.handleRequest(createRequest(updateJson), mockContext);
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(fakeTelegram.lastText).contains("href=\"https://custom.askfirst.vn/privacy\"");
     }
 
     @Test
@@ -700,24 +779,25 @@ class WebhookHandlerTest {
             InMemoryAlertStore alerts) {
 
         return new WebhookHandler(
-                fakeTelegram,
-                sqs,
-                "https://sqs.mock.queue",
-                SECRET,
-                fakeUserRepo,
-                fakeAuditRepo,
-                fakeRateLimitRepo,
-                null,               // GuardianRepo
-                null,               // InviteRepo
-                POLICY_SHA256,
-                null,               // DynamoStoreService dedup
-                false,              // localDevelopment
-                null,               // botUsername
-                null,               // CheckStore
-                null,               // SessionStore
-                buffer,             // BufferStore
-                null,                // DonationStore
-                alerts
+                fakeTelegram,                   // 1
+                sqs,                            // 2
+                "https://sqs.mock.queue",       // 3
+                SECRET,                         // 4
+                fakeUserRepo,                   // 5
+                fakeAuditRepo,                  // 6
+                fakeRateLimitRepo,              // 7
+                null,                           // 8  GuardianRepo
+                null,                           // 9  InviteRepo
+                POLICY_SHA256,                  // 10
+                null,                           // 11 dedup
+                false,                          // 12 localDevelopment
+                null,                           // 13 botUsername
+                null,                           // 14 policyUrl
+                null,                           // 15 CheckStore
+                null,                           // 16 SessionStore
+                buffer,                         // 17 BufferStore
+                null,                           // 18 DonationStore
+                alerts                          // 19 AlertStore
         );
     }
 

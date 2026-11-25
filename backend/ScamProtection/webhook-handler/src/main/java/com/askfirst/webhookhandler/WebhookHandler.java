@@ -51,9 +51,13 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.net.URLEncoder;
+import java.util.Locale;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -87,12 +91,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     public static final String DEFAULT_POLICY_SHA256 = "d1a8f9b2c3e4567890abcdef1234567890abcdef1234567890abcdef12345678";
 
     /**
-     * Khóa dedup update_id sống 24 giờ (Telegram chỉ retry update trong thời gian
-     * ngắn).
+     * URL chính sách quyền riêng tư mặc định khi không cấu hình POLICY_URL.
      */
-    private static final long DEDUP_TTL_SECONDS = 24 * 3600L;
+    public static final String DEFAULT_POLICY_URL = "https://github.com/ask-first-fcaj/ask-first/blob/main/docs/privacy-policy.md";
 
-    /** Tin trong BUFFER# chỉ tồn tại tạm thời (plan: tối đa 10 phút), worker xóa ngay khi xử lý xong. */
+    private static final long DEDUP_TTL_SECONDS = 24 * 3600L;
     private static final long BUFFER_TTL_SECONDS = 10 * 60L;
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
@@ -101,6 +104,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     private final String queueUrl;
     private final String secret;
     private final String policySha256;
+    private final String policyUrl;
     private final TelegramClient telegram;
     private final SqsClient sqs;
     private final TelegramAdapter adapter;
@@ -118,44 +122,41 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     /** Tra cảnh báo người thân để ghi nhận nút "Tôi đã liên hệ". Null = bỏ qua callback ack. */
     private final AlertStore alertStore;
 
-    /**
-     * Chống xử lý trùng cùng một update_id (Telegram retry). Null = không dedup
-     * (test/local).
-     */
     private final DynamoStoreService dedup;
 
     /**
-     * Username của bot (ví dụ: "AskFirstBot"), dùng để tạo deep link mời người
-     * thân.
-     * Đọc từ biến môi trường TELEGRAM_BOT_USERNAME (hoặc BOT_USERNAME). Nếu không có, không hiển thị nút share
-     * (graceful degradation).
+     * Username của bot (ví dụ: "AskFirstBot"), dùng để tạo deep link mời người thân.
+     * Đọc từ biến môi trường TELEGRAM_BOT_USERNAME (hoặc BOT_USERNAME).
+     * Nếu không có, không hiển thị nút share (graceful degradation).
      */
     private final String botUsername;
 
     /**
-     * true chỉ khi tạo qua {@link #forLocalDevelopment(TelegramClient)} (long
-     * polling trên máy dev):
+     * true chỉ khi tạo qua {@link #forLocalDevelopment(TelegramClient)} (long polling trên máy dev):
      * bỏ kiểm tra secret và cho phép chạy không có SQS. Lambda thật luôn là false.
      */
     private final boolean localDevelopment;
 
-    /**
-     * Constructor cho Lambda. Thiếu biến môi trường nào là lỗi ngay lúc khởi tạo
-     * (thấy rõ trong CloudWatch)
-     * thay vì chạy tiếp rồi mất job / chấp nhận request giả mạo một cách im lặng.
-     */
+    // =====================================================================
+    // 1. Constructor cho Lambda (production)
+    // =====================================================================
     public WebhookHandler() {
         this.queueUrl = requireEnv("WEBHOOK_QUEUE_URL");
         this.secret = secretFromSsmOrEnv("TELEGRAM_WEBHOOK_SECRET");
         this.policySha256 = requireEnv("POLICY_SHA256");
+
+        String envPolicyUrl = System.getenv("POLICY_URL");
+        this.policyUrl = (envPolicyUrl != null && !envPolicyUrl.isBlank())
+                ? envPolicyUrl.trim()
+                : DEFAULT_POLICY_URL;
+
         this.telegram = new TelegramClient(secretFromSsmOrEnv("TELEGRAM_BOT_TOKEN"));
         String tableName = requireEnv("DYNAMODB_TABLE_NAME");
 
         this.sqs = SqsClient.create();
         this.adapter = new TelegramAdapter();
         this.localDevelopment = false;
-        // TELEGRAM_BOT_USERNAME không bắt buộc: nếu thiếu thì không tạo deep link (graceful
-        // degradation), hỗ trợ cả BOT_USERNAME cũ để tương thích ngược
+
         String envBot = System.getenv("TELEGRAM_BOT_USERNAME");
         if (envBot == null || envBot.isBlank()) {
             envBot = System.getenv("BOT_USERNAME");
@@ -193,8 +194,74 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this.dedup = DynamoStoreService.create(ddb, tableName);
     }
 
+    // =====================================================================
+    // 2. Constructor đầy đủ (19 tham số) – TẤT CẢ constructor khác delegate vào đây
+    // =====================================================================
+    /**
+     * Constructor đầy đủ (19 tham số). Tất cả các constructor khác delegate vào đây.
+     *
+     * @param botUsername username của bot (ví dụ "AskFirstBot"), dùng để tạo deep link.
+     *                    Null = không hiển thị nút share (graceful degradation).
+     * @param policyUrl   URL chính sách quyền riêng tư. Null hoặc blank → dùng DEFAULT_POLICY_URL.
+     * @param alertStore  kho cảnh báo người thân (null = bỏ qua callback ack:).
+     */
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            GuardianRepo guardianRepo,
+            InviteRepo inviteRepo,
+            String policySha256,
+            DynamoStoreService dedup,
+            boolean localDevelopment,
+            String botUsername,
+            String policyUrl,                 // 14
+            CheckStore checkStore,            // 15
+            SessionStore sessionStore,        // 16
+            BufferStore bufferStore,          // 17
+            DonationStore donationStore,      // 18
+            AlertStore alertStore) {          // 19
+
+        this.telegram = telegram;
+        this.sqs = sqs;
+        this.queueUrl = queueUrl;
+        this.secret = secret;
+        this.userRepo = userRepo;
+        this.auditRepo = auditRepo;
+        this.rateLimitRepo = rateLimitRepo;
+        this.guardianRepo = guardianRepo;
+        this.inviteRepo = inviteRepo;
+        this.policySha256 = (policySha256 != null && !policySha256.isBlank())
+                ? policySha256
+                : DEFAULT_POLICY_SHA256;
+        this.policyUrl = (policyUrl != null && !policyUrl.isBlank())
+                ? policyUrl
+                : DEFAULT_POLICY_URL;
+        this.adapter = new TelegramAdapter();
+        this.dedup = dedup;
+        this.localDevelopment = localDevelopment;
+        this.botUsername = (botUsername != null && !botUsername.isBlank()) ? botUsername : null;
+        this.checkStore = checkStore;
+        this.sessionStore = sessionStore;
+        this.bufferStore = bufferStore;
+        this.donationStore = donationStore;
+        this.alertStore = alertStore;
+    }
+
+    // =====================================================================
+    // 3. Các constructor tiện ích (delegate)
+    // =====================================================================
+
     public WebhookHandler(TelegramClient telegram, SqsClient sqs, String queueUrl, String secret) {
-        this(telegram, sqs, queueUrl, secret, null, null, null, null, null, DEFAULT_POLICY_SHA256, null, false);
+        this(telegram, sqs, queueUrl, secret,
+                null, null, null, null, null,
+                DEFAULT_POLICY_SHA256, null, false, null,
+                null,                       // policyUrl
+                null, null, null, null, null);
     }
 
     public WebhookHandler(
@@ -206,8 +273,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             AuditRepo auditRepo,
             RateLimitRepo rateLimitRepo,
             String policySha256) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, null, null, policySha256, null,
-                false);
+        this(telegram, sqs, queueUrl, secret,
+                userRepo, auditRepo, rateLimitRepo, null, null,
+                policySha256, null, false, null,
+                null,                       // policyUrl
+                null, null, null, null, null);
     }
 
     public WebhookHandler(
@@ -220,8 +290,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             RateLimitRepo rateLimitRepo,
             String policySha256,
             DynamoStoreService dedup) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, null, null, policySha256, dedup,
-                false);
+        this(telegram, sqs, queueUrl, secret,
+                userRepo, auditRepo, rateLimitRepo, null, null,
+                policySha256, dedup, false, null,
+                null,                       // policyUrl
+                null, null, null, null, null);
     }
 
     public WebhookHandler(
@@ -233,8 +306,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             InviteRepo inviteRepo,
             AuditRepo auditRepo,
             String policySha256) {
-        this(telegram, sqs, queueUrl, secret, null, auditRepo, null, guardianRepo, inviteRepo, policySha256, null,
-                false, null);
+        this(telegram, sqs, queueUrl, secret,
+                null, auditRepo, null, guardianRepo, inviteRepo,
+                policySha256, null, false, null,
+                null,                       // policyUrl
+                null, null, null, null, null);
     }
 
     public WebhookHandler(
@@ -247,8 +323,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             AuditRepo auditRepo,
             String policySha256,
             String botUsername) {
-        this(telegram, sqs, queueUrl, secret, null, auditRepo, null, guardianRepo, inviteRepo, policySha256, null,
-                false, botUsername);
+        this(telegram, sqs, queueUrl, secret,
+                null, auditRepo, null, guardianRepo, inviteRepo,
+                policySha256, null, false, botUsername,
+                null,                       // policyUrl
+                null, null, null, null, null);
     }
 
     public WebhookHandler(
@@ -264,17 +343,15 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String policySha256,
             DynamoStoreService dedup,
             boolean localDevelopment) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
-                guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, null);
+        this(telegram, sqs, queueUrl, secret,
+                userRepo, auditRepo, rateLimitRepo, guardianRepo, inviteRepo,
+                policySha256, dedup, localDevelopment, null,
+                null,                       // policyUrl
+                null, null, null, null, null);
     }
 
     /**
-     * Constructor đầy đủ (13 tham số). Tất cả các constructor khác delegate vào
-     * đây.
-     *
-     * @param botUsername username của bot (ví dụ "AskFirstBot"), dùng để tạo deep
-     *                    link.
-     *                    Null = không hiển thị nút share (graceful degradation).
+     * Constructor 13 tham số (thường dùng trong test cơ bản).
      */
     public WebhookHandler(
             TelegramClient telegram,
@@ -290,54 +367,15 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             DynamoStoreService dedup,
             boolean localDevelopment,
             String botUsername) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
-                guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
+        this(telegram, sqs, queueUrl, secret,
+                userRepo, auditRepo, rateLimitRepo, guardianRepo, inviteRepo,
+                policySha256, dedup, localDevelopment, botUsername,
+                null,                       // policyUrl
                 null, null, null, null, null);
     }
 
-    public WebhookHandler(
-            TelegramClient telegram,
-            SqsClient sqs,
-            String queueUrl,
-            String secret,
-            UserRepo userRepo,
-            AuditRepo auditRepo,
-            RateLimitRepo rateLimitRepo,
-            GuardianRepo guardianRepo,
-            InviteRepo inviteRepo,
-            SessionStore sessionStore,
-            BufferStore bufferStore,
-            DonationStore donationStore,
-            String policySha256) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
-                guardianRepo, inviteRepo, policySha256, null, false, null,
-                null, sessionStore, bufferStore, donationStore, null);
-    }
-
-    public WebhookHandler(
-            TelegramClient telegram,
-            SqsClient sqs,
-            String queueUrl,
-            String secret,
-            UserRepo userRepo,
-            AuditRepo auditRepo,
-            RateLimitRepo rateLimitRepo,
-            GuardianRepo guardianRepo,
-            InviteRepo inviteRepo,
-            SessionStore sessionStore,
-            BufferStore bufferStore,
-            DonationStore donationStore,
-            String policySha256,
-            DynamoStoreService dedup,
-            boolean localDevelopment,
-            String botUsername) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
-                guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
-                null, sessionStore, bufferStore, donationStore, null);
-    }
-
     /**
-     * Constructor 16 tham số (main BE-30).
+     * Constructor 16 tham số (main BE-30) – không có BufferStore + AlertStore.
      */
     public WebhookHandler(
             TelegramClient telegram,
@@ -356,17 +394,13 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             CheckStore checkStore,
             SessionStore sessionStore,
             DonationStore donationStore) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
-                guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
+        this(telegram, sqs, queueUrl, secret,
+                userRepo, auditRepo, rateLimitRepo, guardianRepo, inviteRepo,
+                policySha256, dedup, localDevelopment, botUsername,
+                null,                       // policyUrl
                 checkStore, sessionStore, null, donationStore, null);
     }
 
-    /**
-     * Constructor đầy đủ 18 tham số. Tất cả các constructor khác delegate vào đây.
-     *
-     * @param botUsername username của bot (ví dụ "AskFirstBot"), dùng để tạo deep link.
-     * @param alertStore  kho cảnh báo người thân (null = bỏ qua callback ack:).
-     */
     public WebhookHandler(
             TelegramClient telegram,
             SqsClient sqs,
@@ -377,38 +411,44 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             RateLimitRepo rateLimitRepo,
             GuardianRepo guardianRepo,
             InviteRepo inviteRepo,
-            String policySha256,
-            DynamoStoreService dedup,
-            boolean localDevelopment,
-            String botUsername,
-            CheckStore checkStore,
             SessionStore sessionStore,
             BufferStore bufferStore,
             DonationStore donationStore,
-            AlertStore alertStore) {
-        this.telegram = telegram;
-        this.sqs = sqs;
-        this.queueUrl = queueUrl;
-        this.secret = secret;
-        this.userRepo = userRepo;
-        this.auditRepo = auditRepo;
-        this.rateLimitRepo = rateLimitRepo;
-        this.guardianRepo = guardianRepo;
-        this.inviteRepo = inviteRepo;
-        this.policySha256 = (policySha256 != null && !policySha256.isBlank()) ? policySha256 : DEFAULT_POLICY_SHA256;
-        this.adapter = new TelegramAdapter();
-        this.dedup = dedup;
-        this.localDevelopment = localDevelopment;
-        this.botUsername = (botUsername != null && !botUsername.isBlank()) ? botUsername : null;
-        this.checkStore = checkStore;
-        this.sessionStore = sessionStore;
-        this.bufferStore = bufferStore;
-        this.donationStore = donationStore;
-        this.alertStore = alertStore;
+            String policySha256) {
+        this(telegram, sqs, queueUrl, secret,
+                userRepo, auditRepo, rateLimitRepo, guardianRepo, inviteRepo,
+                policySha256, null, false, null,
+                null,                       // policyUrl
+                null, sessionStore, bufferStore, donationStore, null);
+    }
+
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            GuardianRepo guardianRepo,
+            InviteRepo inviteRepo,
+            SessionStore sessionStore,
+            BufferStore bufferStore,
+            DonationStore donationStore,
+            String policySha256,
+            DynamoStoreService dedup,
+            boolean localDevelopment,
+            String botUsername) {
+        this(telegram, sqs, queueUrl, secret,
+                userRepo, auditRepo, rateLimitRepo, guardianRepo, inviteRepo,
+                policySha256, dedup, localDevelopment, botUsername,
+                null,                       // policyUrl
+                null, sessionStore, bufferStore, donationStore, null);
     }
 
     /**
-     * Constructor tiện cho test BE-29: inject BufferStore + AlertStore (các repo khác null).
+     * Constructor tiện cho test BE-29: inject BufferStore + AlertStore
+     * (các repo khác null).
      */
     public WebhookHandler(
             TelegramClient telegram,
@@ -420,6 +460,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         this(telegram, sqs, queueUrl, secret,
                 null, null, null, null, null,
                 DEFAULT_POLICY_SHA256, null, false, null,
+                null,                       // policyUrl
                 null, null, bufferStore, null, alertStore);
     }
 
@@ -434,30 +475,30 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             SessionStore sessionStore,
             DonationStore donationStore,
             String policySha256) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, null,
-                null, null, policySha256, null, false, null,
+        this(telegram, sqs, queueUrl, secret,
+                userRepo, auditRepo, null, null, null,
+                policySha256, null, false, null,
+                null,                       // policyUrl
                 checkStore, sessionStore, null, donationStore, null);
     }
 
+    // =====================================================================
+    // 4. Local development helper
+    // =====================================================================
     /**
-     * Handler cho LocalBotRunner (long polling, không có webhook nên không có
-     * header secret, không có SQS).
+     * Handler cho LocalBotRunner (long polling).
      * Đây là đường DUY NHẤT được bỏ qua kiểm tra secret.
      * Tự động khởi tạo kho lưu trữ in-memory để kiểm thử toàn bộ luồng (/start,
      * /caidat, /nguoithan, /ketnoi) ngay trên máy dev mà không cần AWS DynamoDB.
      */
-
     public static WebhookHandler forLocalDevelopment(TelegramClient telegram) {
         String botUser = System.getenv("TELEGRAM_BOT_USERNAME");
-
         if (botUser == null || botUser.isBlank()) {
             botUser = System.getenv("BOT_USERNAME");
         }
-
         if (botUser == null || botUser.isBlank()) {
             botUser = readEnvFileBotUsername();
         }
-
         if ((botUser == null || botUser.isBlank()) && telegram != null) {
             botUser = telegram.getMeUsername();
         }
@@ -475,13 +516,13 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 DEFAULT_POLICY_SHA256,
                 null,                       // dedup
                 true,                       // localDevelopment
-                botUser,
-                createInMemoryCheckRepo(), // checkStore
+                botUser,                    // botUsername
+                null,                       // policyUrl → dùng DEFAULT
+                createInMemoryCheckRepo(),  // checkStore
                 createInMemorySessionStore(),
                 null,                       // bufferStore
                 createInMemoryDonationStore(),
-                 null
-                 // alertStore - THÊM MỚI
+                null                        // alertStore
         );
     }
 
@@ -609,6 +650,17 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
 
             @Override
+            public List<GuardianRecord> listWards(String guardianUid) {
+                return store.values().stream()
+                        .filter(r -> guardianUid.equals(r.getGuardianUid())
+                                || ("GUARDIAN#" + guardianUid).equals(r.getGuardianUid())
+                                || guardianUid.equals(r.getSk())
+                                || ("GUARDIAN#" + guardianUid).equals(r.getSk())
+                                || (r.getGsi1Pk() != null && r.getGsi1Pk().endsWith(guardianUid)))
+                        .toList();
+            }
+
+            @Override
             public void delete(String elderUid, String guardianUid) {
                 store.entrySet().removeIf(e ->
                         (elderUid.equals(e.getValue().getElderUid()) || ("USER#" + elderUid).equals(e.getValue().getPk()))
@@ -727,6 +779,15 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                             old.riskyActions(), old.inputKinds(), old.alerted(), feedback,
                             old.createdAt(), old.ttlEpochSeconds()));
                 }
+            }
+
+            @Override
+            public java.util.List<CheckRecord> listRecentChecks(String userId, int limit, String startSortKey) {
+                return store.values().stream()
+                        .filter(r -> r.userId().equals(userId) || ("USER#" + r.userId()).equals(userId) || r.userId().equals("USER#" + userId))
+                        .sorted(java.util.Comparator.comparing(CheckRecord::checkId).reversed())
+                        .limit(limit)
+                        .collect(java.util.stream.Collectors.toList());
             }
         };
     }
@@ -928,11 +989,12 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         String userId = inbound.userId();
 
         // 3. Fast path: Các lệnh điều khiển (/start, /caidat, /huongdan, /bilua,
-        // /nguoithan, /ketnoi)
-        if (TelegramAdapter.isCommand(inbound)) {
-            String firstName = root.path("message").path("from").path("first_name").asText().trim();
-            String username = root.path("message").path("from").path("username").asText().trim();
-            return handleCommand(chatId, userId, inbound.text().trim(), firstName, username, context);
+        // /nguoithan, /ketnoi) hoặc bấm "Tôi bị lừa rồi"
+        if (TelegramAdapter.isCommand(inbound) || isEmergencyText(inbound.text())) {
+            String firstName = root.path("message").path("from").path("first_name").asText("").trim();
+            String username = root.path("message").path("from").path("username").asText("").trim();
+            String cmdText = isEmergencyText(inbound.text()) ? "/bilua" : inbound.text().trim();
+            return handleCommand(chatId, userId, cmdText, firstName, username, context);
         }
 
         // 4. Slow path: Kiểm tra tin nhắn lừa đảo
@@ -950,7 +1012,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             log(context, "Lỗi xử lý callback '" + cb.data() + "': " + e);
             try {
                 if (telegram != null) {
-                    telegram.answerCallbackQuery(cb.queryId(), "Cháu chưa lưu được, Bác bấm lại giúp cháu nhé.");
+                    String XH = getAddressForm(cb.userId());
+                    telegram.answerCallbackQuery(cb.queryId(), BotMessages.callbackErrorMessage(XH));
                 }
             } catch (Exception ignored) {
                 // không còn gì để làm thêm
@@ -964,8 +1027,13 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         String userId = cb.userId();
         String data = cb.data();
 
-        if (data != null && data.startsWith("guardian:")) {
+        if (data != null && (data.startsWith("guardian:") || data.startsWith("g:"))) {
             return handleGuardianCallback(cb, chatId, userId, data, context);
+        }
+
+        // BE-36: Callback phân trang lịch sử
+        if (data != null && (data.startsWith("h:") || data.startsWith("history:"))) {
+            return handleHistoryCallback(cb, chatId, userId, data, context);
         }
 
         // BE-30: Xử lý nút [Bot báo sai] và luồng đóng góp mẫu (Donation Consent)
@@ -1005,16 +1073,10 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                         "Agreed via inline button");
             }
             if (telegram != null) {
+                String XH = getAddressForm(userId);
+                String xh = getAddressFormLower(userId);
                 telegram.answerCallbackQuery(cb.queryId(), "Đã lưu đồng ý!");
-                telegram.sendText(chatId,
-                        """
-                                ✅ <b>Cảm ơn Bác đã đồng ý điều khoản!</b>
-                                
-                                Từ bây giờ Bác có thể gửi tin nhắn, đường link hoặc ảnh chụp màn hình bất cứ lúc nào để cháu kiểm tra nhé.
-                                
-                                • Bác muốn đổi cách xưng hô thân mật? Gõ /caidat
-                                • Xem cách gửi tin kiểm tra: Gõ /huongdan
-                                • Khi lỡ dính bẫy lừa cần làm gì gấp: Gõ /bilua""");
+                telegram.sendText(chatId, BotMessages.consentAgreeMessage(XH, xh));
             }
             return response(200, "CALLBACK_HANDLED");
 
@@ -1028,13 +1090,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                         "Declined via inline button");
             }
             if (telegram != null) {
+                String xh = getAddressFormLower(userId);
                 telegram.answerCallbackQuery(cb.queryId(), "Đã ghi nhận");
-                telegram.sendText(chatId,
-                        """
-                                Dạ cháu đã ghi nhận ạ. Theo quy định bảo vệ dữ liệu cá nhân (Nghị định 356), cháu xin phép \
-                                <b>không thu thập hoặc phân tích</b> bất kỳ nội dung nào khi chưa có sự đồng ý của Bác.
-                                
-                                Khi nào cần sử dụng, Bác chỉ cần gõ /start để xem lại và đồng ý nhé!""");
+                telegram.sendText(chatId, BotMessages.consentDeclineMessage(xh));
             }
             return response(200, "CALLBACK_HANDLED");
 
@@ -1053,9 +1111,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
             if (telegram != null) {
                 telegram.answerCallbackQuery(cb.queryId(), "Đã đổi thành " + form);
-                telegram.sendText(chatId,
-                        "Dạ, cháu đã lưu cách xưng hô là <b>" + form
-                                + "</b> rồi ạ! Cháu sẽ xưng hô như vậy trong các câu trả lời sau nhé.");
+                telegram.sendText(chatId, BotMessages.settingsAddressFormUpdated(form));
             }
             return response(200, "CALLBACK_HANDLED");
         }
@@ -1153,7 +1209,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             Context context) {
 
         // Tạo mã mời mới (kèm deep link 1-chạm nếu BOT_USERNAME được cấu hình)
-        if ("guardian:create_invite".equals(data)) {
+        if ("guardian:create_invite".equals(data) || "g:inv".equals(data)) {
             if (telegram != null) {
                 telegram.answerCallbackQuery(cb.queryId(), "Đang tạo mã kết nối...");
             }
@@ -1181,33 +1237,26 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                     ? "https://t.me/" + effectiveBotUsername + "?start=g_" + inviteCode
                     : null;
 
+            String XH = getAddressForm(userId);
+            String xh = getAddressFormLower(userId);
+
             String msg;
             if (deepLink != null) {
                 // Có deep link: hướng dẫn bấm nút share bên dưới
-                msg = "✅ Mã kết nối của Bác là: <code><b>" + inviteCode + "</b></code>\n\n"
-                        + "⏳ <i>(Mã có hiệu lực trong 24 giờ và chỉ dùng được một lần)</i>\n\n"
-                        + "👇 <b>Bác bấm nút bên dưới để gửi lời mời cho con/cháu:</b>\n"
-                        + "<i>(Con/cháu chỉ cần bấm vào link, bot sẽ tự kết nối — không cần gõ gì cả!)</i>";
+                msg = BotMessages.guardianInviteDeepLinkMessage(XH, xh, inviteCode);
             } else {
                 // Không có deep link: hướng dẫn thủ công
-                msg = "✅ Mã kết nối của Bác là: <code><b>" + inviteCode + "</b></code>\n\n"
-                        + "⏳ <i>(Mã có hiệu lực trong 24 giờ và chỉ dùng được một lần)</i>\n\n"
-                        + "Bác hãy gửi hoặc chuyển tiếp lời nhắn này cho con/cháu qua Zalo/Tin nhắn nhé:\n"
-                        + "━━━━━━━━━━━━━━━━━━━\n"
-                        + "<i>\"Con ơi, Bác/Bố/Mẹ đang dùng trợ lý AskFirst trên Telegram để phòng chống tin nhắn lừa đảo. "
-                        + "Con mở bot này rồi gõ dòng lệnh bên dưới để khi có tin nguy hiểm bot sẽ báo cho con cùng biết nhé:\"</i>\n\n"
-                        + "<code>/ketnoi " + inviteCode + "</code>\n"
-                        + "━━━━━━━━━━━━━━━━━━━";
+                msg = BotMessages.guardianInviteManualMessage(XH, xh, inviteCode);
             }
 
             if (telegram != null) {
                 if (deepLink != null) {
-                    // Nút share: mở t.me/share để bác forward link cho con/cháu qua bất kỳ app nào
+                    // Nút share: mở t.me/share để forward link cho người nhà qua bất kỳ app nào
                     String encodedLink = URLEncoder.encode(deepLink, StandardCharsets.UTF_8);
                     String encodedText;
                     try {
                         encodedText = URLEncoder.encode(
-                                "Con ơi, bấm vào link này để kết nối bảo vệ cùng Bác qua AskFirst nhé! 💙",
+                                BotMessages.guardianShareText(XH),
                                 StandardCharsets.UTF_8);
                     } catch (Exception e) {
                         encodedText = "Con+oi+bam+vao+link+nay";
@@ -1217,7 +1266,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                     List<List<Map<String, String>>> rows = new ArrayList<>();
                     rows.add(List.of(
                             TelegramClient.urlButtonMap(
-                                    new TelegramClient.UrlButton("📤 Gửi lời mời cho con/cháu", shareUrl))));
+                                     new TelegramClient.UrlButton(BotMessages.BUTTON_SHARE_INVITE, shareUrl))));
                     telegram.sendText(chatId, msg, TelegramClient.inlineKeyboardRaw(rows));
                 } else {
                     telegram.sendText(chatId, msg);
@@ -1280,10 +1329,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
 
             if (telegram != null) {
+                String XH = getAddressForm(userId);
                 telegram.answerCallbackQuery(cb.queryId(), "Đã kết nối thành công (Mức " + shareLevel + ")!");
-                telegram.sendText(chatId,
-                        "✅ Đã kết nối thành công! Người thân của Bác sẽ nhận cảnh báo khi cần thiết (Mức " + shareLevel
-                                + ").");
+                telegram.sendText(chatId, BotMessages.guardianConnectedElderConfirmation(XH, shareLevel));
             }
 
             try {
@@ -1325,13 +1373,13 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
             if (telegram != null) {
                 telegram.answerCallbackQuery(cb.queryId(), "Đã từ chối kết nối.");
-                telegram.sendText(chatId, "❌ Đã từ chối yêu cầu kết nối.");
+                telegram.sendText(chatId, BotMessages.guardianRejectedMessage());
             }
             try {
                 long relativeChatId = Long.parseLong(relativeUid.replace("tg:", ""));
                 if (telegram != null) {
                     telegram.sendText(relativeChatId,
-                            "❌ Người thân đã từ chối yêu cầu kết nối lần này.");
+                            BotMessages.guardianRelativeRejectedMessage());
                 }
             } catch (Exception ignored) {
             }
@@ -1339,8 +1387,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         }
 
         // Gỡ liên kết
-        if (data.startsWith("guardian:remove:")) {
-            String guardianUid = data.substring("guardian:remove:".length());
+        if (data.startsWith("guardian:remove:") || data.startsWith("g:rm:")) {
+            String prefix = data.startsWith("g:rm:") ? "g:rm:" : "guardian:remove:";
+            String guardianUid = data.substring(prefix.length());
             if (guardianRepo != null) {
                 guardianRepo.delete(userId, guardianUid);
             }
@@ -1350,19 +1399,54 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
             if (telegram != null) {
                 telegram.answerCallbackQuery(cb.queryId(), "Đã gỡ kết nối.");
-                telegram.sendText(chatId, "✅ Đã gỡ kết nối người thân thành công.");
+                telegram.sendText(chatId, BotMessages.guardianRemovedMessage());
             }
             return response(200, "GUARDIAN_REMOVED");
         }
 
+        // Tạm dừng hoặc bật lại người thân (BE-36)
+        if (data.startsWith("g:tog:")) {
+            String guardianUid = data.substring("g:tog:".length());
+            if (guardianRepo != null) {
+                guardianRepo.toggleStatus(userId, guardianUid);
+            }
+            if (auditRepo != null) {
+                auditRepo.recordEvent(userId, "GUARDIAN_STATUS_TOGGLED", POLICY_VERSION, policySha256,
+                        "Toggled status for guardian: " + guardianUid);
+            }
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã cập nhật trạng thái");
+                telegram.sendText(chatId, "✅ Đã thay đổi trạng thái nhận cảnh báo của người thân.");
+            }
+            return response(200, "GUARDIAN_STATUS_TOGGLED");
+        }
+
+        // Người thân ngừng nhận cảnh báo (BE-36)
+        if (data.startsWith("g:stop:")) {
+            String elderUid = data.substring("g:stop:".length());
+            if (guardianRepo != null) {
+                guardianRepo.delete(elderUid, userId);
+            }
+            if (auditRepo != null) {
+                auditRepo.recordEvent(userId, "GUARDIAN_STOPPED", POLICY_VERSION, policySha256,
+                        "Stopped protecting elder: " + elderUid);
+            }
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Đã ngừng nhận cảnh báo");
+                telegram.sendText(chatId, "✅ Bạn đã ngừng nhận cảnh báo từ người thân.");
+            }
+            return response(200, "GUARDIAN_STOPPED");
+        }
+
         // Đổi mức chia sẻ (hiện nút chọn lại mức)
-        if (data.startsWith("guardian:level:")) {
-            String guardianUid = data.substring("guardian:level:".length());
+        if (data.startsWith("guardian:level:") || data.startsWith("g:lvl:")) {
+            String prefix = data.startsWith("g:lvl:") ? "g:lvl:" : "guardian:level:";
+            String guardianUid = data.substring(prefix.length());
             String msg = "Chọn mức chia sẻ mới cho người thân này:";
             Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(List.of(
-                    new InlineButton("Mức 1", "guardian:setlevel:" + guardianUid + ":1"),
-                    new InlineButton("Mức 2", "guardian:setlevel:" + guardianUid + ":2"),
-                    new InlineButton("Mức 3", "guardian:setlevel:" + guardianUid + ":3"))));
+                    new InlineButton("Mức 1", "g:set:" + guardianUid + ":1"),
+                    new InlineButton("Mức 2", "g:set:" + guardianUid + ":2"),
+                    new InlineButton("Mức 3", "g:set:" + guardianUid + ":3"))));
             if (telegram != null) {
                 telegram.answerCallbackQuery(cb.queryId(), "Chọn mức chia sẻ");
                 telegram.sendText(chatId, msg, keyboard);
@@ -1371,18 +1455,19 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         }
 
         // Lưu mức chia sẻ mới
-        if (data.startsWith("guardian:setlevel:")) {
-            String[] parts = data.split(":");
-            if (parts.length < 4) {
+        if (data.startsWith("guardian:setlevel:") || data.startsWith("g:set:")) {
+            int lastColon = data.lastIndexOf(':');
+            if (lastColon <= 0) {
                 if (telegram != null) {
                     telegram.answerCallbackQuery(cb.queryId(), "Dữ liệu không hợp lệ");
                 }
                 return response(200, "BAD_CALLBACK");
             }
-            String guardianUid = parts[2] + ":" + parts[3];
+            String prefix = data.startsWith("g:set:") ? "g:set:" : "guardian:setlevel:";
+            String guardianUid = data.substring(prefix.length(), lastColon);
             int newLevel;
             try {
-                newLevel = Integer.parseInt(parts[4]);
+                newLevel = Integer.parseInt(data.substring(lastColon + 1));
             } catch (Exception e) {
                 newLevel = 1;
             }
@@ -1716,6 +1801,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return handleGuardianCommand(chatId, userId, context);
         }
 
+        // BE-36: /lichsu — tra cứu lịch sử kiểm tra tin nhắn gần nhất
+        if (cmd.startsWith("/lichsu")) {
+            return handleHistoryCommand(chatId, userId, context);
+        }
+
         // BE-28: /ketnoi <code> — người thân nhập mã mời
         if (cmd.startsWith("/ketnoi")) {
             return handleKetNoiCommand(chatId, userId, text, firstName, username, context);
@@ -1750,22 +1840,14 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             boolean hasConsent = (userRepo != null) && userRepo.hasValidConsent(userId, policySha256);
 
             if (!hasConsent) {
-                // Gửi màn hình chào mừng & đồng ý điều khoản (Onboarding - BE-25)
-                String welcomeMsg = """
-                        <b>Chào mừng Bác đến với AskFirst!</b> 🛡️
-                        
-                        Cháu là trợ lý bảo vệ và kiểm tra tin nhắn lừa đảo dành cho người cao tuổi và gia đình.
-                        
-                        <b>Chính sách bảo vệ dữ liệu cá nhân (Nghị định 356):</b>
-                        • Bot <b>KHÔNG BAO GIỜ</b> hỏi mã OTP, mật khẩu hay yêu cầu nạp tiền.
-                        • Mọi thông tin gửi vào chỉ dùng để phân tích dấu hiệu lừa đảo, không chia sẻ trái phép cho bên thứ ba.
-                        • Bác có quyền rút đồng ý hoặc yêu cầu xóa dữ liệu bất kỳ lúc nào.
-                        
-                        Bác vui lòng bấm <b>Tôi đồng ý</b> bên dưới để bắt đầu sử dụng nhé!""";
+                // Gửi màn hình chào mừng & đồng ý điều khoản (Onboarding - BE-25, SH-08)
+                String XH = getAddressForm(userId);
+                String xh = getAddressFormLower(userId);
+                String welcomeMsg = BotMessages.welcomeMessage(XH, xh, policyUrl);
 
                 Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
                         List.of(
-                                new InlineButton("✅ Tôi đồng ý", "consent:agree"),
+                                new InlineButton("✅ Đồng ý", "consent:agree"),
                                 new InlineButton("❌ Không đồng ý", "consent:decline"))));
 
                 if (telegram != null) {
@@ -1773,9 +1855,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 }
                 return response(200, "COMMAND_HANDLED");
             } else {
-                String addressForm = getAddressForm(userId, context);
-                String msg = "Chào mừng " + addressForm + " quay trở lại với AskFirst! " + addressForm
-                        + " hãy gửi tin nhắn, đường link hoặc ảnh chụp màn hình cần kiểm tra cho cháu nhé.";
+                String xh = getAddressFormLower(userId, context);
+                String msg = BotMessages.returningWelcomeMessage(xh);
                 if (telegram != null) {
                     telegram.sendText(chatId, msg);
                 }
@@ -1783,7 +1864,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
 
         } else if (cmd.startsWith("/caidat")) {
-            String msg = "<b>Cài đặt cách xưng hô thân mật:</b>\nBác muốn cháu xưng hô với Bác là gì ạ? Bác vui lòng chọn bên dưới nhé:";
+            String XH = getAddressForm(userId);
+            String msg = BotMessages.settingsAddressFormPrompt(XH);
             Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
                     List.of(
                             new InlineButton("Bác", "xungho:bac"),
@@ -1795,38 +1877,16 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return response(200, "COMMAND_HANDLED");
 
         } else if (cmd.startsWith("/huongdan")) {
-            String guideMsg = """
-                    <b>Hướng dẫn sử dụng AskFirst:</b> 📖
-                    
-                    1. <b>Chụp ảnh màn hình:</b> Chụp lại tin nhắn đáng ngờ, cuộc gọi hoặc hóa đơn rồi gửi thẳng vào đây cho cháu.
-                    2. <b>Chép văn bản / chuyển tiếp:</b> Copy nội dung tin nhắn hoặc bấm chuyển tiếp (Forward) tin nhắn từ người lạ sang.
-                    3. <b>Chờ kết quả:</b> Trong vài giây, hệ thống AI sẽ phân tích các dấu hiệu lừa đảo và cảnh báo ngay cho Bác.
-                    
-                    <i>💡 Mẹo: Bác có thể ghim đoạn chat này lên đầu danh sách Telegram để dễ tìm kiếm khi cần kiểm tra gấp!</i>""";
+            String guideMsg = BotMessages.guideMessage();
 
             if (telegram != null) {
                 telegram.sendText(chatId, guideMsg);
             }
             return response(200, "COMMAND_HANDLED");
 
-        } else if (cmd.startsWith("/bilua")) {
-            String emergencyMsg = """
-                    🚨 <b>CÁC VIỆC CẦN LÀM NGAY (30 PHÚT ĐẦU KHI NGHI BỊ LỪA)</b>
-                    
-                    1. <b>Khóa thẻ / tài khoản ngân hàng ngay lập tức (0 - 5 phút):</b>
-                    Gọi ngay tổng đài ngân hàng của Bác, nói rõ nghi bị lừa, yêu cầu khóa thẻ và tạm dừng mọi giao dịch. Đừng chần chừ chờ xác minh!
-                    
-                    2. <b>Tắt nguồn / Ngắt mạng điện thoại (0 - 5 phút):</b>
-                    Nếu Bác đã lỡ bấm vào đường link lạ hoặc cài app lạ, hãy tắt nguồn hoặc tắt Wi-Fi/4G ngay lập tức để kẻ gian không chiếm quyền điều khiển và không lấy được mã OTP.
-                    
-                    3. <b>Đổi mật khẩu từ thiết bị khác (5 - 15 phút):</b>
-                    Dùng điện thoại hoặc máy tính an toàn khác để đổi mật khẩu ngân hàng, ví điện tử, Facebook, Zalo. Gỡ ngay ứng dụng lạ vừa cài.
-                    
-                    4. <b>Trình báo Công an gần nhất (15 - 30 phút):</b>
-                    Đến Công an phường/xã gần nhất hoặc gọi đường dây nóng <b>113</b> để trình báo. Mang theo ảnh chụp tin nhắn, số điện thoại kẻ lừa đảo và biên lai chuyển tiền.
-                    
-                    5. <b>Thông báo cho người thân tin cậy:</b>
-                    Báo ngay cho con cháu trong nhà để cùng hỗ trợ xử lý và cảnh giác nếu kẻ gian tiếp tục liên hệ lừa thêm.""";
+        } else if (cmd.startsWith("/bilua") || isEmergencyText(cmd)) {
+            String xh = getAddressFormLower(userId);
+            String emergencyMsg = BotMessages.emergencyChecklistMessage(xh);
 
             if (telegram != null) {
                 telegram.sendText(chatId, emergencyMsg);
@@ -1842,16 +1902,16 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             List<GuardianRecord> guardians = guardianRepo != null
                     ? guardianRepo.listGuardians(userId)
                     : List.of();
+            List<GuardianRecord> wards = guardianRepo != null
+                    ? guardianRepo.listWards(userId)
+                    : List.of();
 
-            if (guardians.isEmpty()) {
-                String msg = """
-                        👨‍👩‍👦 <b>Danh sách người thân</b>
-                        
-                        Bác chưa kết nối với người thân nào.
-                        
-                        Bấm nút bên dưới để tạo mã kết nối và gửi cho con/cháu:""";
+            if (guardians.isEmpty() && wards.isEmpty()) {
+                String XH = getAddressForm(userId);
+                String xh = getAddressFormLower(userId);
+                String msg = BotMessages.guardianListEmptyMessage(XH, xh);
                 Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
-                        List.of(new InlineButton("➕ Tạo mã kết nối người thân", "guardian:create_invite"))));
+                        List.of(new InlineButton(BotMessages.BUTTON_CREATE_INVITE, "guardian:create_invite"))));
                 if (telegram != null) {
                     telegram.sendText(chatId, msg, keyboard);
                 }
@@ -1859,26 +1919,68 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 StringBuilder sb = new StringBuilder("👨‍👩‍👦 <b>Danh sách người thân</b>\n\n");
                 List<List<InlineButton>> rows = new ArrayList<>();
 
-                for (GuardianRecord g : guardians) {
-                    String status = switch (g.getStatus() != null ? g.getStatus() : "active") {
-                        case "paused" -> "⏸ Tạm dừng";
-                        case "revoked" -> "❌ Đã huỷ";
-                        case "unreachable" -> "⚠️ Không liên lạc được";
-                        default -> "✅ Đang hoạt động";
-                    };
-                    String level = "Mức " + (g.getShareLevel() != null ? g.getShareLevel() : 1);
-                    String name = g.getName() != null ? g.getName() : g.getGuardianUid();
+// === 1. Người thân bảo vệ Bác (guardians) ===
+                if (!guardians.isEmpty()) {
+                    sb.append("<b>Người thân bảo vệ Bác:</b>\n");
+                    for (GuardianRecord g : guardians) {
+                        boolean isPaused = "paused".equalsIgnoreCase(g.getStatus());
 
-                    sb.append("• <b>").append(name).append("</b> — ").append(status)
-                            .append(" (").append(level).append(")\n");
+                        String status = switch (g.getStatus() != null ? g.getStatus().toLowerCase() : "active") {
+                            case "paused" -> "⏸ Tạm dừng";
+                            case "revoked" -> "❌ Đã huỷ";
+                            case "unreachable" -> "⚠️ Không liên lạc được";
+                            default -> "✅ Đang hoạt động";
+                        };
 
-                    String gid = g.getGuardianUid();
-                    rows.add(List.of(
-                            new InlineButton("🔄 Đổi mức — " + name, "guardian:level:" + gid),
-                            new InlineButton("🗑 Gỡ", "guardian:remove:" + gid)));
+                        String level = "Mức " + (g.getShareLevel() != null ? g.getShareLevel() : 1);
+                        String name = g.getName() != null ? g.getName() : g.getGuardianUid();
+
+                        sb.append("• <b>").append(name).append("</b> — ").append(status)
+                                .append(" (").append(level).append(")\n");
+
+                        String gid = g.getGuardianUid();
+                        List<InlineButton> row = new ArrayList<>();
+                        row.add(new InlineButton("🔄 Đổi mức", "g:lvl:" + gid));
+
+                        if (isPaused) {
+                            row.add(new InlineButton("▶️ Bật lại", "g:tog:" + gid));
+                        } else {
+                            row.add(new InlineButton("⏸ Tạm dừng", "g:tog:" + gid));
+                        }
+                        row.add(new InlineButton("🗑 Gỡ", "g:rm:" + gid));
+
+                        rows.add(row);
+                    }
+                    rows.add(List.of(new InlineButton("➕ Tạo mã kết nối mới", "guardian:create_invite")));
                 }
 
-                rows.add(List.of(new InlineButton("➕ Tạo mã kết nối mới", "guardian:create_invite")));
+// === 2. Người cao tuổi bạn đang bảo vệ (wards) ===
+                if (!wards.isEmpty()) {
+                    if (!guardians.isEmpty()) {
+                        sb.append("\n");
+                    }
+                    sb.append("🛡️ <b>Người cao tuổi bạn đang bảo vệ:</b>\n");
+                    for (GuardianRecord w : wards) {
+                        String elderName = w.getName() != null ? w.getName() : w.getElderUid();
+
+                        String status = switch (w.getStatus() != null ? w.getStatus().toLowerCase() : "active") {
+                            case "paused" -> "⏸ Tạm dừng nhận cảnh báo";
+                            case "revoked" -> "❌ Đã ngừng nhận";
+                            default -> "✅ Đang nhận cảnh báo";
+                        };
+
+                        sb.append("• <b>").append(elderName).append("</b> — ").append(status).append("\n");
+
+                        String elderUid = w.getElderUid();
+                        rows.add(List.of(new InlineButton("🔕 Ngừng nhận cảnh báo", "g:stop:" + elderUid)));
+                    }
+                }
+
+// Nếu cả 2 danh sách đều rỗng
+                if (guardians.isEmpty() && wards.isEmpty()) {
+                    sb.append("Hiện chưa có người thân nào được kết nối.");
+                }
+
                 Map<String, Object> keyboard = TelegramClient.inlineKeyboard(rows);
                 if (telegram != null) {
                     telegram.sendText(chatId, sb.toString(), keyboard);
@@ -1888,6 +1990,129 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             log(context, "Lỗi /nguoithan: " + e.getMessage());
         }
         return response(200, "COMMAND_HANDLED");
+    }
+
+    private APIGatewayProxyResponseEvent handleHistoryCommand(long chatId, String userId, Context context) {
+        try {
+            String addressForm = getAddressForm(userId, context);
+            CheckRepo repo = (checkStore instanceof CheckRepo) ? (CheckRepo) checkStore : null;
+            List<CheckRecord> records = repo != null ? repo.listRecentChecks(userId, 10, null) : List.of();
+
+            if (records.isEmpty()) {
+                String msg = "📜 <b>Lịch sử kiểm tra tin nhắn</b>\n\n"
+                        + addressForm + " chưa có lượt kiểm tra tin nhắn nào ạ.";
+                List<GuardianRecord> wards = guardianRepo != null ? guardianRepo.listWards(userId) : List.of();
+                if (!wards.isEmpty()) {
+                    msg += "\n\n<i>💡 Lưu ý: Bạn không thể xem lịch sử kiểm tra tin nhắn của người thân mà mình đang bảo vệ (theo quy định quyền riêng tư BR-030).</i>";
+                }
+                if (telegram != null) {
+                    telegram.sendText(chatId, msg);
+                }
+                return response(200, "HISTORY_EMPTY");
+            }
+
+            StringBuilder sb = new StringBuilder("📜 <b>Lịch sử kiểm tra tin nhắn gần đây</b>\n\n");
+            for (CheckRecord r : records) {
+                String timeStr = formatCheckTime(r.createdAt());
+                String riskIcon = formatRiskLevel(r.level());
+                String scenarioName = (r.scenario() != null && !r.scenario().isBlank())
+                        ? r.scenario()
+                        : ((r.outcome() != null && !r.outcome().isBlank()) ? r.outcome() : "Kiểm tra chung");
+                sb.append("• ").append(timeStr).append(" | ").append(riskIcon).append(" | ").append(scenarioName).append("\n");
+            }
+            sb.append("\n<i>💡 Hệ thống chỉ lưu siêu dữ liệu đánh giá, tuyệt đối không lưu nội dung tin nhắn gốc để bảo vệ quyền riêng tư.</i>");
+
+            Map<String, Object> keyboard = null;
+            if (records.size() == 10) {
+                CheckRecord last = records.get(records.size() - 1);
+                keyboard = TelegramClient.inlineKeyboard(List.of(
+                        List.of(new InlineButton("⏩ Xem thêm", "h:" + last.checkId()))));
+            }
+
+            if (telegram != null) {
+                telegram.sendText(chatId, sb.toString(), keyboard);
+            }
+            return response(200, "HISTORY_SENT");
+        } catch (Exception e) {
+            log(context, "Lỗi /lichsu: " + e.getMessage());
+            return response(200, "COMMAND_HANDLED");
+        }
+    }
+
+    private APIGatewayProxyResponseEvent handleHistoryCallback(
+            TelegramCallbackQuery cb,
+            long chatId,
+            String userId,
+            String data,
+            Context context) {
+        try {
+            String checkId = data.startsWith("h:") ? data.substring(2) : data.substring("history:".length());
+            String startKey = checkId.startsWith("CHECK#") ? checkId : "CHECK#" + checkId;
+            CheckRepo repo = (checkStore instanceof CheckRepo) ? (CheckRepo) checkStore : null;
+            List<CheckRecord> records = repo != null ? repo.listRecentChecks(userId, 10, startKey) : List.of();
+
+            if (records.isEmpty()) {
+                if (telegram != null) {
+                    telegram.answerCallbackQuery(cb.queryId(), "Đã hết lịch sử kiểm tra.");
+                }
+                return response(200, "HISTORY_EMPTY");
+            }
+
+            StringBuilder sb = new StringBuilder("📜 <b>Lịch sử kiểm tra tin nhắn (tiếp theo)</b>\n\n");
+            for (CheckRecord r : records) {
+                String timeStr = formatCheckTime(r.createdAt());
+                String riskIcon = formatRiskLevel(r.level());
+                String scenarioName = (r.scenario() != null && !r.scenario().isBlank())
+                        ? r.scenario()
+                        : ((r.outcome() != null && !r.outcome().isBlank()) ? r.outcome() : "Kiểm tra chung");
+                sb.append("• ").append(timeStr).append(" | ").append(riskIcon).append(" | ").append(scenarioName).append("\n");
+            }
+            sb.append("\n<i>💡 Hệ thống chỉ lưu siêu dữ liệu đánh giá, tuyệt đối không lưu nội dung tin nhắn gốc để bảo vệ quyền riêng tư.</i>");
+
+            Map<String, Object> keyboard = null;
+            if (records.size() == 10) {
+                CheckRecord last = records.get(records.size() - 1);
+                keyboard = TelegramClient.inlineKeyboard(List.of(
+                        List.of(new InlineButton("⏩ Xem thêm", "h:" + last.checkId()))));
+            }
+
+            Integer msgId = parseMessageId(cb.messageId());
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Trang tiếp theo");
+                if (msgId != null) {
+                    telegram.editText(chatId, msgId, sb.toString(), keyboard);
+                } else {
+                    telegram.sendText(chatId, sb.toString(), keyboard);
+                }
+            }
+            return response(200, "HISTORY_PAGE_LOADED");
+        } catch (Exception e) {
+            log(context, "Lỗi callback lịch sử: " + e.getMessage());
+            return response(200, "CALLBACK_FAILED");
+        }
+    }
+
+    private static String formatRiskLevel(String level) {
+        if (level == null) return "🟡 Cần cảnh giác";
+        return switch (level.toUpperCase()) {
+            case "SAFE", "LOW" -> "🟢 Ít dấu hiệu";
+            case "SUSPICIOUS", "MEDIUM", "UNSURE" -> "🟡 Cần cảnh giác";
+            case "DANGEROUS", "HIGH" -> "🔴 Nguy hiểm";
+            default -> "🟡 Cần cảnh giác";
+        };
+    }
+
+    private static String formatCheckTime(String createdAt) {
+        if (createdAt == null || createdAt.isBlank()) {
+            return "Gần đây";
+        }
+        try {
+            Instant inst = Instant.parse(createdAt);
+            ZonedDateTime zdt = inst.atZone(ZoneId.of("Asia/Ho_Chi_Minh"));
+            return zdt.format(DateTimeFormatter.ofPattern("dd/MM HH:mm"));
+        } catch (Exception e) {
+            return createdAt.length() > 16 ? createdAt.substring(0, 16) : createdAt;
+        }
     }
 
     private APIGatewayProxyResponseEvent handleKetNoiCommand(
@@ -1949,8 +2174,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         String elderUid = invite.getElderUid();
         if (elderUid.equals(userId)) {
             if (telegram != null) {
-                telegram.sendText(chatId,
-                        "⚠️ Bác không thể dùng mã kết nối của chính mình.");
+                String XH = getAddressForm(userId);
+                telegram.sendText(chatId, BotMessages.guardianSelfInviteErrorMessage(XH));
             }
             return response(200, "INVITE_SELF");
         }
@@ -1996,12 +2221,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         // Thông báo cho người cao tuổi kèm 3 nút chọn mức chia sẻ
         try {
             long elderChatId = Long.parseLong(elderUid.replace("tg:", ""));
-            String msg = "🔔 <b>YÊU CẦU KẾT NỐI TỪ NGƯỜI THÂN</b>\n\n"
-                    + "Tài khoản <b>" + senderDisplayName + "</b> muốn kết nối với Bác.\n\n"
-                    + "Vui lòng chọn <b>mức độ chia sẻ thông tin</b> khi có cảnh báo:\n\n"
-                    + "• <b>Mức 1:</b> Chỉ báo có nguy cơ (Nguy hiểm / Nghi ngờ).\n"
-                    + "• <b>Mức 2:</b> Kèm tên kịch bản và dấu hiệu chính.\n"
-                    + "• <b>Mức 3:</b> Kèm tóm tắt nội dung đã che số.";
+            String elderAddressForm = getAddressForm(elderUid);
+            String msg = BotMessages.guardianConnectionRequestMessage(elderAddressForm, senderDisplayName);
 
             Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
                     List.of(
@@ -2238,6 +2459,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             Context context) {
 
         String addressForm = getAddressForm(userId, context);
+        String xh = getAddressFormLower(userId, context);
 
         try {
             // BE-35: 1. Kiểm tra tệp cài đặt Android (.apk) độc hại - Xử lý ngay lập tức (Zero SQS, Zero Download)
@@ -2273,16 +2495,14 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 return response(200, "UNSUPPORTED_AUDIO");
             }
 
-            // 1. Kiểm tra trạng thái Đồng ý điều khoản (Consent Check - BE-25)
+            // 1. Kiểm tra trạng thái Đồng ý điều khoản (Consent Check - BE-25, SH-08)
             if (userRepo != null && !userRepo.hasValidConsent(userId, policySha256)) {
-                String promptConsent = addressForm + " ơi, để bảo vệ dữ liệu cá nhân theo quy định của pháp luật, " +
-                        addressForm
-                        + " vui lòng bấm <b>Tôi đồng ý</b> bên dưới trước để cháu được phép kiểm tra tin nhắn nhé!";
+                String promptConsent = BotMessages.promptConsentMessage(addressForm, xh);
 
                 Map<String, Object> keyboard = TelegramClient.inlineKeyboard(List.of(
                         List.of(
-                                new InlineButton("✅ Tôi đồng ý", "consent:agree"),
-                                new InlineButton("❌ Không đồng ý", "consent:decline"))));
+                                new InlineButton("✅ Đồng ý", "consent:agree"),
+                                new InlineButton("Không đồng ý", "consent:decline"))));
 
                 if (telegram != null) {
                     telegram.sendText(chatId, promptConsent, keyboard);
@@ -2290,15 +2510,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 return response(200, "CONSENT_REQUIRED");
             }
 
-            // 2. Kiểm tra đồng ý tin nhắn thoại (Voice Consent Check - BE-25)
+            // 2. Kiểm tra đồng ý tin nhắn thoại (Voice Consent Check - BE-25, SH-08)
             if ("voice".equalsIgnoreCase(inbound.kind())) {
                 boolean hasVoice = (userRepo != null) && userRepo.hasVoiceConsent(userId);
                 if (!hasVoice) {
-                    String voiceMsg = addressForm
-                            + " ơi, tính năng kiểm tra tin nhắn thoại (voice) cần có sự đồng ý riêng về xử lý dữ liệu âm thanh. "
-                            +
-                            "Hiện tại mục này chưa được bật. " + addressForm
-                            + " vui lòng chụp màn hình hoặc gửi tin nhắn văn bản cho cháu nhé!";
+                    String voiceMsg = BotMessages.voiceConsentRequiredMessage(addressForm, xh);
 
                     if (telegram != null) {
                         telegram.sendText(chatId, voiceMsg);
@@ -2329,15 +2545,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             // 3c. Nhớ tên Telegram để tin gửi người thân gọi đúng tên người cao tuổi (best-effort, không chặn xử lý)
             rememberDisplayName(root, userId, context);
 
-            // 4. Kiểm tra Giới hạn tốc độ người dùng (Rate Limiting - BE-26)
+            // 4. Kiểm tra Giới hạn tốc độ người dùng (Rate Limiting - BE-26, SH-08)
             if (rateLimitRepo != null) {
                 RateLimitRepo.RateLimitResult rlResult = rateLimitRepo.checkAndIncrement(userId);
                 if (!rlResult.allowed()) {
-                    String rateLimitMsg = addressForm + " ơi, hiện tại " + addressForm
-                            + " đã gửi kiểm tra khá nhiều tin trong ngày rồi ạ " +
-                            "(giới hạn 30 tin/giờ và 100 tin/ngày). Cháu xin phép tạm nghỉ một chút để đảm bảo an toàn cho hệ thống, "
-                            +
-                            addressForm + " vui lòng quay lại sau nhé!";
+                    String rateLimitMsg = BotMessages.rateLimitMessage(addressForm, xh);
 
                     if (telegram != null) {
                         telegram.sendText(chatId, rateLimitMsg);
@@ -2361,7 +2573,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 try {
                     telegram.sendText(
                             chatId,
-                            "⏳ Cháu đang kiểm tra, " + addressForm.toLowerCase() + " chờ cháu vài giây nhé...");
+                            BotMessages.waitingInspectionMessage(xh));
                 } catch (Exception e) {
                     // Tin chờ chỉ là phụ: lỗi ở đây không được làm Telegram retry (gây xử lý/đếm
                     // đôi), vẫn đưa job vào hàng đợi
@@ -2595,7 +2807,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     }
 
     private String getAddressForm(String userId, Context context) {
-        if (userRepo != null) {
+        if (userRepo != null && userId != null) {
             try {
                 return userRepo.getUser(userId).map(UserRecord::getAddressForm).orElse(UserRecord.DEFAULT_ADDRESS_FORM);
             } catch (Exception e) {
@@ -2604,6 +2816,24 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
         }
         return UserRecord.DEFAULT_ADDRESS_FORM;
+    }
+
+    private String getAddressFormLower(String userId) {
+        return BotMessages.toLower(getAddressForm(userId));
+    }
+
+    private String getAddressFormLower(String userId, Context context) {
+        return BotMessages.toLower(getAddressForm(userId, context));
+    }
+
+    static boolean isEmergencyText(String text) {
+        if (text == null) {
+            return false;
+        }
+        String normalized = text.trim().toLowerCase(Locale.ROOT);
+        return normalized.equals("tôi bị lừa rồi") || normalized.equals("toi bi lua roi")
+                || normalized.equals("tôi bị lừa") || normalized.equals("toi bi lua")
+                || normalized.equals("/bilua");
     }
 
     private APIGatewayProxyResponseEvent sendSimulatedCheckResult(long chatId, String userId, String text) {

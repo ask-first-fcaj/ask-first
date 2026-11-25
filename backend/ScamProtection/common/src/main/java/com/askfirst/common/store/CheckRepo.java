@@ -1,5 +1,6 @@
 package com.askfirst.common.store;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -14,4 +15,14 @@ public interface CheckRepo extends CheckStore {
     /** Cập nhật trường feedback (ví dụ "wrong") cho bản ghi kiểm tra. */
     @Override
     void updateFeedback(String userId, String checkId, String feedback);
+
+    /**
+     * Trả về tối đa {@code limit} bản ghi CHECK# gần nhất của người dùng,
+     * sắp xếp giảm dần theo SK.
+     *
+     * @param userId       userId (có hoặc không có tiền tố "USER#")
+     * @param limit        số bản ghi tối đa cần lấy
+     * @param startSortKey null cho trang đầu; SK của item cuối trang trước cho trang tiếp theo
+     */
+    List<CheckRecord> listRecentChecks(String userId, int limit, String startSortKey);
 }

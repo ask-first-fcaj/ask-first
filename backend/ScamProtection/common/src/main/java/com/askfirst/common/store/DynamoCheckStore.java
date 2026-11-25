@@ -4,6 +4,7 @@ import static com.askfirst.common.store.DynamoItems.key;
 import static com.askfirst.common.store.DynamoItems.n;
 import static com.askfirst.common.store.DynamoItems.s;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +15,8 @@ import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedExce
 import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.GetItemResponse;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
+import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
+import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
 import software.amazon.awssdk.services.dynamodb.model.UpdateItemRequest;
 
 /** PK = USER#<uid> (cùng quy ước UserRecord), SK = CHECK#<check_id>. */
@@ -134,6 +137,52 @@ public final class DynamoCheckStore implements CheckRepo {
         } catch (ConditionalCheckFailedException notApplicable) {
             return false;
         }
+    }
+
+    @Override
+    public List<CheckRecord> listRecentChecks(String userId, int limit, String startSortKey) {
+        String pk = pk(userId);
+        QueryRequest.Builder reqBuilder = QueryRequest.builder()
+                .tableName(table)
+                .keyConditionExpression("PK = :pk AND begins_with(SK, :skPrefix)")
+                .expressionAttributeValues(Map.of(
+                        ":pk", s(pk),
+                        ":skPrefix", s("CHECK#")))
+                .scanIndexForward(false)
+                .limit(limit);
+
+        if (startSortKey != null) {
+            reqBuilder.exclusiveStartKey(key(pk, startSortKey));
+        }
+
+        QueryResponse response = client.query(reqBuilder.build());
+        List<CheckRecord> results = new ArrayList<>();
+        for (Map<String, AttributeValue> item : response.items()) {
+            String sk = item.get("SK") != null ? item.get("SK").s() : "";
+            String checkId = item.get("check_id") != null ? item.get("check_id").s() : sk.replace("CHECK#", "");
+            String uid = item.get("user_id") != null ? item.get("user_id").s() : userId;
+            String outcome = item.get("outcome") != null ? item.get("outcome").s() : "";
+            String level = item.get("level") != null ? item.get("level").s() : "";
+            int score = item.get("score") != null && item.get("score").n() != null
+                    ? Integer.parseInt(item.get("score").n()) : 0;
+            String grp = item.get("grp") != null ? item.get("grp").s() : "";
+            String scenario = item.get("scenario") != null ? item.get("scenario").s() : "";
+            String path = item.get("path") != null ? item.get("path").s() : "";
+            List<String> signalCodes = item.get("signal_codes") != null && item.get("signal_codes").hasL()
+                    ? item.get("signal_codes").l().stream().map(AttributeValue::s).toList() : List.of();
+            List<String> riskyActions = item.get("risky_actions") != null && item.get("risky_actions").hasL()
+                    ? item.get("risky_actions").l().stream().map(AttributeValue::s).toList() : List.of();
+            List<String> inputKinds = item.get("input_kinds") != null && item.get("input_kinds").hasL()
+                    ? item.get("input_kinds").l().stream().map(AttributeValue::s).toList() : List.of();
+            boolean alerted = item.get("alerted") != null && Boolean.TRUE.equals(item.get("alerted").bool());
+            String feedback = item.get("feedback") != null ? item.get("feedback").s() : null;
+            String createdAt = item.get("created_at") != null ? item.get("created_at").s() : "";
+            long ttl = item.get("ttl") != null && item.get("ttl").n() != null
+                    ? Long.parseLong(item.get("ttl").n()) : 0L;
+            results.add(new CheckRecord(checkId, uid, outcome, level, score, grp, scenario, path,
+                    signalCodes, riskyActions, inputKinds, alerted, feedback, createdAt, ttl));
+        }
+        return results;
     }
 
     private static AttributeValue strings(List<String> values) {
