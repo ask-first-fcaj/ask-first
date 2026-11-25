@@ -23,21 +23,21 @@
 {% endif %}
 👉 {{ XH }} khoan làm theo tin này{% if actions %}: {% for a in actions[:2] %}{{ ACTIONS[a] }}{{ ", " if not loop.last else "" }}{% endfor %}{% endif %}. Hỏi người nhà hoặc gọi ngân hàng trước.
 {% elif level == "UNSURE" %}
-🟡 <b>BOT CHƯA CHẮC CHẮN</b>
-Bot chưa chắc chắn, {{ xh }} hỏi con hoặc gọi ngân hàng trước khi làm gì.
+🟡 <b>CHƯA CHẮC CHẮN</b>
+Cháu chưa đủ chắc để kết luận. {{ XH }} khoan làm theo tin này, hỏi con hoặc gọi ngân hàng trước đã.
 {% elif otp_genuine %}
 ⚪ <b>TIN OTP THẬT</b>
 Đây là tin OTP thật từ ngân hàng. Mã này <b>chỉ để {{ xh }} tự nhập</b>. Ai hỏi mã này, kể cả người xưng là nhân viên ngân hàng, đều là lừa đảo.
 {% else %}
 ⚪ <b>CHƯA THẤY DẤU HIỆU LỪA ĐẢO RÕ RÀNG</b>
-Bot chưa thấy dấu hiệu lừa đảo rõ ràng. Nhưng nếu ai bảo chuyển tiền, đọc OTP hay giữ bí mật thì {{ xh }} hãy dừng lại.
+Cháu chưa thấy dấu hiệu lừa đảo rõ ràng. Nhưng nếu ai bảo chuyển tiền, đọc OTP hay giữ bí mật thì {{ xh }} hãy dừng lại.
 {% endif %}
 {% if alerted %}
-✅ Cháu {{ alerted }} đã được báo.
+✅ Cháu đã báo cho {{ alerted }}.
 {% endif %}
 {% if failed %}
-❗ Bot chưa báo được cho {{ failed }}, {{ xh }} gọi trực tiếp nhé.
+❗ Cháu chưa báo được cho {{ failed }}, {{ xh }} gọi trực tiếp nhé.
 {% endif %}
 {% if maintenance %}
-🛠 Bot đang bảo trì, chỉ kiểm được dấu hiệu cơ bản.
+🛠 Hệ thống đang bảo trì, cháu chỉ kiểm được dấu hiệu cơ bản.
 {% endif %}

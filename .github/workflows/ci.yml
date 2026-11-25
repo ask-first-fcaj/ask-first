@@ -43,6 +43,12 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      # setup-java chỉ cache ~/.m2/repository; bản Maven mà mvnw tải (repo.maven.apache.org, hay lỗi wget) cache riêng.
+      - uses: actions/cache@v4
+        if: steps.has.outputs.found == 'true'
+        with:
+          path: ~/.m2/wrapper
+          key: mvnw-${{ hashFiles('**/.mvn/wrapper/maven-wrapper.properties') }}
       - name: Maven verify
         if: steps.has.outputs.found == 'true'
         working-directory: ${{ steps.has.outputs.dir }}
@@ -152,6 +158,10 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      - uses: actions/cache@v4
+        with:
+          path: ~/.m2/wrapper
+          key: mvnw-${{ hashFiles('**/.mvn/wrapper/maven-wrapper.properties') }}
       - name: Test contract phía Java
         working-directory: backend/ScamProtection
         shell: bash

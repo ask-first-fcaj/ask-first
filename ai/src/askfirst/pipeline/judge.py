@@ -40,7 +40,7 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr, ValidationError
 
 from askfirst.domain.models import ForwardOrigin, Group, RiskyAction
 
-PROMPT_VERSION = "judge_v2"
+PROMPT_VERSION = "judge_v3"
 DEFAULT_PROMPT = Path(__file__).resolve().parents[4] / "prompts" / f"{PROMPT_VERSION}.md"
 
 # Mã kịch bản research-concept §2.2 (khớp eval/validate.py SCENARIOS). Khi kb/scenarios.yaml (AI-25) vào main
@@ -263,7 +263,7 @@ def _clip(s: str, limit: int) -> str:
 def default_template(codes: list[str], group: str) -> str:
     """Giải thích dự phòng khi câu của model không dùng được. AI-07 thay bằng template theo mã trong kb/templates/."""
     if group == "N0" and not codes:
-        return ("Bot chưa thấy dấu hiệu lừa đảo rõ ràng. Nhưng nếu ai bảo bác chuyển tiền, đọc OTP hay giữ bí mật "
+        return ("Cháu chưa thấy dấu hiệu lừa đảo rõ ràng. Nhưng nếu ai bảo bác chuyển tiền, đọc OTP hay giữ bí mật "
                 "thì bác hãy dừng lại.")
     return "Tin này có dấu hiệu hay gặp trong các vụ lừa đảo. Bác đừng làm theo yêu cầu trong tin, hỏi con cháu trước đã."
 
