@@ -10,8 +10,9 @@ import com.askfirst.common.job.JobCodec;
 import java.util.function.Consumer;
 
 /**
- * Điều phối một message SQS: parse, chuyển cho processor đúng loại. Lỗi được ném lại để handler báo
- * batchItemFailure (SQS giao lại; quá maxReceiveCount thì vào DLQ, không bao giờ bị bỏ mất âm thầm).
+ * Điều phối một message SQS: parse, chuyển cho processor đúng loại. Lỗi xử lý được ném lại để handler báo
+ * batchItemFailure (SQS giao lại; quá maxReceiveCount thì vào DLQ). Job sai contract (invalid_job) thì bỏ ngay vì
+ * retry không bao giờ thành công; dòng log invalid_job_dropped là dấu vết để alarm.
  */
 public final class WorkerRunner {
 
@@ -34,7 +35,14 @@ public final class WorkerRunner {
             job = JobCodec.parse(body);
         } catch (InvalidJobException e) {
             log.accept("invalid_job code=" + e.code() + " receive=" + receiveCount);
-            throw e;
+            // Sai contract thì retry bao nhiêu lần cũng vậy (mỗi lần cách nhau cả VisibilityTimeout). Bỏ ngay, nhưng ghi
+            // dòng log riêng để đặt metric filter/alarm. Riêng unsupported_version có thể do deploy lệch phiên bản
+            // (webhook mới hơn worker): giữ retry để worker mới xử lý được.
+            if (InvalidJobException.UNSUPPORTED_VERSION.equals(e.code())) {
+                throw e;
+            }
+            log.accept("invalid_job_dropped code=" + e.code());
+            return;
         }
         try {
             switch (job) {

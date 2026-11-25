@@ -3,6 +3,7 @@ package com.askfirst.common.store;
 import com.askfirst.common.channel.model.InboundMessage;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalLong;
 
 /**
  * BUFFER#: nơi webhook gom các tin của một chat trong vài giây để worker xử lý
@@ -38,6 +39,14 @@ public interface BufferStore {
      * @return seq vừa cấp
      */
     long append(String chatId, InboundMessage message, long ttlEpochSeconds);
+
+    /**
+     * seq của tin đã lưu từ update Telegram này, nếu có. Dùng khi Telegram gửi lại update mà lần trước đã ghi buffer
+     * nhưng enqueue SQS lỗi: tin không được ghi lần hai. Mặc định không tìm thấy (store không hỗ trợ thì coi như tin mới).
+     */
+    default OptionalLong findSeqByUpdateId(String chatId, String updateId) {
+        return OptionalLong.empty();
+    }
 
     /** Lưu message_id của tin "⏳" để worker edit. Bỏ qua nếu buffer đã biến mất. */
     void setPlaceholder(String chatId, int messageId);

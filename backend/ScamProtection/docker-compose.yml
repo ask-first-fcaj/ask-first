@@ -3,10 +3,14 @@ services:
     image: localstack/localstack:latest
     container_name: localstack
     ports:
-      - "4566:4566"
+      - "127.0.0.1:4566:4566"
     environment:
       - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN}
-      - SERVICES=lambda,sqs,apigateway,iam,logs,dynamodb
+      - SERVICES=lambda,sqs,apigateway,iam,logs,dynamodb,s3,sts,cloudformation,cloudwatch,events
+      - AWS_DEFAULT_REGION=ap-southeast-1
+      # Không có PERSISTENCE=1 thì thư mục ./localstack-data không lưu được gì khi container tắt
+      - PERSISTENCE=1
+      - DEBUG=0
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./localstack-data:/var/lib/localstack

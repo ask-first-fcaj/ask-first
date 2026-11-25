@@ -10,10 +10,15 @@ import com.askfirst.common.Ulid;
 import com.askfirst.common.channel.TelegramAdapter;
 import com.askfirst.common.channel.model.InboundMessage;
 import com.askfirst.common.channel.model.TelegramCallbackQuery;
+import com.askfirst.common.job.AnalyzeJob;
+import com.askfirst.common.job.JobCodec;
+import com.askfirst.common.store.AlertRecord;
+import com.askfirst.common.store.AlertStore;
 import com.askfirst.common.store.AuditRecord;
 import com.askfirst.common.store.AuditRepo;
 import com.askfirst.common.store.BufferStore;
 import com.askfirst.common.store.DonationStore;
+import com.askfirst.common.store.DynamoAlertStore;
 import com.askfirst.common.store.DynamoStoreService;
 import com.askfirst.common.store.GuardianRecord;
 import com.askfirst.common.store.GuardianRepo;
@@ -58,6 +63,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
@@ -89,11 +95,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
      */
     public static final String DEFAULT_POLICY_URL = "https://github.com/ask-first-fcaj/ask-first/blob/main/docs/privacy-policy.md";
 
-    /**
-     * Khóa dedup update_id sống 24 giờ (Telegram chỉ retry update trong thời gian
-     * ngắn).
-     */
     private static final long DEDUP_TTL_SECONDS = 24 * 3600L;
+    private static final long BUFFER_TTL_SECONDS = 10 * 60L;
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule());
@@ -116,46 +119,44 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     private final BufferStore bufferStore;
     private final DonationStore donationStore;
 
-    /**
-     * Chống xử lý trùng cùng một update_id (Telegram retry). Null = không dedup
-     * (test/local).
-     */
+    /** Tra cảnh báo người thân để ghi nhận nút "Tôi đã liên hệ". Null = bỏ qua callback ack. */
+    private final AlertStore alertStore;
+
     private final DynamoStoreService dedup;
 
     /**
-     * Username của bot (ví dụ: "AskFirstBot"), dùng để tạo deep link mời người
-     * thân.
-     * Đọc từ biến môi trường TELEGRAM_BOT_USERNAME (hoặc BOT_USERNAME). Nếu không có, không hiển thị nút share
-     * (graceful degradation).
+     * Username của bot (ví dụ: "AskFirstBot"), dùng để tạo deep link mời người thân.
+     * Đọc từ biến môi trường TELEGRAM_BOT_USERNAME (hoặc BOT_USERNAME).
+     * Nếu không có, không hiển thị nút share (graceful degradation).
      */
     private final String botUsername;
 
     /**
-     * true chỉ khi tạo qua {@link #forLocalDevelopment(TelegramClient)} (long
-     * polling trên máy dev):
+     * true chỉ khi tạo qua {@link #forLocalDevelopment(TelegramClient)} (long polling trên máy dev):
      * bỏ kiểm tra secret và cho phép chạy không có SQS. Lambda thật luôn là false.
      */
     private final boolean localDevelopment;
 
-    /**
-     * Constructor cho Lambda. Thiếu biến môi trường nào là lỗi ngay lúc khởi tạo
-     * (thấy rõ trong CloudWatch)
-     * thay vì chạy tiếp rồi mất job / chấp nhận request giả mạo một cách im lặng.
-     */
+    // =====================================================================
+    // 1. Constructor cho Lambda (production)
+    // =====================================================================
     public WebhookHandler() {
         this.queueUrl = requireEnv("WEBHOOK_QUEUE_URL");
         this.secret = secretFromSsmOrEnv("TELEGRAM_WEBHOOK_SECRET");
         this.policySha256 = requireEnv("POLICY_SHA256");
+
         String envPolicyUrl = System.getenv("POLICY_URL");
-        this.policyUrl = (envPolicyUrl != null && !envPolicyUrl.isBlank()) ? envPolicyUrl.trim() : DEFAULT_POLICY_URL;
+        this.policyUrl = (envPolicyUrl != null && !envPolicyUrl.isBlank())
+                ? envPolicyUrl.trim()
+                : DEFAULT_POLICY_URL;
+
         this.telegram = new TelegramClient(secretFromSsmOrEnv("TELEGRAM_BOT_TOKEN"));
         String tableName = requireEnv("DYNAMODB_TABLE_NAME");
 
         this.sqs = SqsClient.create();
         this.adapter = new TelegramAdapter();
         this.localDevelopment = false;
-        // TELEGRAM_BOT_USERNAME không bắt buộc: nếu thiếu thì không tạo deep link (graceful
-        // degradation), hỗ trợ cả BOT_USERNAME cũ để tương thích ngược
+
         String envBot = System.getenv("TELEGRAM_BOT_USERNAME");
         if (envBot == null || envBot.isBlank()) {
             envBot = System.getenv("BOT_USERNAME");
@@ -186,15 +187,81 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             try {
                 dStore = new S3DonationStore(S3Client.create(), bucketName.trim());
             } catch (Exception ignored) {
-                dStore = null;
             }
         }
         this.donationStore = dStore;
+        this.alertStore = new DynamoAlertStore(ddb, tableName);
         this.dedup = DynamoStoreService.create(ddb, tableName);
     }
 
+    // =====================================================================
+    // 2. Constructor đầy đủ (19 tham số) – TẤT CẢ constructor khác delegate vào đây
+    // =====================================================================
+    /**
+     * Constructor đầy đủ (19 tham số). Tất cả các constructor khác delegate vào đây.
+     *
+     * @param botUsername username của bot (ví dụ "AskFirstBot"), dùng để tạo deep link.
+     *                    Null = không hiển thị nút share (graceful degradation).
+     * @param policyUrl   URL chính sách quyền riêng tư. Null hoặc blank → dùng DEFAULT_POLICY_URL.
+     * @param alertStore  kho cảnh báo người thân (null = bỏ qua callback ack:).
+     */
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            GuardianRepo guardianRepo,
+            InviteRepo inviteRepo,
+            String policySha256,
+            DynamoStoreService dedup,
+            boolean localDevelopment,
+            String botUsername,
+            String policyUrl,                 // 14
+            CheckStore checkStore,            // 15
+            SessionStore sessionStore,        // 16
+            BufferStore bufferStore,          // 17
+            DonationStore donationStore,      // 18
+            AlertStore alertStore) {          // 19
+
+        this.telegram = telegram;
+        this.sqs = sqs;
+        this.queueUrl = queueUrl;
+        this.secret = secret;
+        this.userRepo = userRepo;
+        this.auditRepo = auditRepo;
+        this.rateLimitRepo = rateLimitRepo;
+        this.guardianRepo = guardianRepo;
+        this.inviteRepo = inviteRepo;
+        this.policySha256 = (policySha256 != null && !policySha256.isBlank())
+                ? policySha256
+                : DEFAULT_POLICY_SHA256;
+        this.policyUrl = (policyUrl != null && !policyUrl.isBlank())
+                ? policyUrl
+                : DEFAULT_POLICY_URL;
+        this.adapter = new TelegramAdapter();
+        this.dedup = dedup;
+        this.localDevelopment = localDevelopment;
+        this.botUsername = (botUsername != null && !botUsername.isBlank()) ? botUsername : null;
+        this.checkStore = checkStore;
+        this.sessionStore = sessionStore;
+        this.bufferStore = bufferStore;
+        this.donationStore = donationStore;
+        this.alertStore = alertStore;
+    }
+
+    // =====================================================================
+    // 3. Các constructor tiện ích (delegate)
+    // =====================================================================
+
     public WebhookHandler(TelegramClient telegram, SqsClient sqs, String queueUrl, String secret) {
-        this(telegram, sqs, queueUrl, secret, null, null, null, null, null, DEFAULT_POLICY_SHA256, null, false);
+        this(telegram, sqs, queueUrl, secret,
+                null, null, null, null, null,
+                DEFAULT_POLICY_SHA256, null, false, null,
+                null,                       // policyUrl
+                null, null, null, null, null);
     }
 
     public WebhookHandler(
@@ -206,8 +273,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             AuditRepo auditRepo,
             RateLimitRepo rateLimitRepo,
             String policySha256) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, null, null, policySha256, null,
-                false);
+        this(telegram, sqs, queueUrl, secret,
+                userRepo, auditRepo, rateLimitRepo, null, null,
+                policySha256, null, false, null,
+                null,                       // policyUrl
+                null, null, null, null, null);
     }
 
     public WebhookHandler(
@@ -220,8 +290,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             RateLimitRepo rateLimitRepo,
             String policySha256,
             DynamoStoreService dedup) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo, null, null, policySha256, dedup,
-                false);
+        this(telegram, sqs, queueUrl, secret,
+                userRepo, auditRepo, rateLimitRepo, null, null,
+                policySha256, dedup, false, null,
+                null,                       // policyUrl
+                null, null, null, null, null);
     }
 
     public WebhookHandler(
@@ -233,8 +306,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             InviteRepo inviteRepo,
             AuditRepo auditRepo,
             String policySha256) {
-        this(telegram, sqs, queueUrl, secret, null, auditRepo, null, guardianRepo, inviteRepo, policySha256, null,
-                false, null);
+        this(telegram, sqs, queueUrl, secret,
+                null, auditRepo, null, guardianRepo, inviteRepo,
+                policySha256, null, false, null,
+                null,                       // policyUrl
+                null, null, null, null, null);
     }
 
     public WebhookHandler(
@@ -247,8 +323,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             AuditRepo auditRepo,
             String policySha256,
             String botUsername) {
-        this(telegram, sqs, queueUrl, secret, null, auditRepo, null, guardianRepo, inviteRepo, policySha256, null,
-                false, botUsername);
+        this(telegram, sqs, queueUrl, secret,
+                null, auditRepo, null, guardianRepo, inviteRepo,
+                policySha256, null, false, botUsername,
+                null,                       // policyUrl
+                null, null, null, null, null);
     }
 
     public WebhookHandler(
@@ -264,37 +343,64 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             String policySha256,
             DynamoStoreService dedup,
             boolean localDevelopment) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
-                guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, null);
-    }
-
-    /**
-     * Constructor đầy đủ (13 tham số). Tất cả các constructor khác delegate vào
-     * đây.
-     *
-     * @param botUsername username của bot (ví dụ "AskFirstBot"), dùng để tạo deep
-     *                    link.
-     *                    Null = không hiển thị nút share (graceful degradation).
-     */
-    public WebhookHandler(
-            TelegramClient telegram,
-            SqsClient sqs,
-            String queueUrl,
-            String secret,
-            UserRepo userRepo,
-            AuditRepo auditRepo,
-            RateLimitRepo rateLimitRepo,
-            GuardianRepo guardianRepo,
-            InviteRepo inviteRepo,
-            String policySha256,
-            DynamoStoreService dedup,
-            boolean localDevelopment,
-            String botUsername) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
-                guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
+        this(telegram, sqs, queueUrl, secret,
+                userRepo, auditRepo, rateLimitRepo, guardianRepo, inviteRepo,
+                policySha256, dedup, localDevelopment, null,
+                null,                       // policyUrl
                 null, null, null, null, null);
     }
 
+    /**
+     * Constructor 13 tham số (thường dùng trong test cơ bản).
+     */
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            GuardianRepo guardianRepo,
+            InviteRepo inviteRepo,
+            String policySha256,
+            DynamoStoreService dedup,
+            boolean localDevelopment,
+            String botUsername) {
+        this(telegram, sqs, queueUrl, secret,
+                userRepo, auditRepo, rateLimitRepo, guardianRepo, inviteRepo,
+                policySha256, dedup, localDevelopment, botUsername,
+                null,                       // policyUrl
+                null, null, null, null, null);
+    }
+
+    /**
+     * Constructor 16 tham số (main BE-30) – không có BufferStore + AlertStore.
+     */
+    public WebhookHandler(
+            TelegramClient telegram,
+            SqsClient sqs,
+            String queueUrl,
+            String secret,
+            UserRepo userRepo,
+            AuditRepo auditRepo,
+            RateLimitRepo rateLimitRepo,
+            GuardianRepo guardianRepo,
+            InviteRepo inviteRepo,
+            String policySha256,
+            DynamoStoreService dedup,
+            boolean localDevelopment,
+            String botUsername,
+            CheckStore checkStore,
+            SessionStore sessionStore,
+            DonationStore donationStore) {
+        this(telegram, sqs, queueUrl, secret,
+                userRepo, auditRepo, rateLimitRepo, guardianRepo, inviteRepo,
+                policySha256, dedup, localDevelopment, botUsername,
+                null,                       // policyUrl
+                checkStore, sessionStore, null, donationStore, null);
+    }
+
     public WebhookHandler(
             TelegramClient telegram,
             SqsClient sqs,
@@ -309,9 +415,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             BufferStore bufferStore,
             DonationStore donationStore,
             String policySha256) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
-                guardianRepo, inviteRepo, policySha256, null, false, null,
-                null, null, sessionStore, bufferStore, donationStore);
+        this(telegram, sqs, queueUrl, secret,
+                userRepo, auditRepo, rateLimitRepo, guardianRepo, inviteRepo,
+                policySha256, null, false, null,
+                null,                       // policyUrl
+                null, sessionStore, bufferStore, donationStore, null);
     }
 
     public WebhookHandler(
@@ -331,133 +439,29 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             DynamoStoreService dedup,
             boolean localDevelopment,
             String botUsername) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
-                guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
-                null, sessionStore, bufferStore, donationStore);
+        this(telegram, sqs, queueUrl, secret,
+                userRepo, auditRepo, rateLimitRepo, guardianRepo, inviteRepo,
+                policySha256, dedup, localDevelopment, botUsername,
+                null,                       // policyUrl
+                null, sessionStore, bufferStore, donationStore, null);
     }
 
     /**
-     * Constructor 16 tham số (main BE-30).
+     * Constructor tiện cho test BE-29: inject BufferStore + AlertStore
+     * (các repo khác null).
      */
     public WebhookHandler(
             TelegramClient telegram,
             SqsClient sqs,
             String queueUrl,
             String secret,
-            UserRepo userRepo,
-            AuditRepo auditRepo,
-            RateLimitRepo rateLimitRepo,
-            GuardianRepo guardianRepo,
-            InviteRepo inviteRepo,
-            String policySha256,
-            DynamoStoreService dedup,
-            boolean localDevelopment,
-            String botUsername,
-            CheckStore checkStore,
-            SessionStore sessionStore,
-            DonationStore donationStore) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
-                guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
-                null, checkStore, sessionStore, null, donationStore);
-    }
-
-    /**
-     * Constructor 17 tham số (main BE-31).
-     *
-     * @param botUsername username của bot (ví dụ "AskFirstBot"), dùng để tạo deep link.
-     */
-    public WebhookHandler(
-            TelegramClient telegram,
-            SqsClient sqs,
-            String queueUrl,
-            String secret,
-            UserRepo userRepo,
-            AuditRepo auditRepo,
-            RateLimitRepo rateLimitRepo,
-            GuardianRepo guardianRepo,
-            InviteRepo inviteRepo,
-            String policySha256,
-            DynamoStoreService dedup,
-            boolean localDevelopment,
-            String botUsername,
-            CheckStore checkStore,
-            SessionStore sessionStore,
             BufferStore bufferStore,
-            DonationStore donationStore) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
-                guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
-                null, checkStore, sessionStore, bufferStore, donationStore);
-    }
-
-    /**
-     * Constructor 17 tham số (với policyUrl).
-     */
-    public WebhookHandler(
-            TelegramClient telegram,
-            SqsClient sqs,
-            String queueUrl,
-            String secret,
-            UserRepo userRepo,
-            AuditRepo auditRepo,
-            RateLimitRepo rateLimitRepo,
-            GuardianRepo guardianRepo,
-            InviteRepo inviteRepo,
-            String policySha256,
-            DynamoStoreService dedup,
-            boolean localDevelopment,
-            String botUsername,
-            String policyUrl,
-            CheckStore checkStore,
-            SessionStore sessionStore,
-            DonationStore donationStore) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, rateLimitRepo,
-                guardianRepo, inviteRepo, policySha256, dedup, localDevelopment, botUsername,
-                policyUrl, checkStore, sessionStore, null, donationStore);
-    }
-
-    /**
-     * Constructor đầy đủ (18 tham số). Tất cả các constructor khác delegate vào đây.
-     *
-     * @param botUsername username của bot (ví dụ "AskFirstBot"), dùng để tạo deep link.
-     */
-    public WebhookHandler(
-            TelegramClient telegram,
-            SqsClient sqs,
-            String queueUrl,
-            String secret,
-            UserRepo userRepo,
-            AuditRepo auditRepo,
-            RateLimitRepo rateLimitRepo,
-            GuardianRepo guardianRepo,
-            InviteRepo inviteRepo,
-            String policySha256,
-            DynamoStoreService dedup,
-            boolean localDevelopment,
-            String botUsername,
-            String policyUrl,
-            CheckStore checkStore,
-            SessionStore sessionStore,
-            BufferStore bufferStore,
-            DonationStore donationStore) {
-        this.telegram = telegram;
-        this.sqs = sqs;
-        this.queueUrl = queueUrl;
-        this.secret = secret;
-        this.userRepo = userRepo;
-        this.auditRepo = auditRepo;
-        this.rateLimitRepo = rateLimitRepo;
-        this.guardianRepo = guardianRepo;
-        this.inviteRepo = inviteRepo;
-        this.policySha256 = (policySha256 != null && !policySha256.isBlank()) ? policySha256 : DEFAULT_POLICY_SHA256;
-        this.adapter = new TelegramAdapter();
-        this.dedup = dedup;
-        this.localDevelopment = localDevelopment;
-        this.botUsername = (botUsername != null && !botUsername.isBlank()) ? botUsername : null;
-        this.policyUrl = (policyUrl != null && !policyUrl.isBlank()) ? policyUrl : DEFAULT_POLICY_URL;
-        this.checkStore = checkStore;
-        this.sessionStore = sessionStore;
-        this.bufferStore = bufferStore;
-        this.donationStore = donationStore;
+            AlertStore alertStore) {
+        this(telegram, sqs, queueUrl, secret,
+                null, null, null, null, null,
+                DEFAULT_POLICY_SHA256, null, false, null,
+                null,                       // policyUrl
+                null, null, bufferStore, null, alertStore);
     }
 
     public WebhookHandler(
@@ -471,46 +475,30 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             SessionStore sessionStore,
             DonationStore donationStore,
             String policySha256) {
-        this(telegram, sqs, queueUrl, secret, userRepo, auditRepo, null,
-                null, null, policySha256, null, false, null,
-                null, checkStore, sessionStore, null, donationStore);
+        this(telegram, sqs, queueUrl, secret,
+                userRepo, auditRepo, null, null, null,
+                policySha256, null, false, null,
+                null,                       // policyUrl
+                checkStore, sessionStore, null, donationStore, null);
     }
 
-    public CheckStore getCheckStore() {
-        return checkStore;
-    }
-
-    public SessionStore getSessionStore() {
-        return sessionStore;
-    }
-
-    public BufferStore getBufferStore() {
-        return bufferStore;
-    }
-
-    public DonationStore getDonationStore() {
-        return donationStore;
-    }
-
+    // =====================================================================
+    // 4. Local development helper
+    // =====================================================================
     /**
-     * Handler cho LocalBotRunner (long polling, không có webhook nên không có
-     * header secret, không có SQS).
+     * Handler cho LocalBotRunner (long polling).
      * Đây là đường DUY NHẤT được bỏ qua kiểm tra secret.
      * Tự động khởi tạo kho lưu trữ in-memory để kiểm thử toàn bộ luồng (/start,
      * /caidat, /nguoithan, /ketnoi) ngay trên máy dev mà không cần AWS DynamoDB.
      */
-
     public static WebhookHandler forLocalDevelopment(TelegramClient telegram) {
         String botUser = System.getenv("TELEGRAM_BOT_USERNAME");
-
         if (botUser == null || botUser.isBlank()) {
             botUser = System.getenv("BOT_USERNAME");
         }
-
         if (botUser == null || botUser.isBlank()) {
             botUser = readEnvFileBotUsername();
         }
-
         if ((botUser == null || botUser.isBlank()) && telegram != null) {
             botUser = telegram.getMeUsername();
         }
@@ -528,11 +516,13 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 DEFAULT_POLICY_SHA256,
                 null,                       // dedup
                 true,                       // localDevelopment
-                botUser,
-                createInMemoryCheckRepo(), // checkStore
+                botUser,                    // botUsername
+                null,                       // policyUrl → dùng DEFAULT
+                createInMemoryCheckRepo(),  // checkStore
                 createInMemorySessionStore(),
                 null,                       // bufferStore
-                createInMemoryDonationStore()
+                createInMemoryDonationStore(),
+                null                        // alertStore
         );
     }
 
@@ -933,7 +923,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             // Đã có tác dụng phụ một phần -> giữ khóa dedup, trả 200 để Telegram không
             // retry gây xử lý đôi
             log(context, "Lỗi không mong đợi khi xử lý update " + updateId + ": " + e);
-            if (telegram != null && root != null) {
+            if (telegram != null) {
                 try {
                     long errChatId = root.path("message").path("chat").path("id").asLong();
                     long errFromId = root.path("message").path("from").path("id").asLong();
@@ -1148,7 +1138,67 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return response(200, "DATA_DELETION_CANCELLED");
         }
 
+        // Nút "✅ Đã liên hệ" chỉ để hiện trạng thái (thay cho nút "Tôi đã liên hệ" sau khi đã ghi nhận):
+        // phải answer, nếu không Telegram sẽ quay vòng chờ trên nút vài giây.
+        if ("ack_done".equals(data)) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Bạn đã xác nhận rồi");
+            }
+            return response(200, "CALLBACK_HANDLED");
+        }
+
+        // Người thân bấm "Tôi đã liên hệ" trên cảnh báo
+        if (data != null && data.startsWith("ack:")) {
+            return handleGuardianAck(cb, data.substring("ack:".length()), context);
+        }
+
         return response(200, "UNKNOWN_CALLBACK");
+    }
+
+    /**
+     * Người thân bấm "Tôi đã liên hệ". Chỉ đúng người thân của cảnh báo đó mới ghi nhận được. Ghi nhận xong thì đổi
+     * nút trên chính tin vừa bấm thành "✅ Đã liên hệ" để người thân biết mình đã bấm và không bấm lại.
+     */
+    private APIGatewayProxyResponseEvent handleGuardianAck(TelegramCallbackQuery cb, String alertId, Context context) {
+        if (alertStore == null) {
+            return response(200, "UNKNOWN_CALLBACK");
+        }
+        Optional<AlertRecord> alert = alertStore.get(alertId);
+        boolean allowed = alert.isPresent()
+                && stripUserPrefix(cb.userId()).equals(stripUserPrefix(alert.get().guardianUid()));
+        if (!allowed) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Cảnh báo này không còn hiệu lực.");
+            }
+            return response(200, "CALLBACK_HANDLED");
+        }
+        alertStore.markAcked(alertId, Instant.now());
+        if (telegram != null) {
+            telegram.answerCallbackQuery(cb.queryId(), "Cảm ơn bạn, đã ghi nhận.");
+            markGuardianAckDone(cb, context);
+        }
+        return response(200, "CALLBACK_HANDLED");
+    }
+
+    /**
+     * Sửa bàn phím của tin cảnh báo (hoặc tin nhắc 15 phút) vừa được bấm thành nút trạng thái "✅ Đã liên hệ".
+     * Chỉ ghi log khi lỗi: markAcked đã xong nên việc sửa nút không được làm hỏng ack.
+     */
+    private void markGuardianAckDone(TelegramCallbackQuery cb, Context context) {
+        Integer msgId = parseMessageId(cb.messageId());
+        if (msgId == null) {
+            return;
+        }
+        try {
+            telegram.editReplyMarkup(Long.parseLong(cb.chatId()), msgId, TelegramClient.inlineKeyboard(List.of(
+                    List.of(new InlineButton("✅ Đã liên hệ", "ack_done")))));
+        } catch (Exception e) {
+            log(context, "Không sửa được nút ack: " + e.getClass().getSimpleName());
+        }
+    }
+
+    private static String stripUserPrefix(String uid) {
+        return uid != null && uid.startsWith("USER#") ? uid.substring("USER#".length()) : String.valueOf(uid);
     }
 
     private APIGatewayProxyResponseEvent handleGuardianCallback(
@@ -2236,8 +2286,10 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                         telegram.answerCallbackQuery(queryId, "Bác đã rút đồng ý trước đó");
                     }
                     telegram.sendText(chatId,
-                            "Dạ, Bác đã rút đồng ý trước đó rồi ạ.\n\n"
-                                    + "Khi nào Bác cần sử dụng lại, chỉ cần gõ /start để xem và đồng ý lại nhé!");
+                            """
+                                    Dạ, Bác đã rút đồng ý trước đó rồi ạ.
+                                    
+                                    Khi nào Bác cần sử dụng lại, chỉ cần gõ /start để xem và đồng ý lại nhé!""");
                 }
                 return response(200, "CONSENT_ALREADY_REVOKED");
             }
@@ -2265,8 +2317,10 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 telegram.answerCallbackQuery(queryId, "Đã rút đồng ý");
             }
             telegram.sendText(chatId,
-                    "Dạ cháu đã ghi nhận rút đồng ý của Bác. Mọi liên kết người thân đã được huỷ bỏ và cháu sẽ ngừng hỗ trợ kiểm tra tin nhắn lừa đảo.\n\n"
-                            + "Khi nào Bác cần sử dụng lại, chỉ cần gõ /start để xem và đồng ý lại nhé!");
+                    """
+                            Dạ cháu đã ghi nhận rút đồng ý của Bác. Mọi liên kết người thân đã được huỷ bỏ và cháu sẽ ngừng hỗ trợ kiểm tra tin nhắn lừa đảo.
+                            
+                            Khi nào Bác cần sử dụng lại, chỉ cần gõ /start để xem và đồng ý lại nhé!""");
         }
 
         return response(200, "CONSENT_REVOKED");
@@ -2321,8 +2375,10 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                         telegram.answerCallbackQuery(queryId, "Dữ liệu đã được xoá trước đó");
                     }
                     telegram.sendText(chatId,
-                            "Dạ, toàn bộ dữ liệu của Bác trên hệ thống đã được xoá sạch trước đó rồi ạ!\n\n"
-                                    + "Nếu cần sử dụng lại, Bác chỉ cần gõ /start nhé.");
+                            """
+                                    Dạ, toàn bộ dữ liệu của Bác trên hệ thống đã được xoá sạch trước đó rồi ạ!
+                                    
+                                    Nếu cần sử dụng lại, Bác chỉ cần gõ /start nhé.""");
                 }
                 return response(200, "DATA_ALREADY_DELETED");
             }
@@ -2374,8 +2430,10 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                     telegram.answerCallbackQuery(queryId, "Đã xoá dữ liệu");
                 }
                 telegram.sendText(chatId,
-                        "Cháu đã xoá sạch toàn bộ dữ liệu của Bác trên hệ thống rồi ạ!\n\n"
-                                + "💡 Để bảo vệ quyền riêng tư tuyệt đối, Bác vui lòng tự xóa cuộc trò chuyện này trên ứng dụng Telegram giúp cháu nhé.");
+                        """
+                                Cháu đã xoá sạch toàn bộ dữ liệu của Bác trên hệ thống rồi ạ!
+                                
+                                💡 Để bảo vệ quyền riêng tư tuyệt đối, Bác vui lòng tự xóa cuộc trò chuyện này trên ứng dụng Telegram giúp cháu nhé.""");
             }
 
             return response(200, "DATA_DELETED");
@@ -2474,6 +2532,19 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 return response(500, "QUEUE_NOT_CONFIGURED");
             }
 
+            // 3b. Telegram gửi lại một update mà lần trước đã ghi BUFFER# nhưng enqueue SQS lỗi (trả 500, nhả dedup):
+            // không ghi lần hai (seq mới làm cụm gửi AI có tin trùng), không đếm rate limit lần hai, chỉ enqueue lại job.
+            if (bufferStore != null && queueReady) {
+                OptionalLong buffered = findBufferedSeq(inbound, context);
+                if (buffered.isPresent()) {
+                    log(context, "Update đã có trong BUFFER# (seq=" + buffered.getAsLong() + "): chỉ enqueue lại job");
+                    return enqueueAnalyzeJob(inbound, userId, buffered.getAsLong(), context);
+                }
+            }
+
+            // 3c. Nhớ tên Telegram để tin gửi người thân gọi đúng tên người cao tuổi (best-effort, không chặn xử lý)
+            rememberDisplayName(root, userId, context);
+
             // 4. Kiểm tra Giới hạn tốc độ người dùng (Rate Limiting - BE-26, SH-08)
             if (rateLimitRepo != null) {
                 RateLimitRepo.RateLimitResult rlResult = rateLimitRepo.checkAndIncrement(userId);
@@ -2487,7 +2558,17 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 }
             }
 
-            // 5. Bước tin nhắn chờ ("⏳") (SH-08)
+            // 5. Đường chính (Lambda): gom tin vào BUFFER# rồi enqueue AnalyzeJob trễ (debounce)
+            if (bufferStore != null && queueReady) {
+                return bufferAndEnqueue(inbound, chatId, userId, addressForm, context);
+            }
+
+            // 6. Chế độ Local Development (không có SQS/Worker): tự động trả kết quả kèm nút [Bot báo sai]
+            if (localDevelopment && !queueReady) {
+                return sendSimulatedCheckResult(chatId, userId, inbound.text());
+            }
+
+            // 7. Đường cũ (bufferStore == null): gửi placeholder rồi enqueue nguyên InboundMessage
             if (telegram != null) {
                 try {
                     telegram.sendText(
@@ -2500,24 +2581,16 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 }
             }
 
-            // 6. Chế độ Local Development (không có SQS/Worker): tự động trả kết quả kèm nút [Bot báo sai]
-            if (localDevelopment && !queueReady) {
-                return sendSimulatedCheckResult(chatId, userId, inbound.text());
-            }
-
-            // 7. Enqueue vào SQS (môi trường Cloud/Production)
-            if (queueReady) {
-                try {
-                    String payload = MAPPER.writeValueAsString(inbound);
-                    sqs.sendMessage(
-                            SendMessageRequest.builder()
-                                    .queueUrl(queueUrl)
-                                    .messageBody(payload)
-                                    .build());
-                } catch (Exception e) {
-                    log(context, "Lỗi gửi message vào SQS: " + e);
-                    return response(500, "SQS_FAILED");
-                }
+            try {
+                String payload = MAPPER.writeValueAsString(inbound);
+                sqs.sendMessage(
+                        SendMessageRequest.builder()
+                                .queueUrl(queueUrl)
+                                .messageBody(payload)
+                                .build());
+            } catch (Exception e) {
+                log(context, "Lỗi gửi message vào SQS: " + e);
+                return response(500, "SQS_FAILED");
             }
 
             return response(200, "OK");
@@ -2534,6 +2607,97 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
             return response(200, "CONTENT_INSPECTION_FAILED");
         }
+    }
+
+    /**
+     * Đường chính: gom tin vào BUFFER# rồi enqueue AnalyzeJob trễ 3 giây (debounce, plan §3.4).
+     * Lỗi ghi buffer xảy ra TRƯỚC mọi tác dụng phụ nên trả 500 để Telegram gửi lại update.
+     */
+    private APIGatewayProxyResponseEvent bufferAndEnqueue(
+            InboundMessage inbound, long chatId, String userId, String addressForm, Context context) {
+        final long seq;
+        try {
+            seq = bufferStore.append(inbound.chatId(), inbound, Instant.now().getEpochSecond() + BUFFER_TTL_SECONDS);
+        } catch (Exception e) {
+            log(context, "Lỗi ghi BUFFER#: " + e.getClass().getSimpleName());
+            return response(500, "BUFFER_FAILED");
+        }
+
+        // "⏳" chỉ cho tin đầu cụm (seq == 1); message_id được lưu để worker sửa thành kết quả.
+        if (seq == 1 && telegram != null) {
+            try {
+                int placeholderId = telegram.sendText(
+                        chatId,
+                        "⏳ Cháu đang kiểm tra, " + addressForm.toLowerCase() + " chờ cháu vài giây nhé...");
+                bufferStore.setPlaceholder(inbound.chatId(), placeholderId);
+            } catch (Exception e) {
+                // Tin chờ chỉ là phụ: worker sẽ gửi kết quả thành tin mới nếu không có placeholder
+                log(context, "Không gửi/lưu được tin nhắn chờ: " + e.getClass().getSimpleName());
+            }
+        }
+
+        return enqueueAnalyzeJob(inbound, userId, seq, context);
+    }
+
+    /** Enqueue AnalyzeJob trễ 3 giây cho tin đã nằm trong BUFFER# với seq đã cấp. Lỗi → 500 để Telegram gửi lại. */
+    private APIGatewayProxyResponseEvent enqueueAnalyzeJob(
+            InboundMessage inbound, String userId, long seq, Context context) {
+        try {
+            AnalyzeJob job = AnalyzeJob.create(Ulid.next(), inbound.chatId(), userId, seq, Instant.now());
+            sqs.sendMessage(
+                    SendMessageRequest.builder()
+                            .queueUrl(queueUrl)
+                            .messageBody(JobCodec.toJson(job))
+                            .delaySeconds(AnalyzeJob.DELAY_SECONDS)
+                            .build());
+        } catch (Exception e) {
+            log(context, "Lỗi gửi AnalyzeJob vào SQS: " + e.getClass().getSimpleName());
+            return response(500, "SQS_FAILED");
+        }
+        return response(200, "OK");
+    }
+
+    /** Tin của update này đã nằm trong BUFFER# chưa. Tra lỗi thì coi như chưa có (xử lý như tin mới). */
+    private OptionalLong findBufferedSeq(InboundMessage inbound, Context context) {
+        try {
+            return bufferStore.findSeqByUpdateId(inbound.chatId(), inbound.updateId());
+        } catch (Exception e) {
+            log(context, "Không tra được update trong BUFFER#: " + e.getClass().getSimpleName());
+            return OptionalLong.empty();
+        }
+    }
+
+    /**
+     * Lưu tên Telegram (họ + tên) vào hồ sơ khi khác giá trị đã lưu. Chỉ gọi sau khi người dùng đã đồng ý điều khoản.
+     * Lỗi chỉ ghi log vì đây chỉ là thông tin phụ cho tin gửi người thân.
+     */
+    private void rememberDisplayName(JsonNode root, String userId, Context context) {
+        if (userRepo == null || root == null) {
+            return;
+        }
+        try {
+            String name = displayNameOf(root.path("message").path("from"));
+            if (name.isEmpty()) {
+                return;
+            }
+            Optional<UserRecord> user = userRepo.getUser(userId);
+            if (user.isPresent() && !name.equals(user.get().getDisplayName())) {
+                userRepo.updateDisplayName(userId, name);
+            }
+        } catch (Exception e) {
+            log(context, "Không lưu được tên hiển thị: " + e.getClass().getSimpleName());
+        }
+    }
+
+    /** "Họ Tên" từ object from của Telegram: bỏ ký tự điều khiển, tối đa 60 ký tự; rỗng nếu không có tên. */
+    static String displayNameOf(JsonNode from) {
+        String first = from.path("first_name").asText();
+        String last = from.path("last_name").asText();
+        String full = (first + " " + last).replaceAll("\\p{Cntrl}", "").replaceAll("\\s+", " ").trim();
+        if (full.codePointCount(0, full.length()) > 60) {
+            full = full.substring(0, full.offsetByCodePoints(0, 60)).trim();
+        }
+        return full;
     }
 
     private APIGatewayProxyResponseEvent handleApkBlocked(
@@ -2568,9 +2732,9 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 String elderDisplayName = "";
                 if (root != null && root.has("message") && root.path("message").has("from")) {
                     JsonNode fromNode = root.path("message").path("from");
-                    String firstName = fromNode.path("first_name").asText("").trim();
-                    String lastName = fromNode.path("last_name").asText("").trim();
-                    String username = fromNode.path("username").asText("").trim();
+                    String firstName = fromNode.path("first_name").asText().trim();
+                    String lastName = fromNode.path("last_name").asText().trim();
+                    String username = fromNode.path("username").asText().trim();
 
                     String fullName = (firstName + (lastName.isBlank() ? "" : " " + lastName)).trim();
                     String safeName = TelegramClient.escapeHtml(fullName);
