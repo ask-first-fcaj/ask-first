@@ -84,5 +84,5 @@ Lưu ý: ngưỡng này cũng đặt **sau khi đã thấy số đo**, giống n
 
 - License code: `rapidocr` 3.10.0 là Apache-2.0, `onnxruntime` 1.31.0 là MIT, PaddleOCR là Apache-2.0 (nguồn ở `ocr-spike.md` mục 4, kiểm 30/10/2026).
 - License file trọng số ONNX PP-OCRv6: Apache-2.0 theo `MODEL_LICENSES.md` đi kèm wheel `rapidocr==3.10.0` (liệt kê đúng 3 file với cùng sha256), ghi ở `ai/MODELS.md` (AI-26). Thẻ model PaddlePaddle trên Hugging Face mà file đó dẫn tới chưa mở để đối chiếu: **not verified**.
-- Hiệu năng trên Lambda thật: đã đo 2026-11-23/24 (mục "Độ trễ trên Lambda"). p95 ảnh đầu-cuối (OCR + LLM) khi warm vẫn **not verified**, theo dõi ở INT-02 #66.
+- Hiệu năng trên Lambda thật: đã đo 2026-11-23/24 (mục "Độ trễ trên Lambda"). p95 ảnh đầu-cuối (OCR + LLM) khi warm đo 2026-11-25 qua bot với 21 ảnh: 17,0 s, trong `ai` 12,2 s ([lambda-p95.md](../results/lambda-p95.md)). Vượt mốc 15 s của INT-02 #66, AI1 chấp nhận vì vẫn dưới ngưỡng khoảng 30 s cho ảnh.
 - Ngưỡng sắp cột chỉ chỉnh theo 1 ảnh (`oi-022`).
