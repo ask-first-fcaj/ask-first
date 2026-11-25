@@ -1,0 +1,35 @@
+
+===== B. Lỗi 1: báo 'bận' hai lần =====
+Việc cần làm (thủ công):
+  - Mở bot test trên Telegram (đã bấm "Tôi đồng ý"), nhắn 1 tin. Bot phải trả "⏳".
+  - Quay lại đây và bấm Enter. Script chờ worker thử 5 lần (~100 giây) rồi DLQ chạy.
+Bấm Enter SAU KHI đã nhắn tin ...Chat id: 8452021339  user_id: tg:8452021339
+  t= 10s  webhookQueue=1  webhookDLQ=0
+  t= 20s  webhookQueue=1  webhookDLQ=0
+  t= 30s  webhookQueue=1  webhookDLQ=0
+  t= 40s  webhookQueue=1  webhookDLQ=0
+  t= 50s  webhookQueue=0  webhookDLQ=1
+  t= 60s  webhookQueue=0  webhookDLQ=0
+
+===== Log worker =====
+2026-11-21T16:38:19 job_failed type=AnalyzeJob job=01M7ZFHH8ZJ18Y1HPGMW1W1ZXP error=AiException:invoke receive=1
+2026-11-21T16:38:26 job_failed type=AnalyzeJob job=01M7ZFHH8ZJ18Y1HPGMW1W1ZXP error=AiException:invoke receive=2
+2026-11-21T16:38:48 job_failed type=AnalyzeJob job=01M7ZFHH8ZJ18Y1HPGMW1W1ZXP error=AiException:invoke receive=3
+2026-11-21T16:39:09 job_failed type=AnalyzeJob job=01M7ZFHH8ZJ18Y1HPGMW1W1ZXP error=AiException:invoke receive=4
+2026-11-21T16:39:33 job_failed type=AnalyzeJob job=01M7ZFHH8ZJ18Y1HPGMW1W1ZXP error=AiException:invoke receive=5
+
+===== Log worker-dlq =====
+(không có dòng khớp 'DLQ job' trong log worker-dlq sau 45 giây)
+
+===== Dữ liệu =====
+META: (không còn)
+CHECK# (SK, outcome):
+CHECK#01M7Z89RAEN7AFKVDW2SM867GE	gave_up
+CHECK#01M7Z8HSG5145DT6RNFVQX4VXH	gave_up
+CHECK#01M7Z943Q1SP2BBYRQEC3QJPVG	gave_up
+CHECK#01M7ZAPVCMGSRAR8EV3DH1Y37E	gave_up
+CHECK#01M7ZFHH8ZJ18Y1HPGMW1W1ZXP	gave_up
+webhookQueue : còn 0 message
+webhookDLQ : còn 0 message
+
+>>> Đếm trên Telegram: có bao nhiêu tin 'bận'? (cũ: 2 tin, mới: 1 tin sửa từ ⏳)
