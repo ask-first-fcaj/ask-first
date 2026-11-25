@@ -286,20 +286,114 @@ Nếu CloudFormation báo trạng thái `ROLLBACK_IN_PROGRESS` hoặc `ROLLBACK_
 
 ## 7. Dọn Dẹp Tài Nguyên (Clean Up)
 
-Sau khi hoàn thành đợt kiểm thử hoặc khi không sử dụng môi trường dev, hãy xoá stack để không phát sinh chi phí hoặc rác hạ tầng:
+Làm xong workshop hoặc không dùng stack nữa thì dọn theo đúng thứ tự dưới đây để không bị tính tiền tiếp. Lệnh viết cho stage `dev`, Region `ap-southeast-1`, chạy ở gốc repo bằng Bash (Windows dùng Git Bash hoặc WSL). Đổi `STAGE` nếu bạn deploy stage khác.
 
 ```bash
-# Bước 1: Dọn sạch object trong S3 bucket (nếu bucket có chứa file, CloudFormation sẽ không xoá được bucket)
-BUCKET_NAME=$(aws ssm get-parameter --name "/askfirst/dev/s3/bucket_name" --query Parameter.Value --output text)
-aws s3 rm "s3://$BUCKET_NAME" --recursive
-
-# Bước 2: Xoá sạch toàn bộ stack AWS SAM
-sam delete --stack-name askfirst-dev
+STAGE=dev
+export AWS_REGION=ap-southeast-1
 ```
-Xác nhận `y` khi SAM hỏi xác nhận xoá stack và S3 bucket.
+
+> [!CAUTION]
+> **Các bước 3, 5, 6 không hoàn tác được.** Bước 3 xoá mọi file trong bucket (model, ảnh người dùng hiến tặng). Bước 5 xoá bảng DynamoDB `askfirst-$STAGE` cùng toàn bộ dữ liệu người dùng, bản backup PITR của bảng cũng mất theo. Bước 6 xoá token bot và log. Cần giữ gì thì sao lưu trước.
+
+### Bước 1: Gỡ webhook Telegram
+
+Để Telegram ngừng gửi tin vào Function URL trước khi xoá function:
+
+```bash
+python scripts/set_webhook.py --delete   # đọc TELEGRAM_BOT_TOKEN từ biến môi trường hoặc .env
+```
+
+Kiểm tra: script in ra kết quả `deleteWebhook` thành công. Gọi `getWebhookInfo` của bot sẽ thấy `url` rỗng.
+
+### Bước 2: Tắt provisioned concurrency (nếu đã bật)
+
+Template mặc định **không** bật provisioned concurrency. Nếu bạn tự bật thì tắt:
+
+```bash
+for f in webhook worker ai; do
+  aws lambda list-provisioned-concurrency-configs --function-name askfirst-$STAGE-$f \
+    --query 'ProvisionedConcurrencyConfigs[].FunctionArn' --output text 2>/dev/null
+done
+# Có dòng nào in ra thì xoá theo alias đó, ví dụ:
+aws lambda delete-provisioned-concurrency-config --function-name askfirst-$STAGE-ai --qualifier live
+```
+
+Kiểm tra: chạy lại vòng `for` ở trên không in ra gì.
+
+### Bước 3: Dọn S3 bucket
+
+CloudFormation không xoá được bucket còn object. Bucket của stack không bật versioning, nhưng nếu bạn tự bật thì phải xoá cả các version cũ:
+
+```bash
+BUCKET=$(aws ssm get-parameter --name "/askfirst/$STAGE/s3/bucket_name" --query Parameter.Value --output text)
+aws s3 rm "s3://$BUCKET" --recursive
+# Chỉ khi đã bật versioning: xoá mọi version và delete marker
+aws s3api delete-objects --bucket "$BUCKET" --delete "$(aws s3api list-object-versions --bucket "$BUCKET" \
+  --query '{Objects: [Versions, DeleteMarkers][][].{Key: Key, VersionId: VersionId}}' --output json)"
+```
+
+Kiểm tra: `aws s3api list-object-versions --bucket "$BUCKET" --max-items 1` không còn `Versions` hay `DeleteMarkers`. Bucket sẽ bị xoá ở bước 5.
+
+### Bước 4: Xoá image trong ECR
+
+Repo `askfirst-ai` thuộc stack `askfirst-github-oidc` (mục 3, bước 4) và đã đặt `EmptyOnDelete: true`, nên xoá stack là xoá luôn image:
+
+```bash
+aws cloudformation delete-stack --stack-name askfirst-github-oidc
+aws cloudformation wait stack-delete-complete --stack-name askfirst-github-oidc
+```
+
+Kiểm tra: `aws ecr describe-repositories --repository-names askfirst-ai` báo `RepositoryNotFoundException`. Nếu tài khoản dùng chung OIDC provider với stack khác thì xem kỹ trước khi xoá stack này.
+
+### Bước 5: Xoá stack SAM
+
+```bash
+sam delete --stack-name askfirst-$STAGE
+```
+
+Gõ `y` khi SAM hỏi xác nhận xoá stack và artifact.
+
+Lệnh xoá Lambda `webhook`, `worker`, `worker-dlq`, `ai`, bảng DynamoDB, hai hàng đợi SQS, bucket, alarm, các SSM parameter do stack tạo và artifact deploy của stack trong bucket `aws-sam-cli-managed-default`.
+
+Kiểm tra: `aws cloudformation describe-stacks --stack-name askfirst-$STAGE` báo `does not exist`.
+
+### Bước 6: Xoá thứ stack không quản lý
+
+```bash
+# Log group do Lambda tự tạo
+for g in $(aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/askfirst-$STAGE-" \
+           --query 'logGroups[].logGroupName' --output text); do
+  aws logs delete-log-group --log-group-name "$g"
+done
+# SSM parameter tạo tay ở mục 5 (token bot, webhook secret, policy_sha256...)
+for n in $(aws ssm get-parameters-by-path --path "/askfirst/$STAGE" --recursive \
+           --query 'Parameters[].Name' --output text); do
+  aws ssm delete-parameter --name "$n"
+done
+```
+
+- **Tài nguyên tạo tay ngoài stack**, ví dụ Lambda `ai` deploy tay khi chưa truyền `AiImageUri`, hay repo ECR khác `askfirst-ai`: `sam delete` không xoá. Tìm bằng các lệnh ở mục kiểm tra cuối rồi xoá tay (`aws lambda delete-function --function-name <tên>`, `aws ecr delete-repository --repository-name <tên> --force`).
+- **AWS Budgets** (BE-01) không tính tiền nên có thể giữ. Muốn xoá: `aws budgets describe-budgets --account-id <account_id>` để lấy tên, rồi `aws budgets delete-budget --account-id <account_id> --budget-name <tên>`.
+- **Bucket `aws-sam-cli-managed-default`** do `resolve_s3 = true` tạo, dùng chung cho mọi stack SAM trong Region. Không còn stack SAM nào thì làm rỗng bucket đó rồi xoá stack `aws-sam-cli-managed-default`.
+- **Guardrail Bedrock** (`ap-southeast-2`): chỉ khi bạn đã tạo bằng `ai/scripts/create_guardrail.py` thì xoá bằng `aws bedrock delete-guardrail --region ap-southeast-2 --guardrail-identifier <id>`.
+
+### Kiểm tra cuối: không còn tài nguyên `askfirst-$STAGE`
+
+```bash
+aws cloudformation describe-stacks --stack-name askfirst-$STAGE 2>&1 | grep -q 'does not exist' && echo "stack: đã xoá"
+aws lambda list-functions --query "Functions[?starts_with(FunctionName, 'askfirst-$STAGE')].FunctionName" --output text
+aws dynamodb list-tables --query "TableNames[?starts_with(@, 'askfirst-$STAGE')]" --output text
+aws sqs list-queues --queue-name-prefix "askfirst-$STAGE" --query QueueUrls --output text
+aws s3 ls | grep "askfirst-$STAGE"
+aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/askfirst-$STAGE-" --query 'logGroups[].logGroupName' --output text
+aws ssm get-parameters-by-path --path "/askfirst/$STAGE" --recursive --query 'Parameters[].Name' --output text
+```
+
+Sáu lệnh sau dòng đầu đều phải in ra rỗng (hoặc `None`).
 
 > [!NOTE]
-> Luôn theo dõi cảnh báo **AWS Budgets** (ngưỡng 10$, 25$, 50$) đã thiết lập ở task BE-01 để đảm bảo tài khoản dev luôn nằm trong hạn mức an toàn.
+> Trong lúc còn dùng stack, theo dõi cảnh báo **AWS Budgets** (ngưỡng 10$, 25$, 50$) đã thiết lập ở task BE-01.
 
 ---
 
