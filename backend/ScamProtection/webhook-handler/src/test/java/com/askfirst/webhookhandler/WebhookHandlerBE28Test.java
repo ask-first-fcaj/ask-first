@@ -73,7 +73,7 @@ class WebhookHandlerBE28Test {
 
     // ── Test 2: Callback tạo mã mời ──────────────────────────────────────────
     @Test
-    @DisplayName("BE-28: Bấm [Tạo mã kết nối] → sinh mã 6 chữ số và lưu InviteRepo")
+    @DisplayName("BE-28: Bấm [Tạo mã kết nối] → sinh mã 8 ký tự và lưu InviteRepo")
     void testCreateInvite() {
         APIGatewayProxyRequestEvent req = buildCallbackRequest(ELDER_CHAT_ID, "guardian:create_invite");
         APIGatewayProxyResponseEvent res = handler.handleRequest(req, fakeContext());
@@ -87,7 +87,7 @@ class WebhookHandlerBE28Test {
         assertEquals(ELDER_UID, invite.getElderUid());
         assertEquals("pending", invite.getStatus());
         assertNotNull(invite.getCode(), "Mã không được null");
-        assertTrue(invite.getCode().matches("\\d{6}"), "Mã phải đúng 6 chữ số");
+        assertTrue(invite.getCode().matches("[A-HJ-NP-Z2-9]{8}"), "Mã phải đúng 8 ký tự base32 (LB-01)");
 
         // Bot phải gửi tin nhắn chứa mã
         String msgText = telegramClient.sentMessages.get(0).text;
@@ -460,7 +460,7 @@ class WebhookHandlerBE28Test {
         // Mã vẫn được lưu
         assertEquals(1, inviteRepo.store.size());
         InviteRecord invite = inviteRepo.store.values().iterator().next();
-        assertTrue(invite.getCode().matches("\\d{6}"), "Mã phải đúng 6 chữ số");
+        assertTrue(invite.getCode().matches("[A-HJ-NP-Z2-9]{8}"), "Mã phải đúng 8 ký tự base32 (LB-01)");
 
         // Tin nhắn phải chứa mã và mention đến deep link / share
         String msgText = telegramClient.sentMessages.get(0).text;
@@ -469,6 +469,98 @@ class WebhookHandlerBE28Test {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── LB-01 / LB-02 / LB-06 (#189) ─────────────────────────────────────────
+    @Test
+    @DisplayName("LB-01: mã hết hạn và mã không tồn tại trả cùng một câu, không nhắc lại mã")
+    void testKetNoiErrorsShareOneMessage() {
+        InviteRecord expired = new InviteRecord("ABCD2345", ELDER_UID, Instant.now().getEpochSecond() - 1);
+        expired.setStatus("pending");
+        inviteRepo.store.put("INVITE#ABCD2345", expired);
+
+        handler.handleRequest(buildMessageRequest(RELATIVE_CHAT_ID, "/ketnoi abcd2345"), fakeContext());
+        handler.handleRequest(buildMessageRequest(RELATIVE_CHAT_ID, "/ketnoi ZZZZ9999"), fakeContext());
+
+        assertEquals(2, telegramClient.sentMessages.size());
+        assertEquals(WebhookHandler.INVITE_INVALID_MESSAGE, telegramClient.sentMessages.get(0).text);
+        assertEquals(WebhookHandler.INVITE_INVALID_MESSAGE, telegramClient.sentMessages.get(1).text);
+    }
+
+    @Test
+    @DisplayName("LB-01: /ketnoi quá 5 lần/giờ → chặn, không tra mã nữa")
+    void testKetNoiRateLimited() {
+        CountingRateLimitRepo rl = new CountingRateLimitRepo();
+        WebhookHandler h = new WebhookHandler(telegramClient, null, null, SECRET, null, auditRepo, rl,
+                guardianRepo, inviteRepo, POLICY_SHA256, null, false);
+
+        for (int i = 0; i < WebhookHandler.KETNOI_MAX_PER_HOUR; i++) {
+            assertEquals("INVALID_INVITE",
+                    h.handleRequest(buildMessageRequest(RELATIVE_CHAT_ID, "/ketnoi ZZZZ999" + i), fakeContext()).getBody());
+        }
+        APIGatewayProxyResponseEvent res =
+                h.handleRequest(buildMessageRequest(RELATIVE_CHAT_ID, "/ketnoi ZZZZ9999"), fakeContext());
+
+        assertEquals("KETNOI_RATE_LIMITED", res.getBody());
+        assertEquals(WebhookHandler.KETNOI_MAX_PER_HOUR + 1, rl.counts.get("ketnoi:" + RELATIVE_UID));
+    }
+
+    @Test
+    @DisplayName("LB-01: mã mời ngẫu nhiên, đúng bảng chữ")
+    void testNewInviteCodeFormat() {
+        Set<String> codes = new HashSet<>();
+        for (int i = 0; i < 1000; i++) {
+            String c = WebhookHandler.newInviteCode();
+            assertTrue(c.matches("[A-HJ-NP-Z2-9]{8}"), c);
+            codes.add(c);
+        }
+        assertEquals(1000, codes.size(), "1000 mã không được trùng");
+    }
+
+    @Test
+    @DisplayName("LB-02: lệnh và callback trong nhóm bị bỏ qua, bot không trả lời")
+    void testGroupChatIgnored() {
+        String msg = """
+                {"update_id":7,"message":{"message_id":1,"date":1,"chat":{"id":-100,"type":"group"},
+                "from":{"id":111,"is_bot":false,"first_name":"Test"},"text":"/nguoithan"}}
+                """;
+        String cb = """
+                {"update_id":8,"callback_query":{"id":"cq9","from":{"id":111,"is_bot":false},
+                "message":{"message_id":10,"date":1,"chat":{"id":-100,"type":"supergroup"}},"data":"g:inv"}}
+                """;
+        for (String body : List.of(msg, cb)) {
+            APIGatewayProxyResponseEvent res = handler.handleRequest(new APIGatewayProxyRequestEvent()
+                    .withHeaders(Map.of("X-Telegram-Bot-Api-Secret-Token", SECRET)).withBody(body), fakeContext());
+            assertEquals("IGNORED_NON_PRIVATE", res.getBody());
+        }
+        assertTrue(telegramClient.sentMessages.isEmpty());
+        assertTrue(inviteRepo.store.isEmpty());
+    }
+
+    @Test
+    @DisplayName("LB-06: /nguoithan hiện người thân pending là chờ xác nhận, không phải đang hoạt động")
+    void testPendingGuardianShownAsPending() {
+        GuardianRecord pending = new GuardianRecord(ELDER_UID, RELATIVE_UID);
+        pending.setName("Con gái");
+        pending.setStatus("pending");
+        pending.setShareLevel(1);
+        guardianRepo.save(pending);
+
+        handler.handleRequest(buildMessageRequest(ELDER_CHAT_ID, "/nguoithan"), fakeContext());
+
+        String text = telegramClient.sentMessages.get(0).text;
+        assertTrue(text.contains("⏳ Chờ xác nhận"), text);
+        assertFalse(text.contains("Đang hoạt động"), text);
+    }
+
+    static class CountingRateLimitRepo extends com.askfirst.common.store.RateLimitRepo {
+        final Map<String, Integer> counts = new HashMap<>();
+
+        @Override
+        public RateLimitResult checkAndIncrement(String userId, int maxPerHour, int maxPerDay) {
+            int n = counts.merge(userId, 1, Integer::sum);
+            return new RateLimitResult(n <= maxPerHour, n, n, "test");
+        }
+    }
+
     private APIGatewayProxyRequestEvent buildMessageRequest(long chatId, String text) {
         String body = """
                 {"update_id":1,"message":{"message_id":1,"date":1,"chat":{"id":%d,"type":"private"},
