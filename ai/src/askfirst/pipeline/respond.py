@@ -215,9 +215,9 @@ def _buttons(level: str, ctx: m.RenderContext) -> list[list[m.Button]]:
     if level == "DANGEROUS":
         row.append(m.Button(kind="checklist", label="📋 Việc cần làm ngay"))
     if ctx.has_guardian and level == "SUSPICIOUS" and not ctx.alerts:
-        row.append(m.Button(kind="alert_guardian", label="📣 Báo cho con"))
+        row.append(m.Button(kind="alert_guardian", label="📣 Báo cho người nhà"))
     elif ctx.has_guardian and level in ("DANGEROUS", "SUSPICIOUS", "UNSURE"):
-        row.append(m.Button(kind="call_guardian", label="📞 Gọi cho con"))
+        row.append(m.Button(kind="call_guardian", label="📞 Gọi cho người nhà"))
     return [r for r in (row, [m.Button(kind="report_wrong", label="👎 Bot báo sai")]) if r]
 
 

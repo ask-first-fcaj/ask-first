@@ -1,4 +1,4 @@
 --- message 0 (silent=False) 
-🟡 Bot chưa đọc được nội dung này. Bác chụp lại rõ hơn hoặc dán chữ vào đây giúp Bot nhé.
+🟡 Cháu chưa đọc được nội dung này. Bác chụp lại rõ hơn hoặc dán chữ vào đây giúp cháu nhé.
 
 Trong lúc chờ, nếu ai bảo chuyển tiền, đọc OTP hay giữ bí mật thì bác hãy dừng lại.
