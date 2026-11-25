@@ -5,6 +5,9 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 
 ## [Unreleased]
 
+### Added
+- BE-06 (#62): **image Lambda `ai`**: `ai/Dockerfile` (base Lambda Python 3.12, model tải từ S3 lúc chạy), workflow `AI image` build trên GitHub Actions, kiểm image ≤ 2 GB, import đủ thư viện trên rootfs chỉ đọc và gọi thử handler bản stub; chạy tay thì đẩy lên ECR qua OIDC (`infra/github-oidc.yaml`). `infra/template.yaml` thêm function `ai` (3008 MB, 90 s, x86_64, alias `live`, quyền DynamoDB chỉ `CACHE#`/`URL#`), chỉ tạo khi truyền `AiImageUri`. Cách deploy ở `infra/README.md` bước 4.
+
 ### Changed
 - `WebhookHandler`: khi có `BufferStore` thì ghi buffer và enqueue `AnalyzeJob` thay cho việc gửi nguyên `InboundMessage` vào SQS; không có `BufferStore` thì giữ đường cũ (cho test cũ và `LocalBotRunner`). Constructor Lambda luôn có `BufferStore`.
 - `TelegramClient`: `sendText(..., silent)` (tin nhắc người thân không kêu) và `editText(..., replyMarkup)` (sửa "⏳" kèm nút). Hai overload cũ giữ nguyên.

@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  ECR repo cho image Lambda ai + role OIDC để GitHub Actions (ai-image.yml) đẩy image (BE-06).
+  Deploy MỘT lần mỗi tài khoản, tách khỏi stack chính vì repo phải có image trước khi tạo function ai:
+  aws cloudformation deploy --region ap-southeast-1 --stack-name askfirst-github-oidc
+    --template-file infra/github-oidc.yaml --capabilities CAPABILITY_NAMED_IAM
+  Tài khoản đã có OIDC provider token.actions.githubusercontent.com thì thêm --parameter-overrides CreateOidcProvider=false.
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: ask-first-fcaj/ask-first
+  CreateOidcProvider:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+
+Conditions:
+  MakeProvider: !Equals [!Ref CreateOidcProvider, 'true']
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: MakeProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+
+  AiImageRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: askfirst-ai
+      EmptyOnDelete: true   # SH-10: xoá stack là xoá luôn image
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {"rules":[{"rulePriority":1,"description":"giữ 5 image mới nhất","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":5},"action":{"type":"expire"}}]}
+
+  AiImagePushRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: askfirst-github-ai-image
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepo}:*
+      Policies:
+        - PolicyName: push-ai-image
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                  - ecr:BatchGetImage
+                Resource: !GetAtt AiImageRepo.Arn
+
+Outputs:
+  AiImagePushRoleArn:
+    Description: Đặt vào repo variable AWS_AI_IMAGE_ROLE_ARN
+    Value: !GetAtt AiImagePushRole.Arn
+  AiImageRepoUri:
+    Value: !GetAtt AiImageRepo.RepositoryUri

@@ -1,0 +1,88 @@
+# Build image Lambda `ai` (BE-06): kiểm dung lượng ≤ 2 GB, import đủ thư viện trên rootfs chỉ đọc, gọi thử handler
+# (PIPELINE_IMPL=stub) qua Lambda RIE có sẵn trong base image. Chạy tay (workflow_dispatch) thì đẩy thêm lên ECR
+# bằng OIDC: role tạo từ infra/github-oidc.yaml, ARN để ở repo variable AWS_AI_IMAGE_ROLE_ARN.
+name: AI image
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ai/**
+      - prompts/**
+      - kb/**
+      - .dockerignore
+      - .github/workflows/ai-image.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: askfirst-ai:${{ github.sha }}
+  AWS_REGION: ap-southeast-1
+  ECR_REPO: askfirst-ai
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write   # chỉ dùng khi chạy tay để đẩy ECR
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: docker build -f ai/Dockerfile -t "$IMAGE" .
+
+      - name: Dung lượng ≤ 2 GB
+        run: |
+          size=$(docker image inspect "$IMAGE" --format '{{.Size}}')
+          echo "image: $((size / 1024 / 1024)) MB" | tee -a "$GITHUB_STEP_SUMMARY"
+          test "$size" -le $((2 * 1024 * 1024 * 1024))
+
+      - name: Import đủ thư viện (rootfs chỉ đọc như Lambda)
+        run: |
+          docker run --rm --read-only --tmpfs /tmp --entrypoint python "$IMAGE" -c \
+            "import cv2, onnxruntime, rapidocr, sentencepiece, PIL, boto3, askfirst.handler, askfirst.pipeline.real, askfirst.local_models.vietocr; print('ok')"
+
+      - name: Gọi thử handler (stub) qua Lambda RIE
+        run: |
+          docker run -d --name ai --read-only --tmpfs /tmp -p 9000:8080 -e PIPELINE_IMPL=stub "$IMAGE"
+          python3 -c "import json; print(json.dumps(json.load(open('contracts/fixtures/analyze/default.json'))['request']))" > req.json
+          for i in $(seq 1 20); do
+            curl -sf -XPOST localhost:9000/2015-03-31/functions/function/invocations -d @req.json -o resp.json && break
+            sleep 1
+          done
+          docker logs ai
+          cat resp.json
+          python3 -c "import json,sys; r=json.load(open('resp.json')); sys.exit(0 if r.get('op')=='analyze' and not r.get('error') and r.get('analyze') else 1)"
+
+      - name: Lưu image (push ECR bằng tay khi chưa có OIDC)
+        run: docker save "$IMAGE" | gzip -1 > ai-image.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-image
+          path: ai-image.tar.gz
+          retention-days: 3
+
+      - name: Đẩy lên ECR (chỉ khi chạy tay)
+        if: github.event_name == 'workflow_dispatch'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_AI_IMAGE_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Push
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          registry=$(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
+          uri="$registry/$ECR_REPO:${GITHUB_SHA}"
+          docker tag "$IMAGE" "$uri"
+          docker push "$uri"
+          echo "Deploy: \`sam deploy --parameter-overrides AiImageUri=$uri ...\`" | tee -a "$GITHUB_STEP_SUMMARY"

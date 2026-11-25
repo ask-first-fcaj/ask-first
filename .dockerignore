@@ -1,0 +1,9 @@
+# Context build của ai/Dockerfile là gốc repo; chỉ cần ai/, prompts/, kb/.
+*
+!ai/pyproject.toml
+!ai/uv.lock
+!ai/src
+!ai/config
+!prompts
+!kb
+**/__pycache__
