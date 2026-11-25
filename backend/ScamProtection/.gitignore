@@ -44,3 +44,7 @@ localstack-data/
 
 # Maven Shade Plugin generated files
 **/dependency-reduced-pom.xml
+
+
+# Local scenario test outputs
+scenario-results/

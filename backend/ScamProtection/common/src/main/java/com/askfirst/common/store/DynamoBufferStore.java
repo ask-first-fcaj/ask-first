@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
 
@@ -59,9 +60,36 @@ public final class DynamoBufferStore implements BufferStore {
                         DynamoStoreService.ATTR_PK, s(pk(chatId)),
                         DynamoStoreService.ATTR_SK, s(msgSk(seq)),
                         "payload", s(AiCodec.toJson(message)),
+                        "update_id", s(message.updateId()),   // để nhận ra update Telegram gửi lại
                         "ttl", n(ttlEpochSeconds)))
                 .build());
         return seq;
+    }
+
+    @Override
+    public OptionalLong findSeqByUpdateId(String chatId, String updateId) {
+        Map<String, AttributeValue> startKey = null;
+        do {
+            QueryRequest.Builder request = QueryRequest.builder()
+                    .tableName(table)
+                    .consistentRead(true)
+                    .keyConditionExpression("PK = :pk AND begins_with(SK, :msg)")
+                    .filterExpression("update_id = :u")
+                    .expressionAttributeValues(Map.of(
+                            ":pk", s(pk(chatId)),
+                            ":msg", s(MSG_PREFIX),
+                            ":u", s(updateId)));
+            if (startKey != null) {
+                request.exclusiveStartKey(startKey);
+            }
+            QueryResponse page = client.query(request.build());
+            for (Map<String, AttributeValue> item : page.items()) {
+                String sk = item.get(DynamoStoreService.ATTR_SK).s();
+                return OptionalLong.of(Long.parseLong(sk.substring(MSG_PREFIX.length())));
+            }
+            startKey = page.hasLastEvaluatedKey() && !page.lastEvaluatedKey().isEmpty() ? page.lastEvaluatedKey() : null;
+        } while (startKey != null);
+        return OptionalLong.empty();
     }
 
     @Override

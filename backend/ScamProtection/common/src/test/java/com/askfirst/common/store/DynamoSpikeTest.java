@@ -21,7 +21,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * DynamoDB spike: kiểm tra schema annotation và conditional write (BE-14, BE-22).
- *
  * Test schema chạy không cần Docker (chỉ dùng TableSchema.fromBean).
  * Test integration dùng Testcontainers (amazon/dynamodb-local): bị bỏ qua tự động nếu
  * Docker không có mặt (@Testcontainers(disabledWithoutDocker = true)).

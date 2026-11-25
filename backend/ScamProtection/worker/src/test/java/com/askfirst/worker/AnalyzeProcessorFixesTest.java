@@ -12,6 +12,8 @@ import com.askfirst.common.job.AnalyzeJob;
 import com.askfirst.common.job.FollowupJob;
 import com.askfirst.common.store.AlertRecord;
 import com.askfirst.common.store.AlertStore;
+import com.askfirst.common.store.CheckRecord;
+import com.askfirst.common.store.CheckStore;
 import com.askfirst.common.store.SessionRecord;
 import com.askfirst.common.store.SessionStore;
 import com.askfirst.worker.AnalyzeProcessor.Result;
@@ -78,6 +80,61 @@ class AnalyzeProcessorFixesTest {
 
         assertEquals(WorkerMessages.busy("Bác"), env.telegram.edited.get(0).text());
         assertFalse(env.buffer.exists(CHAT));    // tin gửi lại sau đó không bị gộp với job đã bỏ cuộc
+    }
+
+    @Test
+    void notifyGaveUp_marksJobHandled_soDlqHandlerDoesNotNotifyAgain() {
+        long seq = seedWithPlaceholder();
+
+        env.analyze.notifyGaveUp(job(seq));
+
+        assertTrue(env.checks.exists(UID, JOB));
+        assertEquals("gave_up", env.checks.get(UID, JOB).outcome());
+    }
+
+    @Test
+    void notifyGaveUp_whenNewerMessageArrived_leavesSharedPlaceholderAlone() {
+        long newest = env.seed(CHAT, 2);                 // job seq=1 đã cũ: job seq=2 sẽ trả lời cả cụm
+        env.buffer.setPlaceholder(CHAT, 77);
+
+        env.analyze.notifyGaveUp(job(1));
+
+        assertEquals(2, newest);
+        assertTrue(env.telegram.edited.isEmpty());       // không biến "⏳" của cụm đang chạy thành "bận"
+        assertTrue(env.telegram.sent.isEmpty());
+        assertEquals(77, env.buffer.state(CHAT).get().placeholderId());
+        assertEquals("superseded", env.checks.get(UID, JOB).outcome());
+        assertTrue(env.logs.stream().anyMatch(l -> l.contains("give_up_skip=superseded")));
+    }
+
+    @Test
+    void notifyGaveUp_markFailure_doesNotPreventClosingTheBuffer() {
+        CheckStore failingPut = new CheckStore() {
+            @Override
+            public boolean exists(String userId, String checkId) {
+                return env.checks.exists(userId, checkId);
+            }
+
+            @Override
+            public void put(CheckRecord record) {
+                throw new IllegalStateException("dynamo down");
+            }
+
+            @Override
+            public void updateFeedback(String userId, String checkId, String feedback) {
+                env.checks.updateFeedback(userId, checkId, feedback);
+            }
+        };
+        AnalyzeProcessor p = new AnalyzeProcessor(env.buffer, new FlagsCache(env.flagsStore, env.clock), failingPut,
+                env.alerts, env.locks, env.directory, env.ai, env.telegram, env.queue, env.clock,
+                () -> "01FOLLOWUP0000000000000001", env.logs::add);
+        long seq = seedWithPlaceholder();
+
+        p.notifyGaveUp(job(seq));
+
+        assertEquals(WorkerMessages.busy("Bác"), env.telegram.edited.get(0).text());
+        assertFalse(env.buffer.exists(CHAT));
+        assertTrue(env.logs.stream().anyMatch(l -> l.contains("give_up_mark_failed")));
     }
 
     // ---------- #7 session phải được ghi trước CHECK# ----------
