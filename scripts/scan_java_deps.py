@@ -53,7 +53,8 @@ def run_mvn_dependency_list(project_dir: Path) -> list[str]:
     cmd = [mvn, "dependency:list", "-DincludeScope=runtime", "-B"]
     proc = subprocess.run(cmd, cwd=project_dir, capture_output=True, text=True, check=False, shell=(os.name == "nt"))
     if proc.returncode != 0:
-        print(f"Lỗi khi chạy {mvn} dependency:list:\n{proc.stderr}", file=sys.stderr)
+        err_msg = proc.stderr.strip() or proc.stdout.strip()
+        print(f"Lỗi khi chạy {mvn} dependency:list:\n{err_msg}", file=sys.stderr)
         sys.exit(1)
     return proc.stdout.splitlines()
 
