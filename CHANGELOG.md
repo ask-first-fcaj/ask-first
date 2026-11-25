@@ -6,6 +6,7 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 ## [Unreleased]
 
 ### Changed
+- #165: judge dùng prompt **`judge_v3`** (`prompts/judge_v3.md`, `PROMPT_VERSION`). Thêm danh sách mã dấu hiệu, trước đây 94% mã LLM trả về là mã tự đặt nên lời giải thích theo mã bị mất, nay còn 14%; test giữ danh sách khớp `kb/templates/signals.j2`. Thêm quy tắc: tin xưng cơ quan chỉ mời đến trụ sở, không đòi hành động rủi ro thì chấm dưới 50, có đòi hành động thì từ 75. Eval có Bedrock 3 lượt (ngưỡng 70/60/25): `hd-rt-32` `SUSPICIOUS` → `UNSURE`, `hd-rt-05` vẫn `DANGEROUS`, recall 100%, báo nhầm `benign_suspicious` 5–10% → 5%, `hard` 25% → 0%, đúng kịch bản ~60% → ~67%. Chi tiết ở ADR-002.
 - SH-08 (#54), phần BE2: **đồng bộ toàn bộ câu từ phía Backend** trong `WebhookHandler.java`, `WorkerHandler.java` và tập trung vào module `BotMessages`:
   - Lời chào Onboarding `/start` khi chưa đồng ý: bot xưng "cháu" lễ phép, bỏ từ ngữ chuyên môn (Nghị định 356, Forward...), tạm thời không đề cập lệnh `/xoadulieu` (chờ hoàn tất BE-31), trích dẫn link chính sách quyền riêng tư (`POLICY_URL`), đổi 2 nút bấm thành `✅ Đồng ý` và `Không đồng ý`.
   - Phản hồi sau khi bấm Đồng ý: cảm ơn lễ phép theo xưng hô `{xh}`, hướng dẫn cách gửi tin (chuyển tiếp/chụp màn hình/dán chữ), hướng dẫn gõ "Tôi bị lừa rồi" hoặc `/bilua`, mẹo ghim đoạn chat lên đầu.
