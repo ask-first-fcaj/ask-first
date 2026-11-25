@@ -1,6 +1,8 @@
 """Bedrock Converse client (AI-02): timeout, retry with backoff + jitter, token/cost accounting, models from config/models.yaml.
 
 Never logs or stores prompt/response text (plan §3.1)."""
+import functools
+import os
 import random
 import time
 from collections.abc import Callable
@@ -9,8 +11,10 @@ from pathlib import Path
 from typing import Any
 
 import boto3
+import botocore.session
 import yaml
 from botocore.config import Config
+from botocore.credentials import RefreshableCredentials
 from botocore.exceptions import ClientError, ConnectTimeoutError, ReadTimeoutError
 
 DEFAULT_CONFIG = Path(__file__).resolve().parents[3] / "config" / "models.yaml"
@@ -18,6 +22,29 @@ RETRYABLE_CODES = {"ThrottlingException", "ModelTimeoutException", "ServiceUnava
 MAX_ATTEMPTS = 3
 BACKOFF_BASE_S = 0.5
 BACKOFF_CAP_S = 4.0
+
+
+def runtime_client(cfg: Config) -> Any:
+    """Client bedrock-runtime. Có env ``BEDROCK_ROLE_ARN`` (Lambda ở account team, Bedrock ở account khác) thì assume
+    role đó; cred tự làm mới trước khi hết hạn."""
+    role_arn = os.environ.get("BEDROCK_ROLE_ARN")
+    if not role_arn:
+        return boto3.client("bedrock-runtime", config=cfg)
+    return _assumed_session(role_arn).client("bedrock-runtime", config=cfg)
+
+
+@functools.cache
+def _assumed_session(role_arn: str) -> boto3.Session:
+    sts = boto3.client("sts")
+
+    def fetch() -> dict[str, str]:
+        c = sts.assume_role(RoleArn=role_arn, RoleSessionName="askfirst-ai")["Credentials"]
+        return {"access_key": c["AccessKeyId"], "secret_key": c["SecretAccessKey"], "token": c["SessionToken"],
+                "expiry_time": c["Expiration"].isoformat()}
+
+    core = botocore.session.get_session()
+    core._credentials = RefreshableCredentials.create_from_metadata(fetch(), fetch, "assume-role")  # boto3 không có API công khai cho cred tự làm mới
+    return boto3.Session(botocore_session=core)
 
 
 class LLMError(Exception):
@@ -55,7 +82,7 @@ class BedrockClient:
             spec = self.config[role]
             timeout = spec["timeout_s"]
             cfg = Config(region_name=self.config["bedrock_region"], connect_timeout=timeout, read_timeout=timeout, retries={"total_max_attempts": 1})  # we retry ourselves; botocore's max_attempts=1 would still add one retry
-            self.clients[role] = boto3.client("bedrock-runtime", config=cfg)
+            self.clients[role] = runtime_client(cfg)
         return self.clients[role]
 
     def model_id(self, role: str) -> str:

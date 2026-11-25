@@ -26,9 +26,13 @@ public class WorkerHandler implements RequestHandler<SQSEvent, SQSBatchResponse>
     @Override
     public SQSBatchResponse handleRequest(SQSEvent event, Context context) {
         List<SQSBatchResponse.BatchItemFailure> failures = new ArrayList<>();
+        if (event == null || event.getRecords() == null) {
+            return new SQSBatchResponse(failures);
+        }
         for (SQSEvent.SQSMessage message : event.getRecords()) {
             try {
-                runner.handle(message.getBody(), receiveCount(message), context.getRemainingTimeInMillis());
+                int remaining = context != null ? context.getRemainingTimeInMillis() : 120_000;
+                runner.handle(message.getBody(), receiveCount(message), remaining);
             } catch (Exception e) {
                 // Lý do đã được WorkerRunner log (chỉ mã lỗi). Không log thêm e ở đây vì message có thể chứa nội dung.
                 failures.add(new SQSBatchResponse.BatchItemFailure(message.getMessageId()));
