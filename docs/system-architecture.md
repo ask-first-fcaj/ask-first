@@ -66,7 +66,7 @@
 | D8 | **RAG local**: embedding bằng model nhỏ chạy trong Lambda; index để trên S3; tính cosine trong RAM | Không cần vector DB, không tốn tiền embedding API |
 | D9 | **Telegram**: webhook + `secret_token`, deep link để liên kết người thân, inline keyboard; **MVP tương tác hoàn toàn trong chat**, Mini App là MVP+. Lõi xử lý vẫn tách qua **Channel Adapter** để cắm Zalo sau này | Telegram đáp ứng đủ primitive cho mọi luồng (§2) |
 | D10 | **Không lưu nội dung gốc**; chỉ lưu kết luận, mã dấu hiệu và hash; TTL 30 ngày | Luật BVDLCN 91/2025/QH15 và NĐ 356/2025/NĐ-CP (research-concept §3.2) |
-| D11 | **Chi phí ước tính 3–6 USD/tháng ở 3.000 lượt** | Xem §12 |
+| D11 | **Chi phí ước tính 2,4–6,2 USD/tháng ở 3.000 lượt** | Xem §12 |
 | D12 | **Backend Java 21 (`webhook`, `worker`, SnapStart), AI Python 3.12 (Lambda `ai` riêng, container image)**; hai bên nói chuyện qua invoke đồng bộ, hợp đồng JSON Schema sinh từ Pydantic | Team BE mạnh Java; hệ sinh thái ML (ONNX Runtime, PaddleOCR, sherpa-onnx, eval) chủ yếu là Python. Ranh giới là một lời gọi hàm có schema, không phải microservice (§4.3, §4.5) |
 
 ---
@@ -547,7 +547,7 @@ Mọi việc quản lý chạy ở **đường nhanh của webhook** (chỉ đ�
 
 | Phương án | Chi phí/tháng ở 3.000 lượt | Vận hành |
 |---|---|---|
-| Bedrock open-weight (Qwen3 32B) | **≈ 1,3 USD** (§12) | Không phải làm gì |
+| Bedrock open-weight (Qwen3 32B) | **≈ 1,8 USD** (§12) | Không phải làm gì |
 | EC2 g4dn.xlarge (T4 16 GB) ở Singapore, chạy 24/7 | **≈ 530 USD** (0,736 USD/giờ, nguồn tổng hợp bên thứ ba ⚠️ [L6]) | Vá lỗi, scale, giám sát, tự bật tắt |
 | EC2 GPU chỉ bật 8 giờ/ngày | ≈ 180 USD, và bot "tắt" ngoài giờ | Không chấp nhận được với một bot an toàn |
 | Lambda CPU chạy LLM 1–4B | Rẻ, nhưng độ trễ 20–40 giây và chất lượng tiếng Việt kém | Không đạt NFR |
@@ -1044,25 +1044,28 @@ SQS `jobs`: visibility timeout **720 giây** (6 × 120, timeout của `worker`) 
 
 ## 12. Ước tính chi phí (3.000 lượt/tháng)
 
-Giả định: 60% văn bản, 30% ảnh, 10% voice (trung bình 45 giây); 25% lượt đi fast path hoặc trúng cache (không gọi LLM), nên còn **2.250 lượt gọi Judge**; mỗi lượt khoảng 2,5K token input và 300 token output; 10% leo thang; 15% ảnh phải fallback VLM.
+> Cập nhật 2026-11-24 theo dự toán SH-09 (#160): `docs/results/cost-estimate.md` (có link AWS Pricing Calculator, số nhập và căn cứ). Bản cũ tính tay với 2,5K token input, có voice và VLM; MVP đã hoãn voice và VLM (§14), còn token đo thật là ≈ 3,7K input.
 
-| Hạng mục | Cách tính | USD/tháng |
-|---|---|---|
-| Judge: **Qwen3 32B** | 2.250 × (2,5K × 0,1545 + 0,3K × 0,618) / 1M (giá Sydney [A7]) | ≈ 1,3 |
-| *(dự phòng: Gemma 3 12B)* | *2.250 × (2,5K × 0,09 + 0,3K × 0,29) / 1M* | *≈ 0,7* |
-| *(dự phòng: gpt-oss-20b)* | *2.250 × (2,5K × 0,0721 + 0,3K × 0,309) / 1M, chưa tính token reasoning ⚠️* | *≈ 0,6* |
-| Leo thang: gpt-oss-120b | 225 × (2,5K × 0,1545 + 0,5K × 0,618) / 1M | ≈ 0,15 |
-| VLM fallback | khoảng 135 ảnh × (khoảng 1,5K token + 300 token) | < 0,1 |
-| **OCR, ASR, embedding (local)** | **0 USD tiền token.** Compute Lambda `ai` khoảng 50–60K GB-s/tháng (đã tính cả cold start ⚠️ ước tính), nằm trong mức always-free 400K GB-s nếu tài khoản đủ điều kiện (⚠️ kiểm loại Free Tier, research-concept §7.2); nếu không thì khoảng 0,7 USD | 0–0,8 |
-| `webhook` + `worker` (Java) | `worker` 1 GB bị tính tiền cả lúc chờ `ai` trả về: khoảng 3.000 × 10 giây × 1 GB ≈ 30K GB-s; `webhook` không đáng kể. Cộng với `ai` vẫn dưới 400K GB-s free; nếu không có free tier thì thêm khoảng 0,5 USD. SnapStart cho `java21` không tính phí cache/restore ⚠️ (kiểm lại trang giá; phí này áp cho runtime Python/.NET) | 0–0,5 |
-| Guardrails (chỉ prompt attack) | khoảng 3.500 text unit × 0,15 USD/1.000 (research-concept §7.2 ⚠️) | ≈ 0,5 |
-| ECR (image khoảng 1,5 GB) + S3 (weights khoảng 0,5 GB, KB, eval) | ⚠️ đơn giá lưu trữ chưa kiểm lại | ≈ 0,2 |
-| SQS, DynamoDB, CloudWatch Logs (retention 7 ngày) | phần lớn nằm trong free tier | 0,5–2 |
-| **Tổng** | | **≈ 3–6,5 USD/tháng** |
+Giả định: 3.000 lượt/tháng, chỉ văn bản và ảnh (khoảng 2.000 + 1.000); 25% lượt đi fast path hoặc trúng cache (chưa kiểm ⚠️), còn **2.250 lượt gọi judge**; mỗi lượt có LLM tốn **0,000792 USD** token (đo ở eval cuối với `judge_v3`, đã gồm leo thang). Thời gian chạy Lambda lấy từ máy dev hoặc giả định, chưa đo trên Lambda ⚠️.
+
+| Hạng mục | Cách tính | Không Free Tier | Có Free Tier |
+|---|---|---|---|
+| Judge **Qwen3 32B** + leo thang gpt-oss-120b (Sydney) | 2.250 × 0,000792 USD, tính tay (Calculator không có Qwen3 ở Sydney) | 1,78 | 1,78 |
+| Guardrails (chỉ prompt attack) | 2.250 text unit × 0,15 USD/1.000 | 0,34 | 0,34 |
+| Lambda `ai` 3008 MB (OCR, embedding local: 0 USD tiền token) | 3.000 × 5 s ≈ 44K GB-s | 0,73 | 0 |
+| Lambda `worker` + `webhook` 512 MB | 3.000 × 5 s + 6.000 × 0,5 s | 0,16 | 0 |
+| SQS (gồm long poll khi rỗng) | ≈ 0,7 triệu request | 0,28 | 0 |
+| DynamoDB on-demand | 1 GB, ≈ 15K ghi + 15K đọc | 0,29 | < 0,05 |
+| S3 + ECR | 1 GB + image `ai` 2 GB | 0,23 | 0,23 |
+| CloudWatch | 0,5 GB log (giữ 7 ngày: cần thêm `RetentionInDays` vào template ⚠️), 5 metric, 5 alarm, 1 dashboard | 2,35 | 0 |
+| SNS, SSM | | ≈ 0 | 0 |
+| **Tổng** | | **≈ 6,2 USD/tháng** | **≈ 2,4 USD/tháng** |
+
+"Có Free Tier" là các mức always-free của Lambda, SQS, CloudWatch và DynamoDB; tài khoản của team có còn hưởng hay không thì chưa kiểm ⚠️.
 
 So sánh: **v1 (Claude + Transcribe + Cohere) ≈ 5–15 USD**, còn **tự host GPU ≈ 530 USD** (§6.0).
 
-> ⚠️ Giá ở trên lấy từ trang giá Bedrock tại thời điểm viết; Nova không đọc được giá. Sau lần benchmark đầu, **đọc chi phí thật trong Cost Explorer** và cập nhật bảng này trước khi đưa lên slide.
+> ⚠️ Đây vẫn là dự toán. Sau tuần test nội bộ (W6), **đọc chi phí thật trong Cost Explorer** và so với bảng này.
 
 ---
 
