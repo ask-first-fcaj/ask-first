@@ -1186,6 +1186,29 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return handleGuardianAck(cb, data.substring("ack:".length()), context);
         }
 
+        // Nút "✅ Đã báo người thân" sau khi bấm "Báo cho người nhà"
+        if ("ag_done".equals(data)) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Dạ đã gửi cảnh báo tới người thân rồi ạ");
+            }
+            return response(200, "CALLBACK_HANDLED");
+        }
+
+        // FR6: Người cao tuổi bấm "📣 Báo cho người nhà" (mức SUSPICIOUS)
+        if (data != null && data.startsWith("ag:")) {
+            return handleAlertGuardianManual(cb, chatId, userId, data.substring("ag:".length()), context);
+        }
+
+        // FR6 / FR9: Người cao tuổi bấm "📞 Gọi cho người nhà" hoặc "Chưa, gọi giúp tôi"
+        if (data != null && data.startsWith("cg:")) {
+            return handleCallGuardian(cb, chatId, userId, data.substring("cg:".length()), context);
+        }
+
+        // FR9: Người cao tuổi bấm "Dạ rồi" sau 15 phút
+        if ("fu:called".equals(data)) {
+            return handleFollowupElderCalled(cb, chatId, userId, context);
+        }
+
         return response(200, "UNKNOWN_CALLBACK");
     }
 
@@ -1250,6 +1273,167 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
     private static String stripUserPrefix(String uid) {
         return uid != null && uid.startsWith("USER#") ? uid.substring("USER#".length()) : String.valueOf(uid);
+    }
+
+    /** FR6: Người cao tuổi bấm nút "📣 Báo cho người nhà" (mức SUSPICIOUS) */
+    private APIGatewayProxyResponseEvent handleAlertGuardianManual(
+            TelegramCallbackQuery cb, long chatId, String userId, String checkId, Context context) {
+        String addressForm = getAddressForm(userId, context);
+        String xh = getAddressFormLower(userId, context);
+        if (telegram != null) {
+            telegram.answerCallbackQuery(cb.queryId(), "Đang gửi cảnh báo tới người thân...");
+        }
+        if (guardianRepo == null) {
+            if (telegram != null) {
+                telegram.sendText(chatId, "Dạ " + xh + " chưa có người thân nào liên kết trong hệ thống ạ.");
+            }
+            return response(200, "CALLBACK_HANDLED");
+        }
+        try {
+            List<GuardianRecord> guardians = guardianRepo.listGuardians(userId);
+            List<GuardianRecord> activeGuardians = guardians.stream()
+                    .filter(g -> "active".equalsIgnoreCase(g.getStatus() != null ? g.getStatus() : "active"))
+                    .toList();
+            if (activeGuardians.isEmpty()) {
+                if (telegram != null) {
+                    telegram.sendText(chatId, "Dạ " + xh + " chưa có người thân nào đang liên kết hoạt động. "
+                            + addressForm + " hãy dùng lệnh /nguoithan để kết nối người thân nhé ạ!");
+                }
+                return response(200, "CALLBACK_HANDLED");
+            }
+            String elderLabel = getElderLabelFromRootOrProfile(null, userId, addressForm);
+            for (GuardianRecord g : activeGuardians) {
+                String guardianUid = g.getGuardianUid();
+                if (guardianUid != null && !guardianUid.isBlank()) {
+                    try {
+                        long gChatId = Long.parseLong(guardianUid.replace("tg:", ""));
+                        String alertText = "⚠️ <b>CẢNH BÁO TỪ NGƯỜI THÂN:</b>\n\n"
+                                + elderLabel + " vừa nhờ AskFirst gửi cảnh báo cho bạn về một tin nhắn nghi vấn lừa đảo (mức <b>NGHI NGỜ</b>)!\n\n"
+                                + "👉 <b>Hãy liên hệ ngay với người thân</b> để kiểm tra và hỗ trợ nhé!";
+                        if (telegram != null) {
+                            telegram.sendText(gChatId, alertText);
+                        }
+                    } catch (Exception ex) {
+                        log(context, "Lỗi gửi cảnh báo tới guardian " + guardianUid + ": " + ex.getMessage());
+                    }
+                }
+            }
+            if (telegram != null) {
+                telegram.sendText(chatId, "Dạ cháu đã gửi cảnh báo tới người thân của " + xh + " rồi ạ!");
+                Integer msgId = parseMessageId(cb.messageId());
+                if (msgId != null) {
+                    telegram.editReplyMarkup(chatId, msgId, TelegramClient.inlineKeyboard(List.of(
+                            List.of(new InlineButton("✅ Đã báo người thân", "ag_done")))));
+                }
+            }
+        } catch (Exception e) {
+            log(context, "Lỗi khi gửi cảnh báo thủ công: " + e.getMessage());
+            if (telegram != null) {
+                telegram.sendText(chatId, "Dạ tạm thời cháu chưa gửi được cảnh báo tới người thân. "
+                        + addressForm + " hãy gọi điện thoại trực tiếp nhé ạ!");
+            }
+        }
+        return response(200, "CALLBACK_HANDLED");
+    }
+
+    /** FR6 / FR9: Người cao tuổi bấm "📞 Gọi cho người nhà" hoặc "Chưa, gọi giúp tôi" */
+    private APIGatewayProxyResponseEvent handleCallGuardian(
+            TelegramCallbackQuery cb, long chatId, String userId, String checkId, Context context) {
+        String addressForm = getAddressForm(userId, context);
+        String xh = getAddressFormLower(userId, context);
+        if (telegram != null) {
+            telegram.answerCallbackQuery(cb.queryId(), "Đang tìm danh bạ người thân...");
+        }
+        if (guardianRepo == null) {
+            if (telegram != null) {
+                telegram.sendText(chatId, "Dạ " + xh + " chưa có người thân nào liên kết trong hệ thống ạ.");
+            }
+            return response(200, "CALLBACK_HANDLED");
+        }
+        try {
+            List<GuardianRecord> guardians = guardianRepo.listGuardians(userId);
+            GuardianRecord activeWithPhone = null;
+            for (GuardianRecord g : guardians) {
+                String status = g.getStatus() != null ? g.getStatus() : "active";
+                if ("active".equalsIgnoreCase(status) && g.getPhone() != null && !g.getPhone().isBlank()) {
+                    activeWithPhone = g;
+                    break;
+                }
+            }
+            if (activeWithPhone != null && telegram != null) {
+                String name = activeWithPhone.getName() != null && !activeWithPhone.getName().isBlank()
+                        ? activeWithPhone.getName() : "Người thân";
+                telegram.sendContact(chatId, activeWithPhone.getPhone(), name, "");
+            } else {
+                if (telegram != null) {
+                    telegram.sendText(chatId, "Dạ người thân của " + xh + " chưa lưu số điện thoại trong hệ thống AskFirst. "
+                            + addressForm + " hãy mở danh bạ điện thoại để gọi trực tiếp ngay nhé ạ!");
+                }
+            }
+        } catch (Exception e) {
+            log(context, "Lỗi khi gửi danh bạ người thân: " + e.getMessage());
+            if (telegram != null) {
+                telegram.sendText(chatId, "Dạ cháu chưa gửi được danh bạ lúc này. "
+                        + addressForm + " hãy mở danh bạ điện thoại để gọi trực tiếp cho người thân nhé ạ!");
+            }
+        }
+        return response(200, "CALLBACK_HANDLED");
+    }
+
+    /** FR9: Người cao tuổi bấm "Dạ rồi" sau khi nhận tin nhắc 15 phút */
+    private APIGatewayProxyResponseEvent handleFollowupElderCalled(
+            TelegramCallbackQuery cb, long chatId, String userId, Context context) {
+        String addressForm = getAddressForm(userId, context);
+        if (telegram != null) {
+            telegram.answerCallbackQuery(cb.queryId(), "Dạ tốt quá rồi ạ!");
+            telegram.sendText(chatId, "Dạ tốt quá, cháu cảm ơn " + addressForm.toLowerCase()
+                    + "! " + addressForm + " nhớ luôn cẩn thận và tuyệt đối chưa làm theo bất kỳ yêu cầu nào trong tin nhắn lạ nhé ạ.");
+            Integer msgId = parseMessageId(cb.messageId());
+            if (msgId != null) {
+                telegram.editReplyMarkup(chatId, msgId, null);
+            }
+        }
+        return response(200, "CALLBACK_HANDLED");
+    }
+
+    private String getElderLabelFromRootOrProfile(JsonNode root, String userId, String addressForm) {
+        String elderDisplayName = "";
+        if (root != null && root.has("message") && root.path("message").has("from")) {
+            JsonNode fromNode = root.path("message").path("from");
+            String firstName = fromNode.path("first_name").asText("").trim();
+            String lastName = fromNode.path("last_name").asText("").trim();
+            String username = fromNode.path("username").asText("").trim();
+
+            String fullName = (firstName + (lastName.isBlank() ? "" : " " + lastName)).trim();
+            String safeName = TelegramClient.escapeHtml(fullName);
+            String safeUser = TelegramClient.escapeHtml(username);
+
+            if (!safeName.isBlank() && !safeUser.isBlank()) {
+                elderDisplayName = safeName + " (@" + safeUser + ")";
+            } else if (!safeName.isBlank()) {
+                elderDisplayName = safeName;
+            } else if (!safeUser.isBlank()) {
+                elderDisplayName = "@" + safeUser;
+            }
+        }
+        if (elderDisplayName.isBlank() && userRepo != null) {
+            try {
+                Optional<UserRecord> userOpt = userRepo.getUser(userId);
+                if (userOpt.isPresent() && userOpt.get().getDisplayName() != null && !userOpt.get().getDisplayName().isBlank()) {
+                    elderDisplayName = TelegramClient.escapeHtml(userOpt.get().getDisplayName().trim());
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        if (!elderDisplayName.isBlank()) {
+            if (elderDisplayName.toLowerCase().startsWith(addressForm.toLowerCase())) {
+                return elderDisplayName;
+            } else {
+                return addressForm + " " + elderDisplayName;
+            }
+        }
+        return addressForm;
     }
 
     private APIGatewayProxyResponseEvent handleGuardianCallback(
@@ -2584,6 +2768,16 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 return response(200, "CONSENT_REQUIRED");
             }
 
+            // FR15: Văn bản quá dài - Cắt ở 4.000 ký tự và báo đã cắt
+            String rawText = root.path("message").hasNonNull("text")
+                    ? root.path("message").path("text").asText()
+                    : root.path("message").path("caption").asText(null);
+            if (rawText != null && rawText.length() > TelegramAdapter.MAX_TEXT_LENGTH) {
+                if (telegram != null) {
+                    telegram.sendText(chatId, "Dạ tin nhắn của " + xh + " dài hơn 4.000 ký tự nên cháu đã tạm cắt bớt phần đuôi để kiểm tra giúp " + xh + " nhé ạ.");
+                }
+            }
+
             // 3. Hàng đợi SQS phải sẵn sàng TRƯỚC khi nhận việc: không gửi "⏳" cho một job
             // chắc chắn bị mất.
             // (Chế độ local long polling không có SQS nên được bỏ qua bước enqueue.)
@@ -2789,37 +2983,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         // 2. Kích hoạt cảnh báo khẩn cấp cho người thân (nếu đã liên kết)
         if (guardianRepo != null) {
             try {
-                // Lấy tên/hiển thị của người cao tuổi từ payload Telegram để người thân nhận diện rõ ràng
-                String elderDisplayName = "";
-                if (root != null && root.has("message") && root.path("message").has("from")) {
-                    JsonNode fromNode = root.path("message").path("from");
-                    String firstName = fromNode.path("first_name").asText().trim();
-                    String lastName = fromNode.path("last_name").asText().trim();
-                    String username = fromNode.path("username").asText().trim();
-
-                    String fullName = (firstName + (lastName.isBlank() ? "" : " " + lastName)).trim();
-                    String safeName = TelegramClient.escapeHtml(fullName);
-                    String safeUser = TelegramClient.escapeHtml(username);
-
-                    if (!safeName.isBlank() && !safeUser.isBlank()) {
-                        elderDisplayName = safeName + " (@" + safeUser + ")";
-                    } else if (!safeName.isBlank()) {
-                        elderDisplayName = safeName;
-                    } else if (!safeUser.isBlank()) {
-                        elderDisplayName = "@" + safeUser;
-                    }
-                }
-
-                String elderLabel;
-                if (!elderDisplayName.isBlank()) {
-                    if (elderDisplayName.toLowerCase().startsWith(addressForm.toLowerCase())) {
-                        elderLabel = elderDisplayName;
-                    } else {
-                        elderLabel = addressForm + " " + elderDisplayName;
-                    }
-                } else {
-                    elderLabel = addressForm;
-                }
+                String elderLabel = getElderLabelFromRootOrProfile(root, userId, addressForm);
 
                 List<GuardianRecord> guardians = guardianRepo.listGuardians(userId);
                 for (GuardianRecord g : guardians) {

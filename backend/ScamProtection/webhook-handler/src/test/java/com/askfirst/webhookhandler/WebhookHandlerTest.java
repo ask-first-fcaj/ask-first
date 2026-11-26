@@ -8,6 +8,8 @@ import com.askfirst.common.TelegramClient;
 import com.askfirst.common.store.AuditRecord;
 import com.askfirst.common.store.AuditRepo;
 import com.askfirst.common.store.DynamoStoreService;
+import com.askfirst.common.store.GuardianRecord;
+import com.askfirst.common.store.GuardianRepo;
 import com.askfirst.common.store.RateLimitRepo;
 import com.askfirst.common.store.UserRecord;
 import com.askfirst.common.store.UserRepo;
@@ -27,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -833,10 +836,126 @@ class WebhookHandlerTest {
         assertThat(alerts.acked.get()).isTrue();
     }
 
+    static class FakeGuardianRepo extends GuardianRepo {
+        final Map<String, GuardianRecord> store = new ConcurrentHashMap<>();
+
+        public FakeGuardianRepo() {
+            super();
+        }
+
+        @Override
+        public void save(GuardianRecord record) {
+            store.put(record.getElderUid() + "#" + record.getGuardianUid(), record);
+        }
+
+        @Override
+        public List<GuardianRecord> listGuardians(String elderUid) {
+            return store.values().stream()
+                    .filter(r -> elderUid.equals(r.getElderUid()))
+                    .toList();
+        }
+    }
+
+    @Test
+    @DisplayName("BE-29 / FR6: cg:<checkId> khi người thân có SĐT → gửi contact card qua sendContact")
+    void testCallGuardianSendsContact() {
+        FakeGuardianRepo gRepo = new FakeGuardianRepo();
+        GuardianRecord gr = new GuardianRecord("tg:111", "tg:201");
+        gr.setName("Nam");
+        gr.setPhone("0912345678");
+        gr.setStatus("active");
+        gRepo.save(gr);
+
+        WebhookHandler h = handlerWithBuffer(null, fakeSqs, new InMemoryAlertStore(), gRepo);
+        APIGatewayProxyResponseEvent res = h.handleRequest(
+                createRequest(callbackWithData(701, 111, "cg:CHECK-001")), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(fakeTelegram.lastContactChatId).isEqualTo(111L);
+        assertThat(fakeTelegram.lastContactPhone).isEqualTo("0912345678");
+        assertThat(fakeTelegram.lastContactName).isEqualTo("Nam");
+    }
+
+    @Test
+    @DisplayName("BE-29 / FR6: cg:<checkId> khi người thân chưa có SĐT → hướng dẫn mở danh bạ")
+    void testCallGuardianWithoutPhoneGuidesElder() {
+        FakeGuardianRepo gRepo = new FakeGuardianRepo();
+        GuardianRecord gr = new GuardianRecord("tg:111", "tg:201");
+        gr.setStatus("active");
+        gRepo.save(gr);
+
+        WebhookHandler h = handlerWithBuffer(null, fakeSqs, new InMemoryAlertStore(), gRepo);
+        APIGatewayProxyResponseEvent res = h.handleRequest(
+                createRequest(callbackWithData(702, 111, "cg:CHECK-002")), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(fakeTelegram.lastText).contains("chưa lưu số điện thoại");
+    }
+
+    @Test
+    @DisplayName("FR6: ag:<checkId> (báo người nhà ở mức SUSPICIOUS) → gửi cảnh báo tới người thân active và đổi nút ag_done")
+    void testAlertGuardianManualSendsAlertToActiveGuardians() {
+        FakeGuardianRepo gRepo = new FakeGuardianRepo();
+        GuardianRecord gr = new GuardianRecord("tg:111", "tg:201");
+        gr.setGuardianChatId("201");
+        gr.setStatus("active");
+        gRepo.save(gr);
+
+        WebhookHandler h = handlerWithBuffer(null, fakeSqs, new InMemoryAlertStore(), gRepo);
+        APIGatewayProxyResponseEvent res = h.handleRequest(
+                createRequest(callbackWithData(703, 111, "ag:CHECK-003")), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(fakeTelegram.markupEdits).isNotEmpty();
+        assertThat(fakeTelegram.markupEdits.get(0).markup().toString()).contains("ag_done");
+    }
+
+    @Test
+    @DisplayName("FR9: fu:called (người cao tuổi đã gọi) → cảm ơn và gỡ nút")
+    void testFollowupElderCalledAcknowledges() {
+        WebhookHandler h = handlerWithBuffer(null, fakeSqs, new InMemoryAlertStore());
+        APIGatewayProxyResponseEvent res = h.handleRequest(
+                createRequest(callbackWithData(704, 111, "fu:called")), mockContext);
+
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(fakeTelegram.lastText).contains("tốt quá");
+    }
+
+    @Test
+    @DisplayName("FR15: Văn bản quá dài > 4000 ký tự → bot thông báo đã tạm cắt bớt")
+    void testLongTextNotifiesElderOfTruncation() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+        String longText = "a".repeat(4050);
+        String updateJson = """
+                {
+                  "update_id": 705,
+                  "message": {
+                    "message_id": 99,
+                    "from": { "id": 111, "is_bot": false },
+                    "chat": { "id": 222, "type": "private" },
+                    "date": 1729000000,
+                    "text": "%s"
+                  }
+                }
+                """.formatted(longText);
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(updateJson), mockContext);
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(fakeTelegram.sentTexts).anyMatch(t -> t.contains("dài hơn 4.000 ký tự"));
+    }
+
     private WebhookHandler handlerWithBuffer(
             InMemoryBufferStore buffer,
             SqsClient sqs,
             InMemoryAlertStore alerts) {
+        return handlerWithBuffer(buffer, sqs, alerts, null);
+    }
+
+    private WebhookHandler handlerWithBuffer(
+            InMemoryBufferStore buffer,
+            SqsClient sqs,
+            InMemoryAlertStore alerts,
+            GuardianRepo guardianRepo) {
 
         return new WebhookHandler(
                 fakeTelegram,                   // 1
@@ -846,7 +965,7 @@ class WebhookHandlerTest {
                 fakeUserRepo,                   // 5
                 fakeAuditRepo,                  // 6
                 fakeRateLimitRepo,              // 7
-                null,                           // 8  GuardianRepo
+                guardianRepo,                   // 8  GuardianRepo
                 null,                           // 9  InviteRepo
                 POLICY_SHA256,                  // 10
                 null,                           // 11 dedup
@@ -1049,8 +1168,12 @@ class WebhookHandlerTest {
         String lastText;
         Map<String, Object> lastMarkup;
         String lastCallbackAnswer;
+        final List<String> sentTexts = new ArrayList<>();
         final List<MarkupEdit> markupEdits = new ArrayList<>();
         boolean failMarkupEdit;
+        Long lastContactChatId;
+        String lastContactPhone;
+        String lastContactName;
 
         record MarkupEdit(long chatId, int messageId, Map<String, Object> markup) {
         }
@@ -1060,10 +1183,18 @@ class WebhookHandlerTest {
         }
 
         @Override
+        public void sendContact(long chatId, String phoneNumber, String firstName, String lastName) {
+            this.lastContactChatId = chatId;
+            this.lastContactPhone = phoneNumber;
+            this.lastContactName = firstName;
+        }
+
+        @Override
         public int sendText(long chatId, String text, Map<String, Object> replyMarkup) {
             this.lastChatId = chatId;
             this.lastText = text;
             this.lastMarkup = replyMarkup;
+            this.sentTexts.add(text);
             return 999;
         }
 

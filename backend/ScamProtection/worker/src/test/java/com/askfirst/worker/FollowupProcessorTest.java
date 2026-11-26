@@ -36,6 +36,8 @@ class FollowupProcessorTest {
 
         assertEquals(1, env.telegram.sentTo("100").size());
         assertFalse(env.telegram.sentTo("100").get(0).silent());
+        assertEquals("fu:called", env.telegram.sentTo("100").get(0).buttons().get(0).get(0).callbackData());
+        assertEquals("cg:" + CHECK, env.telegram.sentTo("100").get(0).buttons().get(0).get(1).callbackData());
         assertEquals(1, env.telegram.sentTo("201").size());
         assertTrue(env.telegram.sentTo("201").get(0).silent());
         assertEquals("ack:" + a1, env.telegram.sentTo("201").get(0).buttons().get(0).get(0).callbackData());

@@ -52,7 +52,11 @@ public final class FollowupProcessor {
         }
 
         Elder elder = directory.elder(job.elderUid()).orElse(new Elder("Bác", false));
-        trySend(job.chatId(), WorkerMessages.followupElder(elder.addressForm()), List.of(), false, job);
+        List<List<Btn>> elderButtons = List.of(List.of(
+                new Btn("Dạ rồi", "fu:called"),
+                new Btn("Chưa, gọi giúp tôi", "cg:" + job.checkId())
+        ));
+        trySend(job.chatId(), WorkerMessages.followupElder(elder.addressForm()), elderButtons, false, job);
         for (AlertRecord r : records) {
             if (AlertRecord.SENT.equals(r.status())) {
                 List<List<Btn>> ack = List.of(List.of(new Btn(WorkerMessages.ACK_BUTTON, "ack:" + r.alertId())));

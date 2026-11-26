@@ -48,7 +48,7 @@ final class WorkerMessages {
     static String followupElder(String addressForm) {
         String a = TelegramClient.escapeHtml(address(addressForm));
         return a + " ơi, người thân đã nhận được cảnh báo nhưng chưa xác nhận đã liên hệ. " + a
-                + " hãy gọi trực tiếp cho người thân ngay nhé, và chưa làm theo yêu cầu trong tin nhắn lạ ạ.";
+                + " đã gọi cho người thân chưa ạ? Hãy gọi trực tiếp ngay nhé, và chưa làm theo yêu cầu trong tin nhắn lạ ạ.";
     }
 
     static String followupGuardian(String elderName) {
