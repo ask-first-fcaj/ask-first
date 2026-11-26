@@ -188,6 +188,13 @@ public final class BotMessages {
     }
 
     /**
+     * FR13: báo người cao tuổi sau khi người thân bấm "Tôi đã liên hệ". {@code guardianName} đã escape HTML.
+     */
+    public static String guardianAckedMessage(String guardianName, String xh) {
+        return "Dạ, " + guardianName + " đã nhận cảnh báo và liên hệ " + xh + " rồi ạ.";
+    }
+
+    /**
      * Lời nhắn gửi kèm qua nút share Telegram.
      */
     public static String guardianShareText(String XH) {

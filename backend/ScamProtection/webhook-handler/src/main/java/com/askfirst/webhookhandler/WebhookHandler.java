@@ -1172,12 +1172,29 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
             return response(200, "CALLBACK_HANDLED");
         }
+        boolean firstAck = alert.get().ackedAt() == null;
         alertStore.markAcked(alertId, Instant.now());
         if (telegram != null) {
             telegram.answerCallbackQuery(cb.queryId(), "Cảm ơn bạn, đã ghi nhận.");
             markGuardianAckDone(cb, context);
+            // shortcut: hai lần bấm gần như cùng lúc vẫn có thể báo 2 lần, cần thì dùng điều kiện ghi trong markAcked.
+            if (firstAck) {
+                notifyElderOfAck(alert.get(), context);
+            }
         }
         return response(200, "CALLBACK_HANDLED");
+    }
+
+    /** FR13: báo người cao tuổi là người thân đã liên hệ. Lỗi chỉ ghi log, không làm hỏng ack. */
+    private void notifyElderOfAck(AlertRecord alert, Context context) {
+        try {
+            String name = alert.guardianName() == null || alert.guardianName().isBlank()
+                    ? "Người thân" : TelegramClient.escapeHtml(alert.guardianName().trim());
+            telegram.sendText(Long.parseLong(alert.elderChatId()),
+                    BotMessages.guardianAckedMessage(name, getAddressFormLower(alert.elderUid(), context)));
+        } catch (Exception e) {
+            log(context, "Không báo được người cao tuổi sau ack: " + e.getClass().getSimpleName());
+        }
     }
 
     /**
