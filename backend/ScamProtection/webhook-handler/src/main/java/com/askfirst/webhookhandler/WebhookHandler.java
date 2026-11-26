@@ -54,6 +54,7 @@ import java.net.URLEncoder;
 import java.util.Locale;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -66,7 +67,6 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Lambda Webhook Handler cho AskFirst Bot (BE-22, BE-25, BE-26, BE-28, ARCH
@@ -97,6 +97,16 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
     private static final long DEDUP_TTL_SECONDS = 24 * 3600L;
     private static final long BUFFER_TTL_SECONDS = 10 * 60L;
+
+    // LB-01: mã mời 8 ký tự base32 (bỏ I, O, 0, 1 cho khỏi đọc nhầm), ~1,1 nghìn tỉ khả năng.
+    private static final String INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private static final int INVITE_LENGTH = 8;
+    private static final SecureRandom INVITE_RANDOM = new SecureRandom();
+    // LB-01: số lần nhập mã /ketnoi tối đa mỗi giờ / ngày cho một người.
+    static final int KETNOI_MAX_PER_HOUR = 5;
+    static final int KETNOI_MAX_PER_DAY = 20;
+    static final String INVITE_INVALID_MESSAGE =
+            "❌ Mã kết nối không hợp lệ, đã hết hạn hoặc đã được dùng. Vui lòng nhờ người thân tạo mã mới.";
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule());
@@ -945,6 +955,23 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         }
     }
 
+    static String newInviteCode() {
+        StringBuilder sb = new StringBuilder(INVITE_LENGTH);
+        for (int i = 0; i < INVITE_LENGTH; i++) {
+            sb.append(INVITE_ALPHABET.charAt(INVITE_RANDOM.nextInt(INVITE_ALPHABET.length())));
+        }
+        return sb.toString();
+    }
+
+    /** Telegram luôn gửi {@code chat.type}; thiếu thì coi như chat riêng (update không phải message/callback). */
+    static boolean isPrivateChat(JsonNode root) {
+        JsonNode chat = root.has("callback_query")
+                ? root.path("callback_query").path("message").path("chat")
+                : root.path("message").path("chat");
+        String type = chat.path("type").asText("");
+        return type.isEmpty() || "private".equals(type);
+    }
+
     private void releaseDedup(String updateId, Context context) {
         try {
             dedup.deleteDedup(updateId);
@@ -954,6 +981,11 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     }
 
     private APIGatewayProxyResponseEvent routeUpdate(JsonNode root, Context context) {
+        // LB-02: chỉ phục vụ chat riêng; trong nhóm thì kết luận, /lichsu, mã mời sẽ lộ cho cả nhóm.
+        if (!isPrivateChat(root)) {
+            return response(200, "IGNORED_NON_PRIVATE");
+        }
+
         // 1. Xử lý Callback Query (Bấm nút inline keyboard - Fast Path)
         Optional<TelegramCallbackQuery> cbOpt = adapter.parseCallbackQuery(root);
         if (cbOpt.isPresent()) {
@@ -1230,8 +1262,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             if (telegram != null) {
                 telegram.answerCallbackQuery(cb.queryId(), "Đang tạo mã kết nối...");
             }
-            int code = ThreadLocalRandom.current().nextInt(100_000, 1_000_000);
-            String inviteCode = String.valueOf(code);
+            String inviteCode = newInviteCode();
 
             if (inviteRepo != null) {
                 inviteRepo.createInvite(inviteCode, userId,
@@ -1946,6 +1977,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                             case "paused" -> "⏸ Tạm dừng";
                             case "revoked" -> "❌ Đã huỷ";
                             case "unreachable" -> "⚠️ Không liên lạc được";
+                            case "pending" -> "⏳ Chờ xác nhận";
                             default -> "✅ Đang hoạt động";
                         };
 
@@ -2151,21 +2183,30 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         if (parts.length < 2 || parts[1].isBlank()) {
             if (telegram != null) {
                 telegram.sendText(chatId,
-                        "Vui lòng nhập mã kết nối sau lệnh. Ví dụ:\n<code>/ketnoi 123456</code>");
+                        "Vui lòng nhập mã kết nối sau lệnh. Ví dụ:\n<code>/ketnoi K7MP2QXA</code>");
             }
             return response(200, "CONNECT_NO_CODE");
         }
 
-        String code = parts[1].trim();
+        String code = parts[1].trim().toUpperCase(Locale.ROOT);
         if (inviteRepo == null) {
             return response(200, "INVITE_REPO_UNAVAILABLE");
         }
 
+        // LB-01: chặn dò mã. Đếm ở bucket riêng để không ăn vào hạn mức kiểm tin.
+        if (rateLimitRepo != null
+                && !rateLimitRepo.checkAndIncrement("ketnoi:" + userId, KETNOI_MAX_PER_HOUR, KETNOI_MAX_PER_DAY).allowed()) {
+            if (telegram != null) {
+                telegram.sendText(chatId, "Bạn đã nhập mã quá nhiều lần. Vui lòng thử lại sau 1 giờ.");
+            }
+            return response(200, "KETNOI_RATE_LIMITED");
+        }
+
+        // LB-01: sai, đã dùng, hết hạn hay vừa bị người khác dùng đều trả cùng một câu để không lộ mã nào có thật.
         Optional<InviteRecord> opt = inviteRepo.getInvite(code);
         if (opt.isEmpty()) {
             if (telegram != null) {
-                telegram.sendText(chatId,
-                        "❌ Mã kết nối <b>" + code + "</b> không hợp lệ. Vui lòng kiểm tra lại mã được gửi.");
+                telegram.sendText(chatId, INVITE_INVALID_MESSAGE);
             }
             return response(200, "INVALID_INVITE");
         }
@@ -2174,16 +2215,14 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
 
         if ("used".equals(invite.getStatus())) {
             if (telegram != null) {
-                telegram.sendText(chatId,
-                        "❌ Mã kết nối này đã được sử dụng rồi. Vui lòng nhờ người thân tạo mã mới.");
+                telegram.sendText(chatId, INVITE_INVALID_MESSAGE);
             }
             return response(200, "INVITE_ALREADY_USED");
         }
 
         if (invite.getExpiresAt() != null && invite.getExpiresAt() < Instant.now().getEpochSecond()) {
             if (telegram != null) {
-                telegram.sendText(chatId,
-                        "⏰ Mã kết nối đã hết hạn (mã chỉ có hiệu lực 24 giờ). Vui lòng nhờ người thân tạo mã mới.");
+                telegram.sendText(chatId, INVITE_INVALID_MESSAGE);
             }
             return response(200, "INVITE_EXPIRED");
         }
@@ -2200,8 +2239,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         boolean consumed = inviteRepo.markUsed(code, userId);
         if (!consumed) {
             if (telegram != null) {
-                telegram.sendText(chatId,
-                        "❌ Mã kết nối này vừa được dùng bởi người khác. Vui lòng nhờ tạo mã mới.");
+                telegram.sendText(chatId, INVITE_INVALID_MESSAGE);
             }
             return response(200, "INVITE_RACE");
         }

@@ -11,6 +11,10 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - BE-06 (#62): **image Lambda `ai`**: `ai/Dockerfile` (base Lambda Python 3.12, model tải từ S3 lúc chạy), workflow `AI image` build trên GitHub Actions, kiểm image ≤ 2 GB, import đủ thư viện trên rootfs chỉ đọc và gọi thử handler bản stub; chạy tay thì đẩy lên ECR qua OIDC (`infra/github-oidc.yaml`). `infra/template.yaml` thêm function `ai` (3008 MB, 90 s, x86_64, alias `live`, quyền DynamoDB chỉ `CACHE#`/`URL#`), chỉ tạo khi truyền `AiImageUri`. Cách deploy ở `infra/README.md` bước 4.
 
 ### Changed
+- BE-09a (#189), sửa 3 lỗi rà bảo mật lane B:
+  - LB-02: webhook bỏ qua mọi tin và nút bấm trong nhóm, chỉ phục vụ chat riêng, để kết luận, `/lichsu` và mã mời không lộ cho cả nhóm. Vẫn cần tắt `setjoingroups` trong BotFather (chưa làm).
+  - LB-01: mã mời người thân đổi từ 6 số sang 8 ký tự (chữ in hoa và số, bỏ I, O, 0, 1) sinh bằng `SecureRandom`; `/ketnoi` giới hạn 5 lần/giờ, 20 lần/ngày mỗi người; mã sai, hết hạn hay đã dùng đều trả cùng một câu. Gõ mã chữ thường vẫn nhận.
+  - LB-06: `/nguoithan` hiện người thân chưa được duyệt là "⏳ Chờ xác nhận" thay vì "✅ Đang hoạt động".
 - `WebhookHandler`: khi có `BufferStore` thì ghi buffer và enqueue `AnalyzeJob` thay cho việc gửi nguyên `InboundMessage` vào SQS; không có `BufferStore` thì giữ đường cũ (cho test cũ và `LocalBotRunner`). Constructor Lambda luôn có `BufferStore`.
 - `TelegramClient`: `sendText(..., silent)` (tin nhắc người thân không kêu) và `editText(..., replyMarkup)` (sửa "⏳" kèm nút). Hai overload cũ giữ nguyên.
 - SH-10 (#162): **hướng dẫn dọn tài nguyên** `infra/README.md` mục 7 viết lại theo 6 bước: gỡ webhook, tắt provisioned concurrency, dọn S3 (cả version cũ), xoá ECR qua stack `askfirst-github-oidc`, `sam delete`, xoá log group và SSM tạo tay; mỗi bước có lệnh kiểm, ghi rõ bước không hoàn tác được. Lệnh đọc đã chạy thử trên `dev`, chưa chạy thử trọn bộ trên stack tạm.
