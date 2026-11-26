@@ -105,6 +105,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
     // LB-01: số lần nhập mã /ketnoi tối đa mỗi giờ / ngày cho một người.
     static final int KETNOI_MAX_PER_HOUR = 5;
     static final int KETNOI_MAX_PER_DAY = 20;
+    // BE-34: giới hạn tải file của Telegram Bot API (getFile).
+    static final long MAX_PHOTO_BYTES = 20L * 1024 * 1024;
     static final String INVITE_INVALID_MESSAGE =
             "❌ Mã kết nối không hợp lệ, đã hết hạn hoặc đã được dùng. Vui lòng nhờ người thân tạo mã mới.";
 
@@ -2550,6 +2552,23 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                 return response(200, "UNSUPPORTED_AUDIO");
             }
 
+            // BE-34: voice chưa hỗ trợ (FR2 hoãn), kể cả khi đã bật đồng ý voice; kh tạo job
+            if ("voice".equalsIgnoreCase(inbound.kind())) {
+                if (telegram != null) {
+                    telegram.sendText(chatId, BotMessages.voiceNotSupportedMessage(addressForm));
+                }
+                return response(200, "UNSUPPORTED_VOICE");
+            }
+
+            // BE-34: ảnh > 20 MB theo metadata Telegram thì từ chối trước khi tạo job
+            if ("photo".equalsIgnoreCase(inbound.kind()) && inbound.media() != null
+                    && inbound.media().size() != null && inbound.media().size() > MAX_PHOTO_BYTES) {
+                if (telegram != null) {
+                    telegram.sendText(chatId, BotMessages.photoTooLargeMessage(addressForm));
+                }
+                return response(200, "PHOTO_TOO_LARGE");
+            }
+
             // 1. Kiểm tra trạng thái Đồng ý điều khoản (Consent Check - BE-25, SH-08)
             if (userRepo != null && !userRepo.hasValidConsent(userId, policySha256)) {
                 String promptConsent = BotMessages.promptConsentMessage(addressForm, xh);
@@ -2563,19 +2582,6 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
                     telegram.sendText(chatId, promptConsent, keyboard);
                 }
                 return response(200, "CONSENT_REQUIRED");
-            }
-
-            // 2. Kiểm tra đồng ý tin nhắn thoại (Voice Consent Check - BE-25, SH-08)
-            if ("voice".equalsIgnoreCase(inbound.kind())) {
-                boolean hasVoice = (userRepo != null) && userRepo.hasVoiceConsent(userId);
-                if (!hasVoice) {
-                    String voiceMsg = BotMessages.voiceConsentRequiredMessage(addressForm, xh);
-
-                    if (telegram != null) {
-                        telegram.sendText(chatId, voiceMsg);
-                    }
-                    return response(200, "VOICE_CONSENT_REQUIRED");
-                }
             }
 
             // 3. Hàng đợi SQS phải sẵn sàng TRƯỚC khi nhận việc: không gửi "⏳" cho một job
