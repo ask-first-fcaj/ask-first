@@ -680,6 +680,26 @@ class WebhookHandlerTest {
         assertThat(edit.chatId()).isEqualTo(201L);
         assertThat(edit.messageId()).isEqualTo(50);
         assertThat(edit.markup().toString()).contains("✅ Đã liên hệ").contains("ack_done");
+        // FR13: người cao tuổi (chat 222) nhận tin người thân đã liên hệ
+        assertThat(fakeTelegram.lastChatId).isEqualTo(222L);
+        assertThat(fakeTelegram.lastText).isEqualTo("Dạ, Lan đã nhận cảnh báo và liên hệ bác rồi ạ.");
+    }
+
+    @Test
+    @DisplayName("FR13: alert đã acked (bấm lại ở tin nhắc) → không báo người cao tuổi lần nữa")
+    void testRepeatAckDoesNotNotifyElderAgain() {
+        InMemoryAlertStore alerts = new InMemoryAlertStore();
+        com.askfirst.common.store.AlertRecord a = pendingAlert("A-6", "tg:201");
+        alerts.seed(new com.askfirst.common.store.AlertRecord(a.alertId(), a.elderUid(), a.elderChatId(), a.checkId(),
+                a.guardianUid(), a.guardianChatId(), a.guardianName(), a.shareLevel(),
+                com.askfirst.common.store.AlertRecord.ACKED, a.messageId(), "2026-11-25T00:00:00Z",
+                a.remindedAt(), a.ttlEpochSeconds()));
+        WebhookHandler h = handlerWithBuffer(null, fakeSqs, alerts);
+
+        h.handleRequest(createRequest(ackCallback(608, 201, "A-6")), mockContext);
+
+        assertThat(fakeTelegram.lastCallbackAnswer).contains("đã ghi nhận");
+        assertThat(fakeTelegram.lastChatId).isNull();
     }
 
     @Test
@@ -731,6 +751,7 @@ class WebhookHandlerTest {
         assertThat(alerts.acked.get()).isFalse();
         assertThat(fakeTelegram.lastCallbackAnswer).contains("không còn hiệu lực");
         assertThat(fakeTelegram.markupEdits).isEmpty();   // không được sửa nút của cảnh báo không hợp lệ
+        assertThat(fakeTelegram.lastChatId).isNull();      // không báo người cao tuổi
     }
 
     @Test
