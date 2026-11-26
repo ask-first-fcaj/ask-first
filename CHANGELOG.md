@@ -11,6 +11,7 @@ Chỉ ghi thay đổi người dùng hoặc team thấy được.
 - BE-06 (#62): **image Lambda `ai`**: `ai/Dockerfile` (base Lambda Python 3.12, model tải từ S3 lúc chạy), workflow `AI image` build trên GitHub Actions, kiểm image ≤ 2 GB, import đủ thư viện trên rootfs chỉ đọc và gọi thử handler bản stub; chạy tay thì đẩy lên ECR qua OIDC (`infra/github-oidc.yaml`). `infra/template.yaml` thêm function `ai` (3008 MB, 90 s, x86_64, alias `live`, quyền DynamoDB chỉ `CACHE#`/`URL#`), chỉ tạo khi truyền `AiImageUri`. Cách deploy ở `infra/README.md` bước 4.
 
 ### Changed
+- BE-34 (#72): webhook **từ chối ảnh quá 20 MB** (theo `file_size` Telegram gửi kèm) bằng một câu giải thích, và trả "chưa hỗ trợ" cho **mọi tin nhắn thoại**, kể cả khi người dùng đã bật đồng ý voice (FR2 đang hoãn). Cả hai trường hợp không tạo job.
 - BE-09a (#189), sửa 3 lỗi rà bảo mật lane B:
   - LB-02: webhook bỏ qua mọi tin và nút bấm trong nhóm, chỉ phục vụ chat riêng, để kết luận, `/lichsu` và mã mời không lộ cho cả nhóm. Vẫn cần tắt `setjoingroups` trong BotFather (chưa làm).
   - LB-01: mã mời người thân đổi từ 6 số sang 8 ký tự (chữ in hoa và số, bỏ I, O, 0, 1) sinh bằng `SecureRandom`; `/ketnoi` giới hạn 5 lần/giờ, 20 lần/ngày mỗi người; mã sai, hết hạn hay đã dùng đều trả cùng một câu. Gõ mã chữ thường vẫn nhận.

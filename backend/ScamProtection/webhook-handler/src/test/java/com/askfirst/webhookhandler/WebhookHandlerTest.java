@@ -215,10 +215,10 @@ class WebhookHandlerTest {
     }
 
     @Test
-    @DisplayName("BE-25: User without voice consent has voice messages rejected")
-    void testVoiceMessageRejectedWithoutVoiceConsent() {
-        // User consented to analyze, but NOT voice
-        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true, "voice", false));
+    @DisplayName("BE-34: Voice chưa hỗ trợ kể cả khi đã bật đồng ý voice, kh tạo job")
+    void testVoiceMessageNotSupported() {
+        // Đã bật cả voice: vẫn từ chối vì FR2 hoãn
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true, "voice", true));
 
         String voiceJson = """
                 {
@@ -240,9 +240,48 @@ class WebhookHandlerTest {
 
         APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(voiceJson), mockContext);
         assertThat(res.getStatusCode()).isEqualTo(200);
-        assertThat(res.getBody()).isEqualTo("VOICE_CONSENT_REQUIRED");
+        assertThat(res.getBody()).isEqualTo("UNSUPPORTED_VOICE");
         assertThat(fakeSqs.messageSent.get()).isFalse();
-        assertThat(fakeTelegram.lastText).contains("cần có sự đồng ý riêng về xử lý dữ liệu âm thanh");
+        assertThat(fakeTelegram.lastText).contains("chưa hỗ trợ kiểm tra tin nhắn thoại");
+    }
+
+    private static String photoJson(long fileSize) {
+        return """
+                {
+                  "update_id": 107,
+                  "message": {
+                    "message_id": 5,
+                    "from": { "id": 111, "is_bot": false },
+                    "chat": { "id": 222, "type": "private" },
+                    "date": 1729000000,
+                    "photo": [
+                      { "file_id": "p_s", "file_unique_id": "up_s", "width": 90, "height": 90, "file_size": 1000 },
+                      { "file_id": "p_l", "file_unique_id": "up_l", "width": 4000, "height": 4000, "file_size": %d }
+                    ]
+                  }
+                }
+                """.formatted(fileSize);
+    }
+
+    @Test
+    @DisplayName("BE-34: Ảnh > 20 MB bị từ chối kèm câu giải thích, kh tạo job")
+    void testPhotoTooLargeRejected() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(photoJson(25L * 1024 * 1024)), mockContext);
+        assertThat(res.getStatusCode()).isEqualTo(200);
+        assertThat(res.getBody()).isEqualTo("PHOTO_TOO_LARGE");
+        assertThat(fakeSqs.messageSent.get()).isFalse();
+        assertThat(fakeTelegram.lastText).contains("quá 20MB");
+    }
+
+    @Test
+    @DisplayName("BE-34: Ảnh đúng 20 MB kh bị chặn bởi giới hạn dung lượng")
+    void testPhotoAtLimitNotRejected() {
+        fakeUserRepo.updateConsent("tg:111", POLICY_SHA256, "1.0", Map.of("analyze", true));
+
+        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(photoJson(WebhookHandler.MAX_PHOTO_BYTES)), mockContext);
+        assertThat(res.getBody()).isNotEqualTo("PHOTO_TOO_LARGE");
     }
 
     @Test

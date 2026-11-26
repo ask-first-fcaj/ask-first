@@ -104,9 +104,9 @@ class BotMessagesTest {
     @Test
     @DisplayName("SH-08: Voice and rate limit messages guide user politely without harsh errors")
     void testVoiceAndRateLimitMessages() {
-        String voice = BotMessages.voiceConsentRequiredMessage("Chú", "chú");
-        assertThat(voice).contains("cần có sự đồng ý riêng về xử lý dữ liệu âm thanh");
-        assertThat(voice).contains("chụp màn hình");
+        String voice = BotMessages.voiceNotSupportedMessage("Chú");
+        assertThat(voice).contains("chưa hỗ trợ kiểm tra tin nhắn thoại");
+        assertThat(voice).contains("chụp ảnh màn hình");
 
         String rateLimit = BotMessages.rateLimitMessage("Bác", "bác");
         assertThat(rateLimit).contains("30 tin/giờ");

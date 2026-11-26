@@ -123,12 +123,19 @@ public final class BotMessages {
     }
 
     /**
-     * Phản hồi khi tin nhắn thoại chưa được hỗ trợ hoặc chưa bật consent voice.
+     * Phản hồi khi nhận tin nhắn thoại: FR2 đang hoãn nên voice nào cũng chưa hỗ trợ (BE-34).
      */
-    public static String voiceConsentRequiredMessage(String XH, String xh) {
-        return XH + " ơi, tính năng kiểm tra tin nhắn thoại (voice) cần có sự đồng ý riêng về xử lý dữ liệu âm thanh. "
-                + "Hiện tại mục này chưa được bật. " + XH
-                + " vui lòng chụp màn hình hoặc gửi tin nhắn văn bản cho cháu nhé!";
+    public static String voiceNotSupportedMessage(String XH) {
+        return "Dạ hiện tại cháu chưa hỗ trợ kiểm tra tin nhắn thoại. " + XH
+                + " hãy <b>gõ lại nội dung</b> hoặc <b>chụp ảnh màn hình</b> gửi cho cháu kiểm tra nhé!";
+    }
+
+    /**
+     * Phản hồi khi ảnh quá 20 MB (BE-34): Bot API kh tải được file trên 20 MB.
+     */
+    public static String photoTooLargeMessage(String XH) {
+        return XH + " ơi, file ảnh này dung lượng hơi lớn (quá 20MB) nên cháu chưa đọc được. "
+                + XH + " chụp lại màn hình gọn hơn giúp cháu nhé!";
     }
 
     /**
