@@ -1,5 +1,9 @@
 package com.askfirst.common.store;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
 /**
  * Một cảnh báo gửi cho một người thân. {@code alertId} xác định theo (check, guardian) nên retry
  * dùng lại đúng alert cũ. status: pending | sent | failed | acked.
@@ -26,5 +30,19 @@ public record AlertRecord(
 
     public boolean delivered() {
         return SENT.equals(status) || ACKED.equals(status);
+    }
+
+    /** alert_id xác định theo (check, guardian): retry hay bấm lại dùng đúng alert cũ, không gửi trùng. */
+    public static String idFor(String checkId, String guardianUid) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(guardianUid.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (int i = 0; i < 3; i++) {
+                hex.append(String.format("%02x", digest[i]));
+            }
+            return checkId + "-" + hex;
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 không khả dụng");
+        }
     }
 }

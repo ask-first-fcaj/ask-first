@@ -9,6 +9,8 @@ import com.askfirst.common.store.AuditRecord;
 import com.askfirst.common.store.AuditRepo;
 import com.askfirst.common.store.DynamoStoreService;
 import com.askfirst.common.store.RateLimitRepo;
+import com.askfirst.common.store.GuardianRecord;
+import com.askfirst.common.store.GuardianRepo;
 import com.askfirst.common.store.UserRecord;
 import com.askfirst.common.store.UserRepo;
 import org.junit.jupiter.api.BeforeEach;
@@ -832,7 +834,7 @@ class WebhookHandlerTest {
     @Test
     @DisplayName("Nút chưa có xử lý vẫn được answer để Telegram kh quay vòng chờ")
     void testUnhandledButtonIsAnswered() {
-        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(callbackUpdate(702, "cg:01CHK")), mockContext);
+        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(callbackUpdate(702, "zz:01CHK")), mockContext);
 
         assertThat(res.getBody()).isEqualTo("UNKNOWN_CALLBACK");
         assertThat(fakeTelegram.lastCallbackAnswer).contains("chưa dùng được");
@@ -851,6 +853,127 @@ class WebhookHandlerTest {
 
         assertThat(res.getBody()).isEqualTo("CALLBACK_HANDLED");
         assertThat(alerts.acked.get()).isTrue();
+    }
+
+    // ------------------------------------------------------------------ nút ag:/cg:/fu: dưới kết quả kiểm tra
+
+    @Test
+    @DisplayName("ag: gửi người thân active tin báo kèm nút ack, báo lại người cao tuổi")
+    void testAlertGuardianButtonSendsToActiveGuardians() {
+        InMemoryAlertStore alerts = new InMemoryAlertStore();
+        WebhookHandler h = handlerWithGuardians(alerts, guardian("tg:201", "201", "Lan", "active"),
+                guardian("tg:202", "202", "Hùng", "paused"));
+
+        APIGatewayProxyResponseEvent res = h.handleRequest(createRequest(callbackUpdate(801, "ag:C1")), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("CALLBACK_HANDLED");
+        String alertId = com.askfirst.common.store.AlertRecord.idFor("C1", "tg:201");
+        assertThat(fakeTelegram.sends).hasSize(2);
+        FakeTelegramClient.Sent toGuardian = fakeTelegram.sends.get(0);
+        assertThat(toGuardian.chatId()).isEqualTo(201L);
+        assertThat(toGuardian.text()).contains("đáng ngờ");
+        assertThat(toGuardian.markup().toString()).contains("ack:" + alertId);
+        assertThat(alerts.reserved.get(alertId).status()).isEqualTo(com.askfirst.common.store.AlertRecord.SENT);
+        assertThat(fakeTelegram.lastChatId).isEqualTo(222L);
+        assertThat(fakeTelegram.lastText).contains("đã báo cho Lan").doesNotContain("Hùng");
+        assertThat(fakeTelegram.lastCallbackAnswer).isEqualTo("Đã báo người nhà");
+    }
+
+    @Test
+    @DisplayName("ag: bấm lại kh gửi trùng cho người thân")
+    void testAlertGuardianButtonTwiceDoesNotResend() {
+        InMemoryAlertStore alerts = new InMemoryAlertStore();
+        WebhookHandler h = handlerWithGuardians(alerts, guardian("tg:201", "201", "Lan", "active"));
+
+        h.handleRequest(createRequest(callbackUpdate(802, "ag:C1")), mockContext);
+        h.handleRequest(createRequest(callbackUpdate(803, "ag:C1")), mockContext);
+
+        assertThat(fakeTelegram.sends).extracting(FakeTelegramClient.Sent::chatId).containsExactly(201L, 222L, 222L);
+        assertThat(fakeTelegram.lastText).contains("đã báo cho Lan");
+    }
+
+    @Test
+    @DisplayName("ag: gửi người thân lỗi → markFailed, nói thật với người cao tuổi")
+    void testAlertGuardianButtonSendFailure() {
+        InMemoryAlertStore alerts = new InMemoryAlertStore();
+        WebhookHandler h = handlerWithGuardians(alerts, guardian("tg:201", "201", "Lan", "active"));
+        fakeTelegram.failChats.add(201L);
+
+        h.handleRequest(createRequest(callbackUpdate(804, "ag:C1")), mockContext);
+
+        String alertId = com.askfirst.common.store.AlertRecord.idFor("C1", "tg:201");
+        assertThat(alerts.reserved.get(alertId).status()).isEqualTo(com.askfirst.common.store.AlertRecord.FAILED);
+        assertThat(fakeTelegram.lastText).contains("chưa gửi được cho Lan").doesNotContain("đã báo");
+        assertThat(fakeTelegram.lastCallbackAnswer).isEqualTo("Chưa gửi được ạ");
+    }
+
+    @Test
+    @DisplayName("ag: chưa có người thân active → hướng dẫn /nguoithan, kh tạo alert")
+    void testAlertGuardianButtonWithoutGuardians() {
+        InMemoryAlertStore alerts = new InMemoryAlertStore();
+        WebhookHandler h = handlerWithGuardians(alerts, guardian("tg:202", "202", "Hùng", "paused"));
+
+        APIGatewayProxyResponseEvent res = h.handleRequest(createRequest(callbackUpdate(805, "ag:C1")), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("CALLBACK_HANDLED");
+        assertThat(alerts.reserved).isEmpty();
+        assertThat(fakeTelegram.sends).extracting(FakeTelegramClient.Sent::chatId).containsExactly(222L);
+        assertThat(fakeTelegram.lastText).contains("/nguoithan");
+    }
+
+    @Test
+    @DisplayName("cg: gửi link mở chat của người thân active")
+    void testCallGuardianButtonSendsChatLinks() {
+        WebhookHandler h = handlerWithGuardians(new InMemoryAlertStore(),
+                guardian("tg:201", "201", "Lan <3", "active"), guardian("tg:202", "202", "Hùng", "paused"));
+
+        APIGatewayProxyResponseEvent res = h.handleRequest(createRequest(callbackUpdate(806, "cg:C1")), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("CALLBACK_HANDLED");
+        assertThat(fakeTelegram.lastChatId).isEqualTo(222L);
+        assertThat(fakeTelegram.lastText).contains("<a href=\"tg://user?id=201\">Lan &lt;3</a>").doesNotContain("Hùng");
+        assertThat(fakeTelegram.callbackAnswers).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("fu: trả lời câu hỏi thêm → gỡ nút, answer, gửi lời dặn")
+    void testFollowupAnswerButton() {
+        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(callbackUpdate(807, "fu:C1:u")), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("CALLBACK_HANDLED");
+        assertThat(fakeTelegram.markupEdits).hasSize(1);
+        assertThat(fakeTelegram.markupEdits.get(0).markup()).isNull();
+        assertThat(fakeTelegram.lastCallbackAnswer).contains("ghi nhận");
+        assertThat(fakeTelegram.lastText).contains("chưa chuyển tiền");
+    }
+
+    @Test
+    @DisplayName("fu: đáp án lạ → coi như nút chưa dùng được")
+    void testFollowupAnswerButtonRejectsUnknownAnswer() {
+        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(callbackUpdate(808, "fu:C1:x")), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("UNKNOWN_CALLBACK");
+        assertThat(fakeTelegram.lastText).isNull();
+    }
+
+    private WebhookHandler handlerWithGuardians(InMemoryAlertStore alerts, GuardianRecord... guardians) {
+        GuardianRepo repo = new GuardianRepo() {
+            @Override
+            public List<GuardianRecord> listGuardians(String elderUid) {
+                return java.util.Arrays.stream(guardians).filter(g -> g.getElderUid().equals(elderUid)).toList();
+            }
+        };
+        return new WebhookHandler(fakeTelegram, fakeSqs, "https://sqs.mock.queue", SECRET, fakeUserRepo,
+                fakeAuditRepo, fakeRateLimitRepo, repo, null, POLICY_SHA256, null, false, null, null, null, null,
+                null, null, alerts);
+    }
+
+    private static GuardianRecord guardian(String guardianUid, String chatId, String name, String status) {
+        GuardianRecord g = new GuardianRecord("tg:111", guardianUid);
+        g.setGuardianChatId(chatId);
+        g.setName(name);
+        g.setStatus(status);
+        return g;
     }
 
     private WebhookHandler handlerWithBuffer(
@@ -992,6 +1115,7 @@ class WebhookHandlerTest {
     private static class InMemoryAlertStore implements com.askfirst.common.store.AlertStore {
         private com.askfirst.common.store.AlertRecord stored;
         final AtomicBoolean acked = new AtomicBoolean(false);
+        final Map<String, com.askfirst.common.store.AlertRecord> reserved = new HashMap<>();
 
         void seed(com.askfirst.common.store.AlertRecord record) {
             stored = record;
@@ -999,7 +1123,7 @@ class WebhookHandlerTest {
 
         @Override
         public com.askfirst.common.store.AlertRecord reserve(com.askfirst.common.store.AlertRecord pending) {
-            return pending;
+            return reserved.computeIfAbsent(pending.alertId(), k -> pending);
         }
 
         @Override
@@ -1012,10 +1136,19 @@ class WebhookHandlerTest {
 
         @Override
         public void markSent(String alertId, int messageId) {
+            reserved.computeIfPresent(alertId, (k, r) -> withStatus(r, com.askfirst.common.store.AlertRecord.SENT));
         }
 
         @Override
         public void markFailed(String alertId) {
+            reserved.computeIfPresent(alertId, (k, r) -> withStatus(r, com.askfirst.common.store.AlertRecord.FAILED));
+        }
+
+        private static com.askfirst.common.store.AlertRecord withStatus(
+                com.askfirst.common.store.AlertRecord r, String status) {
+            return new com.askfirst.common.store.AlertRecord(r.alertId(), r.elderUid(), r.elderChatId(), r.checkId(),
+                    r.guardianUid(), r.guardianChatId(), r.guardianName(), r.shareLevel(), status, r.messageId(),
+                    r.ackedAt(), r.remindedAt(), r.ttlEpochSeconds());
         }
 
         @Override
@@ -1069,10 +1202,16 @@ class WebhookHandlerTest {
         String lastText;
         Map<String, Object> lastMarkup;
         String lastCallbackAnswer;
+        final List<String> callbackAnswers = new ArrayList<>();
         final List<MarkupEdit> markupEdits = new ArrayList<>();
+        final List<Sent> sends = new ArrayList<>();
+        final Set<Long> failChats = new HashSet<>();
         boolean failMarkupEdit;
 
         record MarkupEdit(long chatId, int messageId, Map<String, Object> markup) {
+        }
+
+        record Sent(long chatId, String text, Map<String, Object> markup) {
         }
 
         public FakeTelegramClient() {
@@ -1081,6 +1220,10 @@ class WebhookHandlerTest {
 
         @Override
         public int sendText(long chatId, String text, Map<String, Object> replyMarkup) {
+            if (failChats.contains(chatId)) {
+                throw new RuntimeException("Forbidden: bot was blocked by the user");
+            }
+            sends.add(new Sent(chatId, text, replyMarkup));
             this.lastChatId = chatId;
             this.lastText = text;
             this.lastMarkup = replyMarkup;
@@ -1089,6 +1232,7 @@ class WebhookHandlerTest {
 
         @Override
         public void answerCallbackQuery(String callbackQueryId, String text) {
+            callbackAnswers.add(text);
             this.lastCallbackAnswer = text;
         }
 

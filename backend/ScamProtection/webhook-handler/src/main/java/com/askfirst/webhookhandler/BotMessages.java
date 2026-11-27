@@ -1,5 +1,6 @@
 package com.askfirst.webhookhandler;
 
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -199,6 +200,42 @@ public final class BotMessages {
      */
     public static String guardianAckedMessage(String guardianName, String xh) {
         return "Dạ, " + guardianName + " đã nhận cảnh báo và liên hệ " + xh + " rồi ạ.";
+    }
+
+    /** Nút "📣 Báo cho người nhà": tin gửi người thân. Chỉ báo mức, không kèm nội dung tin (như share_level 1). */
+    public static String elderAskedAlertMessage(String elderName) {
+        return "🔔 <b>" + elderName + "</b> vừa nhận một tin nhắn <b>đáng ngờ</b> và nhờ AskFirst báo cho bạn.\n"
+                + "Bạn hãy gọi hỏi thăm sớm, dặn chưa chuyển tiền hay đưa mã OTP, rồi bấm nút bên dưới.";
+    }
+
+    /** Kết quả nút "📣 Báo cho người nhà" gửi lại người cao tuổi. Tên đã escape. */
+    public static String guardiansAlertedMessage(String xh, List<String> sent, List<String> failed) {
+        StringBuilder sb = new StringBuilder();
+        if (!sent.isEmpty()) {
+            sb.append("Dạ cháu đã báo cho ").append(String.join(", ", sent))
+                    .append(". Trong lúc chờ, ").append(xh).append(" chưa làm theo yêu cầu trong tin nhắn lạ nhé.");
+        }
+        if (!failed.isEmpty()) {
+            sb.append(sb.isEmpty() ? "" : "\n").append("Cháu chưa gửi được cho ").append(String.join(", ", failed))
+                    .append(", ").append(xh).append(" gọi trực tiếp giúp cháu nhé.");
+        }
+        return sb.toString();
+    }
+
+    /** Nút "📞 Gọi cho người nhà": mỗi tên là link mở chat Telegram, từ đó bấm gọi được. Link đã dựng sẵn. */
+    public static String callGuardianMessage(String XH, List<String> guardianLinks) {
+        return "📞 " + XH + " bấm vào tên để mở trò chuyện, rồi bấm biểu tượng gọi ở góc trên:\n"
+                + String.join("\n", guardianLinks);
+    }
+
+    public static String noActiveGuardianMessage(String XH) {
+        return XH + " chưa có người thân nào đang nhận cảnh báo ạ. Gõ /nguoithan để mời người thân nhé.";
+    }
+
+    /** Trả lời câu hỏi thêm (Có/Không/Không nhớ). Hỏi nhiều lượt (BE-33) đang hoãn nên chưa phân tích lại. */
+    public static String followupAnswerMessage(String xh) {
+        return "Dạ cháu cảm ơn ạ. Cháu chưa đủ thông tin để kết luận chắc chắn, nên " + xh
+                + " cứ cẩn thận: chưa chuyển tiền, chưa đưa mã OTP, và hỏi người thân hoặc gọi tổng đài chính thức trước nhé.";
     }
 
     /**

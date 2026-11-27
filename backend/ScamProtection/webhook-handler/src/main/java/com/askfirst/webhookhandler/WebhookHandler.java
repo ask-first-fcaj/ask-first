@@ -1195,6 +1195,26 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return response(200, "CALLBACK_HANDLED");
         }
 
+        // Nút "📣 Báo cho người nhà" (mức SUSPICIOUS, chưa báo tự động): người cao tuổi tự nhờ bot báo
+        if (data != null && data.startsWith("ag:") && alertStore != null && guardianRepo != null) {
+            return handleAlertGuardians(cb, chatId, userId, data.substring("ag:".length()), context);
+        }
+
+        // Nút "📞 Gọi cho người nhà"
+        if (data != null && data.startsWith("cg:") && guardianRepo != null) {
+            return handleCallGuardian(cb, chatId, userId);
+        }
+
+        // Nút Có/Không/Không nhớ của câu hỏi thêm
+        if (data != null && data.matches("fu:[^:]+:[ynu]")) {
+            removeButtons(cb, chatId);
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), "Dạ cháu ghi nhận rồi ạ");
+                telegram.sendText(chatId, BotMessages.followupAnswerMessage(getAddressFormLower(userId)));
+            }
+            return response(200, "CALLBACK_HANDLED");
+        }
+
         // Nút chưa có xử lý vẫn phải answer, kh thì Telegram quay vòng chờ trên nút
         if (telegram != null) {
             telegram.answerCallbackQuery(cb.queryId(), "Nút này chưa dùng được ạ");
@@ -1259,6 +1279,96 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         } catch (Exception e) {
             log(context, "Không sửa được nút ack: " + e.getClass().getSimpleName());
         }
+    }
+
+    /**
+     * Người cao tuổi bấm "📣 Báo cho người nhà": gửi mọi người thân active tin báo kèm nút [Tôi đã liên hệ] (luồng
+     * ack/FR13 như cảnh báo tự động). alert_id theo (check, guardian) nên bấm lại thì kh gửi trùng.
+     */
+    private APIGatewayProxyResponseEvent handleAlertGuardians(
+            TelegramCallbackQuery cb, long chatId, String userId, String checkId, Context context) {
+        List<GuardianRecord> targets = activeGuardians(userId);
+        if (telegram == null) {
+            return response(200, "CALLBACK_HANDLED");
+        }
+        String XH = getAddressForm(userId, context);
+        if (targets.isEmpty()) {
+            telegram.answerCallbackQuery(cb.queryId(), null);
+            telegram.sendText(chatId, BotMessages.noActiveGuardianMessage(XH));
+            return response(200, "CALLBACK_HANDLED");
+        }
+        String elder = TelegramClient.escapeHtml(userRepo == null ? "Người thân của bạn"
+                : userRepo.getUser(userId).map(UserRecord::getDisplayName)
+                        .filter(n -> !n.isBlank()).orElse("Người thân của bạn"));
+        long ttl = Instant.now().getEpochSecond() + 30L * 24 * 3600;
+        List<String> sent = new ArrayList<>();
+        List<String> failed = new ArrayList<>();
+        for (GuardianRecord g : targets) {
+            String name = TelegramClient.escapeHtml(g.getName() == null || g.getName().isBlank()
+                    ? "người thân" : g.getName().trim());
+            int level = g.getShareLevel() == null ? 1 : g.getShareLevel();
+            AlertRecord r = alertStore.reserve(new AlertRecord(AlertRecord.idFor(checkId, g.getGuardianUid()),
+                    userId, String.valueOf(chatId), checkId, g.getGuardianUid(), g.getGuardianChatId(), g.getName(),
+                    level, AlertRecord.PENDING, null, null, null, ttl));
+            if (r.delivered()) {
+                sent.add(name);
+                continue;
+            }
+            // shortcut: hai lần bấm gần như cùng lúc đều thấy pending và gửi 2 lần; cần thì thêm khoá như ALERTLOCK#
+            if (!AlertRecord.PENDING.equals(r.status())) {
+                failed.add(name);
+                continue;
+            }
+            int messageId;
+            try {
+                messageId = telegram.sendText(Long.parseLong(g.getGuardianChatId()),
+                        BotMessages.elderAskedAlertMessage(elder), TelegramClient.inlineKeyboard(List.of(
+                                List.of(new InlineButton("✅ Tôi đã liên hệ", "ack:" + r.alertId())))));
+            } catch (Exception e) {
+                log(context, "Không gửi được tin báo người thân: " + e.getClass().getSimpleName());
+                alertStore.markFailed(r.alertId());
+                failed.add(name);
+                continue;
+            }
+            sent.add(name);
+            try {
+                alertStore.markSent(r.alertId(), messageId);
+            } catch (Exception e) {
+                // Tin đã tới người thân nên vẫn tính là đã báo; chỉ ghi log
+                log(context, "Không ghi được trạng thái alert: " + e.getClass().getSimpleName());
+            }
+        }
+        telegram.answerCallbackQuery(cb.queryId(), sent.isEmpty() ? "Chưa gửi được ạ" : "Đã báo người nhà");
+        telegram.sendText(chatId, BotMessages.guardiansAlertedMessage(BotMessages.toLower(XH), sent, failed));
+        return response(200, "CALLBACK_HANDLED");
+    }
+
+    /**
+     * Người cao tuổi bấm "📞 Gọi cho người nhà". Hồ sơ người thân chưa có số điện thoại nên kh sendContact được:
+     * gửi link mở chat Telegram của từng người thân (chat riêng nên chat_id chính là user id).
+     */
+    private APIGatewayProxyResponseEvent handleCallGuardian(TelegramCallbackQuery cb, long chatId, String userId) {
+        List<String> links = new ArrayList<>();
+        for (GuardianRecord g : activeGuardians(userId)) {
+            String name = TelegramClient.escapeHtml(g.getName() == null || g.getName().isBlank()
+                    ? "Người thân" : g.getName().trim());
+            links.add("• <a href=\"tg://user?id=" + Long.parseLong(g.getGuardianChatId()) + "\">" + name + "</a>");
+        }
+        if (telegram != null) {
+            String XH = getAddressForm(userId);
+            telegram.answerCallbackQuery(cb.queryId(), null);
+            telegram.sendText(chatId, links.isEmpty() ? BotMessages.noActiveGuardianMessage(XH)
+                    : BotMessages.callGuardianMessage(XH, links));
+        }
+        return response(200, "CALLBACK_HANDLED");
+    }
+
+    /** Người thân đang nhận cảnh báo và có chat id dạng số (dùng để gửi tin / dựng link). */
+    private List<GuardianRecord> activeGuardians(String elderUid) {
+        return guardianRepo.listGuardians(elderUid).stream()
+                .filter(g -> "active".equals(g.getStatus()))
+                .filter(g -> g.getGuardianChatId() != null && g.getGuardianChatId().matches("-?\\d+"))
+                .toList();
     }
 
     private static String stripUserPrefix(String uid) {
