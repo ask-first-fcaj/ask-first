@@ -2388,6 +2388,8 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         if (guardianRepo != null) {
             GuardianRecord pendingRec = new GuardianRecord(elderUid, userId);
             pendingRec.setStatus("pending");
+            // Chat riêng với bot nên chat_id là nơi gửi cảnh báo cho người thân (worker + nút ag:/cg: cần field này)
+            pendingRec.setGuardianChatId(String.valueOf(chatId));
             pendingRec.setName(senderDisplayName);
             pendingRec.setGuardianConsentAt(Instant.now().toString());
             guardianRepo.save(pendingRec);

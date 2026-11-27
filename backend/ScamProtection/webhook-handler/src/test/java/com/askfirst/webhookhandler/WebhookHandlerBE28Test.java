@@ -166,6 +166,8 @@ class WebhookHandlerBE28Test {
         Optional<GuardianRecord> pendingGuardian = guardianRepo.getGuardian(ELDER_UID, RELATIVE_UID);
         assertTrue(pendingGuardian.isPresent(), "Phải tạo bản ghi guardian pending");
         assertEquals("pending", pendingGuardian.get().getStatus());
+        assertEquals(String.valueOf(RELATIVE_CHAT_ID), pendingGuardian.get().getGuardianChatId(),
+                "Phải lưu chat id để gửi cảnh báo cho người thân");
 
         // Phải có tin nhắn gửi đến người thân (xác nhận đã gửi yêu cầu)
         boolean relativeMsgSent = telegramClient.sentMessages.stream()
