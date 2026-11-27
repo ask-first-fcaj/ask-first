@@ -1186,6 +1186,19 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
             return handleGuardianAck(cb, data.substring("ack:".length()), context);
         }
 
+        // Nút "📋 Việc cần làm ngay" dưới kết quả kiểm tra: gửi đúng checklist của /bilua
+        if ("cl".equals(data)) {
+            if (telegram != null) {
+                telegram.answerCallbackQuery(cb.queryId(), null);
+                telegram.sendText(chatId, BotMessages.emergencyChecklistMessage(getAddressFormLower(userId)));
+            }
+            return response(200, "CALLBACK_HANDLED");
+        }
+
+        // Nút chưa có xử lý vẫn phải answer, kh thì Telegram quay vòng chờ trên nút
+        if (telegram != null) {
+            telegram.answerCallbackQuery(cb.queryId(), "Nút này chưa dùng được ạ");
+        }
         return response(200, "UNKNOWN_CALLBACK");
     }
 
@@ -2147,6 +2160,7 @@ public class WebhookHandler implements RequestHandler<APIGatewayProxyRequestEven
         if (level == null) return "🟡 Cần cảnh giác";
         return switch (level.toUpperCase()) {
             case "SAFE", "LOW" -> "🟢 Ít dấu hiệu";
+            case "LOW_RISK" -> "⚪ Chưa thấy dấu hiệu";
             case "SUSPICIOUS", "MEDIUM", "UNSURE" -> "🟡 Cần cảnh giác";
             case "DANGEROUS", "HIGH" -> "🔴 Nguy hiểm";
             default -> "🟡 Cần cảnh giác";

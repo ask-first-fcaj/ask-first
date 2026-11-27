@@ -820,6 +820,26 @@ class WebhookHandlerTest {
     }
 
     @Test
+    @DisplayName("Nút 'Việc cần làm ngay' (cl) gửi checklist như /bilua")
+    void testChecklistButtonSendsChecklist() {
+        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(callbackUpdate(701, "cl")), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("CALLBACK_HANDLED");
+        assertThat(fakeTelegram.lastChatId).isEqualTo(222L);
+        assertThat(fakeTelegram.lastText).contains("Nghi bị lừa").contains("Khóa thẻ và tài khoản ngân hàng");
+    }
+
+    @Test
+    @DisplayName("Nút chưa có xử lý vẫn được answer để Telegram kh quay vòng chờ")
+    void testUnhandledButtonIsAnswered() {
+        APIGatewayProxyResponseEvent res = handler.handleRequest(createRequest(callbackUpdate(702, "cg:01CHK")), mockContext);
+
+        assertThat(res.getBody()).isEqualTo("UNKNOWN_CALLBACK");
+        assertThat(fakeTelegram.lastCallbackAnswer).contains("chưa dùng được");
+        assertThat(fakeTelegram.lastText).isNull();
+    }
+
+    @Test
     @DisplayName("BE-29: guardianUid dạng USER#tg:201 vẫn khớp from.id=201")
     void testAckMatchesUserPrefix() {
         InMemoryAlertStore alerts = new InMemoryAlertStore();

@@ -136,6 +136,22 @@ class WebhookHandlerBE36Test {
     }
 
     @Test
+    @DisplayName("/lichsu: mức LOW_RISK của AI hiện 'Chưa thấy dấu hiệu', kh rơi vào 'Cần cảnh giác'")
+    void testLichSuLowRiskLabel() {
+        checkRepo.put(new CheckRecord(
+                "01CHK09", ELDER_UID, "verdict", "LOW_RISK", 5,
+                "N0", "Tin bình thường", "full",
+                List.of(), List.of(), List.of("text"), false,
+                "2026-11-27T03:08:00Z", 0L));
+
+        handler.handleRequest(buildMessageRequest(ELDER_CHAT_ID, "/lichsu"), fakeContext());
+
+        String text = telegramClient.sentMessages.get(0).text;
+        assertTrue(text.contains("⚪ Chưa thấy dấu hiệu"));
+        assertFalse(text.contains("Cần cảnh giác"));
+    }
+
+    @Test
     @DisplayName("BE-36: /lichsu phân trang khi có nhiều hơn 10 bản ghi và cập nhật bằng editMessageText")
     void testLichSuPagination() {
         // Tạo 12 bản ghi kiểm tra
