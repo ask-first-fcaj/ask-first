@@ -20,7 +20,7 @@ Bot Telegram **Hỏi Trước** đóng vai "người thứ ba". Người dùng c
 
 - một trong 4 mức rủi ro `DANGEROUS`, `SUSPICIOUS`, `UNSURE`, `LOW_RISK` (cố ý không có mức "an toàn");
 - kịch bản lừa đảo mà tin giống, dấu hiệu trích từ chính tin, việc cần làm ngay, tổng đài chính thức đã xác minh và nguồn cảnh báo chính thức (RAG);
-- cảnh báo người thân đã liên kết (double opt-in, có sự đồng ý của người cao tuổi) khi rủi ro cao, nhắc lại sau 15 phút nếu chưa ai bấm "Tôi đã liên hệ".
+- cảnh báo người thân đã liên kết (double opt-in, có sự đồng ý của người cao tuổi) khi rủi ro cao, nhắc lại sau 15 phút nếu chưa ai bấm "Tôi đã liên hệ"; khi người thân bấm, bot báo lại cho người cao tuổi là người thân đã nhận cảnh báo.
 
 **Kiến trúc AWS (serverless, không VPC/NAT):**
 
@@ -44,7 +44,7 @@ Số bước khớp với sơ đồ kiến trúc (file `.xml` nộp kèm).
 
 1. **Gửi tin:** người cao tuổi chuyển tiếp tin, link hoặc ảnh cho bot trên Telegram.
 2. **Webhook:** Telegram POST update tới Function URL của Lambda `webhook`, kèm `secret_token` (so sánh constant-time).
-3. **Gom tin:** `webhook` dedup `update_id`, kiểm đồng ý, gom tin vào `BUFFER#` trong DynamoDB, gửi "⏳ đang kiểm tra…". Telegram nhận phản hồi trong dưới 1 giây.
+3. **Gom tin:** `webhook` dedup `update_id`, kiểm đồng ý, gom tin vào `BUFFER#` trong DynamoDB, gửi "⏳ đang kiểm tra…". Telegram nhận phản hồi trong dưới 1 giây. Ảnh lớn hơn 20 MB (giới hạn tải file của Bot API) và tin nhắn thoại bị trả lời ngay bằng một câu giải thích, không tạo job.
 4. **Xếp job:** `webhook` đẩy job vào SQS với delay 3 giây để gom nhiều tin gửi liền nhau thành một lượt.
 5. **Poll:** Lambda `worker` nhận job từ SQS (maximum concurrency 5 để giữ quota Bedrock), đọc buffer và cờ kill switch.
 6. **Phân tích:** `worker` invoke đồng bộ Lambda `ai` với `op=analyze`, chỉ gửi metadata và `file_id`, không gửi bytes ảnh.
@@ -58,9 +58,9 @@ Số bước khớp với sơ đồ kiến trúc (file `.xml` nộp kèm).
 14. **Cảnh báo:** nếu mức là `DANGEROUS` kèm hành động nguy hiểm, `worker` báo song song cho mọi người thân đã liên kết; trạng thái "đã báo" chỉ ghi khi Telegram trả `message_id`.
 15. **Kết quả:** `worker` sửa tin "⏳" thành câu trả lời cuối cho người cao tuổi.
 16. **Lưu kết quả:** `worker` ghi metadata `CHECK#` vào DynamoDB (TTL 30 ngày), không lưu nội dung gốc.
-17. **Hỏi lại sau 15 phút:** job nhắc lại qua SQS delay nếu chưa người thân nào xác nhận "Tôi đã liên hệ".
+17. **Hỏi lại sau 15 phút:** job nhắc lại qua SQS delay nếu chưa người thân nào xác nhận "Tôi đã liên hệ". Khi người thân bấm nút này lần đầu, `webhook` ghi xác nhận vào DynamoDB và gửi tin báo cho người cao tuổi.
 
-**Lỗi và vận hành:** job lỗi 5 lần vào SQS DLQ; `worker-dlq` đọc DLQ và báo "bận" cho người dùng; CloudWatch Alarm trên DLQ gửi email cho team qua SNS. GitHub Actions deploy qua OIDC. AWS Budgets 50 USD/tháng gửi email khi chi phí vượt 10, 25, 40 và 50 USD.
+**Lỗi và vận hành:** job lỗi 5 lần vào SQS DLQ; `worker-dlq` đọc DLQ và báo "bận" cho người dùng; CloudWatch Alarm trên DLQ gửi email cho team qua SNS. GitHub Actions deploy qua OIDC. AWS Budgets 50 USD/tháng gửi email khi chi phí vượt 10, 25, 40 và 50 USD. Account Bedrock có budget 10 USD/tháng kèm budget action: chi phí thực vượt 10 USD thì tự gắn policy chặn `bedrock:*` vào role mà Lambda `ai` assume, bot chuyển sang chỉ chạy luật thay vì tiếp tục gọi LLM.
 
 ## Additional (Optional)
 
@@ -107,4 +107,4 @@ Giả định **3.000 lượt kiểm tra/tháng** (văn bản và ảnh). Dịch
 
 **Đối chiếu chi phí thật (01–25/11/2026, chủ yếu là traffic eval và test của nhóm):** tài khoản dev ≈ 0,09 USD (AWS Budgets, không gồm Bedrock); tài khoản chạy Bedrock 3,93 USD theo Cost Explorer (3,57 USD Bedrock + 0,36 USD thuế).
 
-**Tối ưu chi phí:** không có chi phí cố định (không VPC/NAT, API Gateway, OpenSearch, GPU); AI local-first nên OCR, embedding, luật không tốn token; fast path và cache; kill switch `CONFIG#global/FLAGS` tắt judge LLM hoặc nhận ảnh không cần deploy; rate limit theo người dùng; S3 tự xoá `donated/` sau 30 ngày.
+**Tối ưu chi phí:** không có chi phí cố định (không VPC/NAT, API Gateway, OpenSearch, GPU); AI local-first nên OCR, embedding, luật không tốn token; fast path và cache; kill switch `CONFIG#global/FLAGS` tắt judge LLM hoặc nhận ảnh không cần deploy; rate limit theo người dùng; S3 tự xoá `donated/` sau 30 ngày; budget action tự chặn Bedrock khi account Bedrock vượt 10 USD/tháng (AWS Budgets cập nhật vài lần mỗi ngày nên có thể vượt mức một ít trước khi chặn).
