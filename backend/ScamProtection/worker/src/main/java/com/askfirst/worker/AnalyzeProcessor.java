@@ -29,9 +29,6 @@ import com.askfirst.worker.GuardianDirectory.Elder;
 import com.askfirst.worker.GuardianDirectory.Guardian;
 import com.askfirst.worker.TelegramGateway.Btn;
 import com.askfirst.worker.TelegramGateway.SendException;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
@@ -436,18 +433,8 @@ public final class AnalyzeProcessor {
         }
     }
 
-    /** alert_id xác định theo (check, guardian): retry dùng lại đúng alert, không gửi trùng. */
     static String alertId(String checkId, String guardianUid) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(guardianUid.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (int i = 0; i < 3; i++) {
-                hex.append(String.format("%02x", digest[i]));
-            }
-            return checkId + "-" + hex;
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 không khả dụng");
-        }
+        return AlertRecord.idFor(checkId, guardianUid);
     }
 
     // ---------- trả lời người cao tuổi ----------
